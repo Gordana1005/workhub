@@ -1,85 +1,51 @@
-import { NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { NextResponse } from 'next/server'
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
 
 export async function GET() {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    );
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const supabase = createRouteHandlerClient({ cookies })
+    
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      return NextResponse.json(
+        { tasksCompleted: 0, timeLogged: 0, activeTasks: 0, completionRate: 0 },
+        { status: 200 }
+      )
     }
 
-    // Get current workspace from query param (optional)
-    // If you want to scope stats to a workspace, pass ?workspaceId=xxx
-    // Otherwise, stats are for all user's workspaces
-
-    // Get tasks completed
-    const { data: completedTasks, error: completedError } = await supabase
+    // Get all tasks
+    const { data: tasks } = await supabase
       .from('tasks')
-      .select('id', { count: 'exact' })
-      .eq('assignee_id', user.id)
-      .eq('is_completed', true);
-
-    if (completedError) {
-      return NextResponse.json({ error: completedError.message }, { status: 500 });
-    }
-
-    // Get time logged (sum duration from time_entries)
-    const { data: timeEntries, error: timeError } = await supabase
+      .select('*')
+    
+    // Get time entries
+    const { data: timeEntries } = await supabase
       .from('time_entries')
       .select('duration')
-      .eq('user_id', user.id);
-
-    if (timeError) {
-      return NextResponse.json({ error: timeError.message }, { status: 500 });
-    }
-
-    const totalTimeLogged = timeEntries?.reduce((sum, entry) => sum + (entry.duration || 0), 0) || 0;
-    const tasksCompleted = completedTasks?.length || 0;
-
-    // Get active tasks
-    const { data: activeTasks, error: activeError } = await supabase
-      .from('tasks')
-      .select('id', { count: 'exact' })
-      .eq('assignee_id', user.id)
-      .eq('is_completed', false);
-
-    if (activeError) {
-      return NextResponse.json({ error: activeError.message }, { status: 500 });
-    }
-
-    const activeTasksCount = activeTasks?.length || 0;
-
-    // Calculate completion rate
-    const completionRate = activeTasksCount + tasksCompleted > 0
-      ? Math.round((tasksCompleted / (activeTasksCount + tasksCompleted)) * 100)
-      : 0;
-
+      .eq('user_id', user.id)
+    
+    const totalHours = timeEntries?.reduce((sum, entry) => 
+      sum + (entry.duration / 3600), 0
+    ) || 0
+    
+    const completed = tasks?.filter(t => t.is_completed).length || 0
+    const total = tasks?.length || 0
+    const active = total - completed
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0
+    
     return NextResponse.json({
-      tasksCompleted,
-      timeLogged: totalTimeLogged,
-      activeTasks: activeTasksCount,
-      completionRate,
-    });
+      tasksCompleted: completed,
+      timeLogged: Math.round(totalHours),
+      activeTasks: active,
+      completionRate
+    })
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
+    console.error('Dashboard API error:', error)
+    return NextResponse.json(
+      { tasksCompleted: 0, timeLogged: 0, activeTasks: 0, completionRate: 0 },
+      { status: 200 }
+    )
   }
 }
