@@ -1,5 +1,5 @@
 {
-  "name": "app",
+  "name": "workhub",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -12,30 +12,17 @@
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.89.0",
-    "@tanstack/react-query": "^5.90.12",
-    "@tiptap/pm": "^3.14.0",
-    "@tiptap/react": "^3.14.0",
-    "@tiptap/starter-kit": "^3.14.0",
     "clsx": "^2.1.1",
-    "date-fns": "^4.1.0",
-    "framer-motion": "^12.23.26",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^3.0.4",
     "lucide-react": "^0.562.0",
     "next": "14.2.18",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-hook-form": "^7.69.0",
-    "recharts": "^3.6.0",
-    "tailwind-merge": "^3.4.0",
-    "uuid": "^13.0.0",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "@types/uuid": "^10.0.0",
     "autoprefixer": "^10.4.23",
     "eslint": "^8",
     "eslint-config-next": "14.2.18",
