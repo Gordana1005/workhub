@@ -17,13 +17,24 @@ interface Task {
   } | null
 }
 
+
 export default function MyTasks() {
-  const { currentWorkspace } = useWorkspaceStore()
+  const { currentWorkspace } = useWorkspaceStore();
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Get user ID once on mount
+  useEffect(() => {
+    const getUserId = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUserId(user?.id || null);
+    };
+    getUserId();
+  }, []);
 
   const { data: tasks, isLoading } = useQuery({
-    queryKey: ['myTasks', currentWorkspace?.id],
+    queryKey: ['myTasks', currentWorkspace?.id, userId],
     queryFn: async (): Promise<Task[]> => {
-      if (!currentWorkspace) return []
+      if (!currentWorkspace || !userId) return [];
 
       const { data, error } = await supabase
         .from('tasks')
@@ -36,23 +47,23 @@ export default function MyTasks() {
           is_completed,
           projects!inner(name)
         `)
-        .eq('assignee_id', (await supabase.auth.getUser()).data.user?.id)
+        .eq('assignee_id', userId)
         .eq('is_completed', false)
         .order('due_date', { ascending: true })
-        .limit(5)
+        .limit(5);
 
-      if (error) throw error
-      
-      // Transform the data to match our Task interface
+      if (error) throw error;
       return (data || []).map((item: any) => ({
         ...item,
-        projects: Array.isArray(item.projects) && item.projects.length > 0 
-          ? item.projects[0] 
+        projects: Array.isArray(item.projects) && item.projects.length > 0
+          ? item.projects[0]
           : null
-      }))
+      }));
     },
-    enabled: !!currentWorkspace
-  })
+    enabled: !!currentWorkspace && !!userId,
+    staleTime: 30000,
+    refetchOnWindowFocus: false
+  });
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {

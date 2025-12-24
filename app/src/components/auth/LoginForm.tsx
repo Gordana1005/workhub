@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 
-export default function LoginForm() {
+function LoginForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -96,3 +96,6 @@ export default function LoginForm() {
     </div>
   )
 }
+
+export default LoginForm;
+export { LoginForm };
