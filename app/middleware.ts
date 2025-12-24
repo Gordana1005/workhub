@@ -41,7 +41,18 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Allow access to auth pages
+  if (request.nextUrl.pathname.startsWith('/auth/')) {
+    return response
+  }
+
+  // Redirect to login if not authenticated
+  if (!user) {
+    const loginUrl = new URL('/auth/login', request.url)
+    return NextResponse.redirect(loginUrl)
+  }
 
   return response
 }

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { CheckCircle, Circle, Clock } from 'lucide-react'
+import { useEffect, useState } from 'react'
 
 interface Task {
   id: string

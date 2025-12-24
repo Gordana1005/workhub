@@ -19,30 +19,34 @@ export default function Dashboard() {
   })
 
   useEffect(() => {
-    if (!hasFetched) {
-      fetchWorkspaces();
-      setHasFetched(true);
-    }
-
-    // Fetch dashboard stats from API
-    const fetchStats = async () => {
-      try {
-        const res = await fetch('/api/dashboard');
-        if (!res.ok) throw new Error('Failed to fetch stats');
-        const data = await res.json();
-        setStats(data);
-      } catch (err) {
-        // Optionally handle error
-        setStats({ tasksCompleted: 0, timeLogged: 0, activeTasks: 0, completionRate: 0 });
+    const loadData = async () => {
+      if (!hasFetched) {
+        await fetchWorkspaces();
+        setHasFetched(true);
       }
+
+      // Fetch dashboard stats from API
+      const fetchStats = async () => {
+        try {
+          const res = await fetch('/api/dashboard');
+          if (!res.ok) throw new Error('Failed to fetch stats');
+          const data = await res.json();
+          setStats(data);
+        } catch (err) {
+          // Optionally handle error
+          setStats({ tasksCompleted: 0, timeLogged: 0, activeTasks: 0, completionRate: 0 });
+        }
+      };
+      await fetchStats();
     };
-    fetchStats();
+
+    loadData();
 
     const hour = new Date().getHours();
     if (hour < 12) setGreeting('Good Morning');
     else if (hour < 18) setGreeting('Good Afternoon');
     else setGreeting('Good Evening');
-  }, []);
+  }, [fetchWorkspaces, hasFetched]);
 
   // If user has workspaces but none selected, show workspace selection
   if (workspaces.length > 0 && !currentWorkspace) {

@@ -1,9 +1,4 @@
 {
   "name": "workhub-root",
-  "private": true,
-  "workspaces": [
-    "app"
-  ],
-  "scripts": {
-  }
+  "private": true
 }

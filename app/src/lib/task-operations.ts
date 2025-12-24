@@ -12,9 +12,11 @@ export async function createTask(
 ) {
   try {
     const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
     if (authError || !user) {
       throw new Error('User not authenticated')
     }
+
     const { data: task, error } = await supabase
       .from('tasks')
       .insert({
@@ -29,10 +31,48 @@ export async function createTask(
       })
       .select()
       .single()
+
     if (error) throw error
     return task
   } catch (error) {
     console.error('Error creating task:', error)
+    throw error
+  }
+}
+
+export async function getTasks(projectId: string) {
+  try {
+    const { data, error } = await supabase
+      .from('tasks')
+      .select(`
+        *,
+        assignee:profiles!assignee_id(id, email, full_name),
+        creator:profiles!created_by(id, email, full_name)
+      `)
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    console.error('Error fetching tasks:', error)
+    throw error
+  }
+}
+
+export async function updateTask(taskId: string, updates: any) {
+  try {
+    const { data: task, error } = await supabase
+      .from('tasks')
+      .update(updates)
+      .eq('id', taskId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return task
+  } catch (error) {
+    console.error('Error updating task:', error)
     throw error
   }
 }

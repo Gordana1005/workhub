@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { ChevronDown, Plus, Loader2 } from 'lucide-react'
 import CreateWorkspaceDialog from '@/components/workspace/CreateWorkspaceDialog'
@@ -10,16 +10,11 @@ export default function WorkspaceSwitcher() {
     workspaces,
     currentWorkspace,
     setCurrentWorkspace,
-    fetchWorkspaces,
     loading,
     error
   } = useWorkspaceStore()
   const [isOpen, setIsOpen] = useState(false)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
-
-  useEffect(() => {
-    fetchWorkspaces()
-  }, [fetchWorkspaces])
 
   return (
     <>
