@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from '@/components/ThemeProvider';
-import { QueryProvider } from '@/components/QueryProvider';
 import "./globals.css";
 
 const inter = Inter({
@@ -10,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ProductivityHub",
+  title: "WorkHub - Productivity Management",
   description: "Collaborative productivity platform with task management, time tracking, and team collaboration",
 };
 
@@ -22,11 +21,9 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} font-sans antialiased`}>
-        <QueryProvider>
-          <ThemeProvider>
-            {children}
-          </ThemeProvider>
-        </QueryProvider>
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );
