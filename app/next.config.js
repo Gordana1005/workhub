@@ -1,14 +1,17 @@
-const path = require('path');
-
+/** @type {import('next').NextConfig} */
 const nextConfig = {
-  webpack: (config) => {
-    config.resolve = config.resolve || {};
-    config.resolve.alias = {
-      ...(config.resolve.alias || {}),
-      "@": path.resolve(__dirname, "src"),
-    };
-    return config;
+  reactStrictMode: true,
+  swcMinify: true,
+  images: {
+    domains: [],
   },
-};
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': require('path').resolve(__dirname, 'src'),
+    }
+    return config
+  },
+}
 
-module.exports = nextConfig;
+module.exports = nextConfig

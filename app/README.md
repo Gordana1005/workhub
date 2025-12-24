@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# WorkHub - Productivity Management Platform
 
-## Getting Started
+## Features
 
-First, run the development server:
+- ✅ Multi-workspace management
+- ✅ Project creation and tracking
+- ✅ Task management with Kanban board
+- ✅ Time tracking
+- ✅ Team collaboration
+- ✅ Reports and analytics
+
+## Tech Stack
+
+- **Framework**: Next.js 14.2.18 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS 3.4.19
+- **Database**: Supabase (PostgreSQL)
+- **State Management**: Zustand
+- **UI Components**: Custom + Lucide Icons
+
+## Setup
+
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+### 2. Environment Variables
+
+Create `.env.local` file:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+```
+
+### 3. Database Setup
+
+Run the SQL schema in your Supabase project:
+
+```bash
+# See database-schema.sql in root directory
+```
+
+### 4. Run Development Server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 5. Build for Production
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+npm start
+```
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+app/
+├── src/
+│   ├── app/              # Next.js App Router pages
+│   │   ├── api/          # API routes
+│   │   ├── auth/         # Authentication pages
+│   │   ├── dashboard/    # Main app pages
+│   │   └── layout.tsx    # Root layout
+│   ├── components/       # React components
+│   │   ├── auth/        # Auth components
+│   │   ├── dashboard/   # Dashboard components
+│   │   ├── layout/      # Layout components
+│   │   └── ui/          # Reusable UI components
+│   ├── lib/             # Utilities and configs
+│   │   ├── supabase.ts  # Supabase client
+│   │   └── constants.ts # Environment constants
+│   └── stores/          # Zustand stores
+├── public/              # Static assets
+├── tailwind.config.js   # Tailwind configuration
+├── tsconfig.json        # TypeScript configuration
+└── package.json         # Dependencies
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Vercel (Recommended)
 
-## Deploy on Vercel
+1. Push to GitHub
+2. Import project in Vercel
+3. Add environment variables
+4. Deploy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Manual
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run build
+npm start
+```
+
+## API Routes
+
+- `GET /api/dashboard` - Dashboard statistics
+- `GET /api/projects` - List projects
+- `POST /api/projects` - Create project
+- `GET /api/tasks` - List tasks
+- `POST /api/tasks` - Create task
+- `GET /api/workspaces` - List workspaces
+
+## Database Tables
+
+- `profiles` - User profiles
+- `workspaces` - Organizations/workspaces
+- `workspace_members` - Workspace membership
+- `projects` - Projects
+- `tasks` - Tasks
+- `time_entries` - Time tracking
+- `notes` - Project notes
+
+## Contributing
+
+1. Create feature branch
+2. Make changes
+3. Test thoroughly
+4. Submit pull request
+
+## License
+
+MIT
