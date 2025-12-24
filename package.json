@@ -1,0 +1,10 @@
+{
+  "name": "workhub-root",
+  "private": true,
+  "workspaces": [
+    "app"
+  ],
+  "scripts": {
+    "postinstall": "cd app && npm install"
+  }
+}
