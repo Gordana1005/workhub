@@ -5,6 +5,5 @@
     "app"
   ],
   "scripts": {
-    "postinstall": "cd app && npm install"
   }
 }
