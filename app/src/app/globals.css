@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+/* Force dark mode only - Professional design */
+:root {
+  color-scheme: dark;
+}
+
+html {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+body {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  min-height: 100vh;
+  color: #e2e8f0;
+  font-family: Inter, system-ui, sans-serif;
+}

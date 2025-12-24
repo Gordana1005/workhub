@@ -1,0 +1,185 @@
+import { createClient } from '@supabase/supabase-js'
+import { NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: workspaceId } = await params
+
+  try {
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+        },
+      }
+    )
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check if user is a member of this workspace
+    const { data: membership, error: memberError } = await supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (memberError || !membership) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    // Get workspace with member count
+    const { data: workspace, error: workspaceError } = await supabase
+      .from('workspaces')
+      .select(`
+        *,
+        workspace_members(count),
+        profiles!workspaces_owner_id_fkey(full_name, avatar_url)
+      `)
+      .eq('id', workspaceId)
+      .single()
+
+    if (workspaceError) {
+      return NextResponse.json({ error: workspaceError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      workspace: {
+        ...workspace,
+        userRole: membership.role
+      }
+    })
+
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+  }
+}
+
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: workspaceId } = await params
+
+  try {
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+        },
+      }
+    )
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { name } = await request.json()
+
+    const { data: membership, error: memberError } = await supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (memberError || !membership || membership.role !== 'admin') {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+    }
+
+    if (!name?.trim()) {
+      return NextResponse.json({ error: 'Workspace name is required' }, { status: 400 })
+    }
+
+    const { data: workspace, error: updateError } = await supabase
+      .from('workspaces')
+      .update({ name: name.trim() })
+      .eq('id', workspaceId)
+      .select()
+      .single()
+
+    if (updateError) {
+      return NextResponse.json({ error: updateError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ workspace })
+
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: workspaceId } = await params
+
+  try {
+    const cookieStore = await cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+        },
+      }
+    )
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Check if user is owner of this workspace
+    const { data: workspace, error: workspaceError } = await supabase
+      .from('workspaces')
+      .select('owner_id')
+      .eq('id', workspaceId)
+      .single()
+
+    if (workspaceError) {
+      return NextResponse.json({ error: workspaceError.message }, { status: 500 })
+    }
+
+    if (workspace.owner_id !== user.id) {
+      return NextResponse.json({ error: 'Owner access required' }, { status: 403 })
+    }
+
+    // Delete workspace (cascade will handle related records)
+    const { error: deleteError } = await supabase
+      .from('workspaces')
+      .delete()
+      .eq('id', workspaceId)
+
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
+
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
+  }
+}

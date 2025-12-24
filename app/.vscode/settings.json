@@ -1,0 +1,22 @@
+{
+  "css.lint.validProperties": [
+    "bg-gradient-to-r",
+    "bg-gradient-to-br",
+    "bg-gradient-to-bl",
+    "bg-gradient-to-tr",
+    "bg-gradient-to-tl",
+    "bg-gradient-to-b",
+    "bg-gradient-to-t",
+    "bg-gradient-to-l"
+  ],
+  "tailwindCSS.lint.cssConflict": "ignore",
+  "tailwindCSS.experimental.classRegex": [],
+  "[typescriptreact]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "typescript.tsdk": "node_modules/typescript/lib",
+  "typescript.enablePromptUseWorkspaceTsdk": true
+}
