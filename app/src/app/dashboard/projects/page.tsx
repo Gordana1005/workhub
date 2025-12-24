@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, Grid, List, Calendar, X } from 'lucide-react'
+import { Plus, Search, Grid, List, Calendar, X, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 interface Project {
@@ -25,6 +25,7 @@ export default function ProjectsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   
   // Form state
@@ -40,6 +41,9 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (currentWorkspace) {
       loadProjects()
+    } else {
+      setLoading(false)
+      setError('No workspace selected')
     }
   }, [currentWorkspace])
 
@@ -48,16 +52,22 @@ export default function ProjectsPage() {
     
     try {
       setLoading(true)
-      const { data, error } = await supabase
+      setError(null)
+      const { data, error: fetchError } = await supabase
         .from('projects')
         .select('*')
         .eq('workspace_id', currentWorkspace.id)
         .order('created_at', { ascending: false })
 
-      if (error) throw error
-      setProjects(data || [])
-    } catch (error) {
-      console.error('Error loading projects:', error)
+      if (fetchError) {
+        console.error('Error loading projects:', fetchError)
+        setError(fetchError.message)
+      } else {
+        setProjects(data || [])
+      }
+    } catch (err) {
+      console.error('Error loading projects:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load projects')
     } finally {
       setLoading(false)
     }
@@ -66,10 +76,13 @@ export default function ProjectsPage() {
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!currentWorkspace) return
+    if (!currentWorkspace) {
+      setError('No workspace selected')
+      return
+    }
 
     try {
-      const { error } = await supabase
+      const { error: createError } = await supabase
         .from('projects')
         .insert({
           workspace_id: currentWorkspace.id,
@@ -81,7 +94,11 @@ export default function ProjectsPage() {
           end_date: formData.end_date || null
         })
 
-      if (error) throw error
+      if (createError) {
+        console.error('Error creating project:', createError)
+        alert(`Failed to create project: ${createError.message}`)
+        return
+      }
 
       // Reset form and reload
       setFormData({
@@ -94,15 +111,27 @@ export default function ProjectsPage() {
       })
       setShowCreateDialog(false)
       loadProjects()
-    } catch (error) {
-      console.error('Error creating project:', error)
-      alert('Failed to create project')
+    } catch (err) {
+      console.error('Error creating project:', err)
+      alert(`Failed to create project: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
   }
 
   const filteredProjects = projects.filter(project =>
     project.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  if (!currentWorkspace) {
+    return (
+      <div className="min-h-screen bg-slate-900 p-6 flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-white mb-2">No Workspace Selected</h2>
+          <p className="text-gray-400">Please select or create a workspace first</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 p-6">
@@ -111,6 +140,23 @@ export default function ProjectsPage() {
         <h1 className="text-4xl font-bold text-white mb-2">Projects</h1>
         <p className="text-gray-400">Manage and track all your projects</p>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-red-400 font-medium">Error loading projects</p>
+            <p className="text-red-400/80 text-sm mt-1">{error}</p>
+            <button
+              onClick={() => loadProjects()}
+              className="text-red-400 text-sm underline mt-2 hover:text-red-300"
+            >
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Actions Bar */}
       <div className="flex flex-col md:flex-row gap-4 mb-8">
@@ -159,6 +205,7 @@ export default function ProjectsPage() {
       {loading ? (
         <div className="text-center py-12">
           <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+          <p className="text-gray-400 mt-4">Loading projects...</p>
         </div>
       ) : filteredProjects.length === 0 ? (
         <div className="bg-slate-800 border border-slate-700 rounded-xl p-12 text-center">
@@ -166,14 +213,18 @@ export default function ProjectsPage() {
             <Plus className="w-10 h-10 text-gray-500" />
           </div>
           <h3 className="text-2xl font-bold text-white mb-2">No projects yet</h3>
-          <p className="text-gray-400 mb-6">Create your first project to get started</p>
-          <Button
-            onClick={() => setShowCreateDialog(true)}
-            className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 inline-flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            Create Project
-          </Button>
+          <p className="text-gray-400 mb-6">
+            {searchQuery ? 'No projects match your search' : 'Create your first project to get started'}
+          </p>
+          {!searchQuery && (
+            <Button
+              onClick={() => setShowCreateDialog(true)}
+              className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 inline-flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              Create Project
+            </Button>
+          )}
         </div>
       ) : (
         <div className={view === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-4'}>
@@ -319,19 +370,19 @@ export default function ProjectsPage() {
               </div>
 
               <div className="flex gap-3 pt-4">
-                <Button
+                <button
                   type="button"
                   onClick={() => setShowCreateDialog(false)}
                   className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
                 >
                   Cancel
-                </Button>
-                <Button
+                </button>
+                <button
                   type="submit"
                   className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
                 >
                   Create Project
-                </Button>
+                </button>
               </div>
             </form>
           </div>
