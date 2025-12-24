@@ -2,14 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Force dark mode only - Professional design */
 :root {
   color-scheme: dark;
 }
 
 html {
   background-color: #0f172a;
-  color: #e2e8f0;
 }
 
 body {
