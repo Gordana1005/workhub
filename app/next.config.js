@@ -2,6 +2,10 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  // Disable Turbopack to use stable Webpack
+  experimental: {
+    turbo: undefined
+  },
   images: {
     domains: [],
   },
