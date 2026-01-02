@@ -3,283 +3,425 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
-import WorkspaceSwitcher from '@/components/layout/WorkspaceSwitcher'
-import { Plus, Users, TrendingUp, Clock, CheckCircle, Target, Zap, ArrowRight } from 'lucide-react'
+import { useTimerStore } from '@/stores/useTimerStore'
+import { supabase } from '@/lib/supabase'
+import { 
+  Plus, Users, Clock, CheckCircle, Target, Zap, 
+  Play, Pause, Square, Calendar, TrendingUp, ArrowRight 
+} from 'lucide-react'
+
+interface Task {
+  id: string
+  title: string
+  description: string | null
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  due_date: string | null
+  is_completed: boolean
+  estimated_hours: number | null
+}
+
+interface DashboardStats {
+  tasksCompleted: number
+  timeLogged: number
+  activeTasks: number
+  completionRate: number
+  dueToday: Task[]
+}
 
 export default function Dashboard() {
   const router = useRouter()
-  const { workspaces, currentWorkspace, fetchWorkspaces, loading } = useWorkspaceStore()
+  const { workspaces, currentWorkspace, fetchWorkspaces, setCurrentWorkspace } = useWorkspaceStore()
+  const { isRunning, time, start, stop, reset, tick } = useTimerStore()
+  
   const [greeting, setGreeting] = useState('')
+  const [userName, setUserName] = useState('there')
   const [hasFetched, setHasFetched] = useState(false)
-  const [stats, setStats] = useState({
+  const [quickTaskInput, setQuickTaskInput] = useState('')
+  const [stats, setStats] = useState<DashboardStats>({
     tasksCompleted: 0,
     timeLogged: 0,
     activeTasks: 0,
-    completionRate: 0
+    completionRate: 0,
+    dueToday: []
   })
+
+  // Timer tick effect
+  useEffect(() => {
+    let interval: NodeJS.Timeout | undefined
+    if (isRunning) {
+      interval = setInterval(() => {
+        tick()
+      }, 1000)
+    }
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [isRunning, tick])
 
   useEffect(() => {
     const loadData = async () => {
       if (!hasFetched) {
-        await fetchWorkspaces();
-        setHasFetched(true);
+        await fetchWorkspaces()
+        setHasFetched(true)
       }
 
-      // Fetch dashboard stats from API
-      const fetchStats = async () => {
-        try {
-          const res = await fetch('/api/dashboard');
-          if (!res.ok) throw new Error('Failed to fetch stats');
-          const data = await res.json();
-          setStats(data);
-        } catch (err) {
-          // Optionally handle error
-          setStats({ tasksCompleted: 0, timeLogged: 0, activeTasks: 0, completionRate: 0 });
+      if (workspaces.length > 0 && !currentWorkspace) {
+        setCurrentWorkspace(workspaces[0])
+      }
+
+      // Get user profile
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .single()
+        
+        if (profile?.full_name) {
+          setUserName(profile.full_name.split(' ')[0])
         }
-      };
-      await fetchStats();
-    };
+      }
 
-    loadData();
+      // Fetch dashboard stats
+      if (currentWorkspace) {
+        const fetchStats = async () => {
+          try {
+            const res = await fetch(`/api/dashboard?workspaceId=${currentWorkspace.id}`)
+            if (res.ok) {
+              const data = await res.json()
+              setStats(data)
+            }
+          } catch (err) {
+            console.error('Failed to fetch stats:', err)
+          }
+        }
+        await fetchStats()
+      }
+    }
 
-    const hour = new Date().getHours();
-    if (hour < 12) setGreeting('Good Morning');
-    else if (hour < 18) setGreeting('Good Afternoon');
-    else setGreeting('Good Evening');
-  }, [fetchWorkspaces, hasFetched]);
+    loadData()
 
-  // If user has workspaces but none selected, show workspace selection
-  if (workspaces.length > 0 && !currentWorkspace) {
-    return (
-      <div className="min-h-screen bg-slate-900 p-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-12">
-            <h1 className="text-5xl font-bold text-white mb-4">
-              Select a Workspace
-            </h1>
-            <p className="text-xl text-gray-400">
-              Choose a workspace to start managing your projects and tasks
-            </p>
-          </div>
+    const hour = new Date().getHours()
+    if (hour < 12) setGreeting('Good Morning')
+    else if (hour < 18) setGreeting('Good Afternoon')
+    else setGreeting('Good Evening')
+  }, [fetchWorkspaces, hasFetched, workspaces, currentWorkspace, setCurrentWorkspace])
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {workspaces.map((workspace) => (
-              <button
-                key={workspace.id}
-                onClick={() => router.push(`/dashboard/workspace/${workspace.id}`)}
-                className="group bg-slate-800 p-8 rounded-xl border border-slate-700 hover:border-blue-500 transition-all"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center text-white text-2xl font-bold">
-                    {workspace.name.charAt(0).toUpperCase()}
-                  </div>
-                  {workspace.userRole === 'admin' && (
-                    <span className="px-3 py-1 bg-purple-600 text-white text-xs font-semibold rounded-full">
-                      Admin
-                    </span>
-                  )}
-                </div>
-                <h3 className="text-2xl font-bold text-white mb-2 group-hover:text-blue-400 transition-colors">
-                  {workspace.name}
-                </h3>
-                <div className="flex items-center text-gray-400">
-                  <Users className="w-4 h-4 mr-2" />
-                  <span>{workspace.memberCount || 0} members</span>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    )
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600)
+    const m = Math.floor((seconds % 3600) / 60)
+    const s = seconds % 60
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   }
 
-  // If user has no workspaces, show onboarding
-  if (workspaces.length === 0 && !loading) {
-    return (
-      <div className="min-h-screen bg-slate-900 p-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="mb-12">
-            <div className="w-24 h-24 bg-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-8">
-              <Plus className="w-12 h-12 text-white" />
-            </div>
-            <h1 className="text-5xl font-bold text-white mb-4">
-              Welcome to ProductivityHub!
-            </h1>
-            <p className="text-xl text-gray-400 mb-8">
-              Get started by creating your first workspace to organize your projects and tasks
-            </p>
-          </div>
+  const handleQuickTaskAdd = async () => {
+    if (!quickTaskInput.trim() || !currentWorkspace) return
 
-          <div className="bg-slate-800 border border-slate-700 p-10 rounded-2xl mb-12">
-            <div className="flex items-center justify-center mb-8">
-              <div className="w-20 h-20 bg-blue-600 rounded-xl flex items-center justify-center">
-                <Target className="w-10 h-10 text-white" />
-              </div>
-            </div>
-            <h2 className="text-3xl font-bold text-white mb-4">Create Your First Workspace</h2>
-            <p className="text-gray-400 mb-8 text-lg">
-              Workspaces help you organize projects, invite team members, and track progress
-            </p>
-            <WorkspaceSwitcher />
-          </div>
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-slate-800 border border-slate-700 p-8 rounded-xl">
-              <div className="w-14 h-14 bg-blue-600 rounded-xl flex items-center justify-center mb-4">
-                <TrendingUp className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Track Progress</h3>
-              <p className="text-gray-400">
-                Monitor project progress with visual dashboards and time tracking
-              </p>
-            </div>
+      const { error } = await supabase
+        .from('tasks')
+        .insert({
+          workspace_id: currentWorkspace.id,
+          title: quickTaskInput,
+          creator_id: user.id,
+          assignee_id: user.id,
+          priority: 'medium',
+          due_date: new Date().toISOString()
+        })
 
-            <div className="bg-slate-800 border border-slate-700 p-8 rounded-xl">
-              <div className="w-14 h-14 bg-purple-600 rounded-xl flex items-center justify-center mb-4">
-                <Users className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Team Collaboration</h3>
-              <p className="text-gray-400">
-                Invite team members and work together on projects
-              </p>
-            </div>
-
-            <div className="bg-slate-800 border border-slate-700 p-8 rounded-xl">
-              <div className="w-14 h-14 bg-green-600 rounded-xl flex items-center justify-center mb-4">
-                <Zap className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Generate Reports</h3>
-              <p className="text-gray-400">
-                Export detailed reports and analytics for your projects
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+      if (!error) {
+        setQuickTaskInput('')
+        // Refresh stats
+        const res = await fetch(`/api/dashboard?workspaceId=${currentWorkspace.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setStats(data)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to add task:', err)
+    }
   }
 
-  // Default dashboard (when workspace is selected or loading)
+  const handleStartTaskTimer = (taskId: string) => {
+    start(taskId)
+    // Timer will now track this specific task
+  }
+
+  const toggleTaskComplete = async (taskId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ 
+          is_completed: !currentStatus,
+          completed_at: !currentStatus ? new Date().toISOString() : null
+        })
+        .eq('id', taskId)
+
+      if (!error && currentWorkspace) {
+        const res = await fetch(`/api/dashboard?workspaceId=${currentWorkspace.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          setStats(data)
+        }
+      }
+    } catch (err) {
+      console.error('Failed to toggle task:', err)
+    }
+  }
+
+  const getPriorityColor = (priority: string) => {
+    switch (priority) {
+      case 'urgent': return 'border-red-500 bg-red-500/10'
+      case 'high': return 'border-orange-500 bg-orange-500/10'
+      case 'medium': return 'border-blue-500 bg-blue-500/10'
+      case 'low': return 'border-green-500 bg-green-500/10'
+      default: return 'border-gray-500 bg-gray-500/10'
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-slate-900 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-4xl font-bold text-white mb-2">
-                {greeting}!
-              </h1>
-              <p className="text-xl text-gray-400">
-                Here's what's happening with your projects today
-              </p>
+    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto animate-fadeIn">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl md:text-4xl font-bold mb-2">
+          <span className="gradient-text">{greeting}</span>, {userName}! 👋
+        </h1>
+        <p className="text-gray-400 text-base md:text-lg">
+          Let's make today productive. You have {stats.dueToday.length} upcoming task{stats.dueToday.length !== 1 ? 's' : ''}.
+        </p>
+      </div>
+
+      {/* Timer + Quick Add Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        {/* Timer Widget */}
+        <div className="card p-6 card-hover bg-gradient-to-br from-purple-500/10 to-blue-500/10 border-purple-500/20">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-lg bg-gradient-blue-purple flex items-center justify-center">
+                <Clock className="w-5 h-5 text-white" />
+              </div>
+              <h3 className="font-semibold text-lg">Active Timer</h3>
             </div>
-            <WorkspaceSwitcher />
+          </div>
+          
+          <div className="text-center mb-6">
+            <div className="text-5xl font-bold font-mono mb-2 gradient-text">
+              {formatTime(time)}
+            </div>
+            <p className="text-sm text-gray-400">Current session</p>
+          </div>
+
+          <div className="flex gap-2">
+            {!isRunning ? (
+              <button
+                onClick={() => start()}
+                className="flex-1 btn-primary flex items-center justify-center gap-2"
+              >
+                <Play className="w-4 h-4" />
+                Start
+              </button>
+            ) : (
+              <button
+                onClick={() => stop()}
+                className="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg font-medium transition-all"
+              >
+                <Pause className="w-4 h-4 inline mr-2" />
+                Pause
+              </button>
+            )}
+            <button
+              onClick={reset}
+              className="btn-secondary"
+            >
+              <Square className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
-        {/* Quick Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl hover:border-blue-500 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center">
-                <CheckCircle className="w-6 h-6 text-white" />
-              </div>
-              <span className="text-3xl font-bold text-white">{stats.tasksCompleted}</span>
-            </div>
-            <h3 className="text-gray-400 font-medium">Tasks Completed</h3>
-            <p className="text-sm text-green-400 mt-2">+0% from last week</p>
-          </div>
-
-          <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl hover:border-purple-500 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-purple-600 rounded-lg flex items-center justify-center">
-                <Clock className="w-6 h-6 text-white" />
-              </div>
-              <span className="text-3xl font-bold text-white">{stats.timeLogged}h</span>
-            </div>
-            <h3 className="text-gray-400 font-medium">Time Logged</h3>
-            <p className="text-sm text-blue-400 mt-2">This week</p>
-          </div>
-
-          <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl hover:border-orange-500 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-orange-600 rounded-lg flex items-center justify-center">
-                <Target className="w-6 h-6 text-white" />
-              </div>
-              <span className="text-3xl font-bold text-white">{stats.activeTasks}</span>
-            </div>
-            <h3 className="text-gray-400 font-medium">Active Tasks</h3>
-            <p className="text-sm text-orange-400 mt-2">In progress</p>
-          </div>
-
-          <div className="bg-slate-800 border border-slate-700 p-6 rounded-xl hover:border-green-500 transition-all">
-            <div className="flex items-center justify-between mb-4">
-              <div className="w-12 h-12 bg-green-600 rounded-lg flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-white" />
-              </div>
-              <span className="text-3xl font-bold text-white">{stats.completionRate}%</span>
-            </div>
-            <h3 className="text-gray-400 font-medium">Completion Rate</h3>
-            <p className="text-sm text-gray-500 mt-2">Overall</p>
+        {/* Quick Add Task */}
+        <div className="lg:col-span-2 card p-6">
+          <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
+            <Plus className="w-5 h-5" />
+            Quick Add Task
+          </h3>
+          <div className="flex gap-3">
+            <input
+              type="text"
+              value={quickTaskInput}
+              onChange={(e) => setQuickTaskInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleQuickTaskAdd()}
+              placeholder="What needs to be done today?"
+              className="flex-1 input-field"
+            />
+            <button
+              onClick={handleQuickTaskAdd}
+              className="btn-primary"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
           </div>
         </div>
+      </div>
 
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+        <div className="stat-card group cursor-pointer" onClick={() => router.push('/dashboard/tasks')}>
+          <div className="stat-icon bg-gradient-to-br from-green-500 to-emerald-600 mb-4">
+            <CheckCircle className="w-6 h-6 text-white" />
+          </div>
+          <p className="text-3xl md:text-4xl font-bold text-white mb-1">{stats.tasksCompleted}</p>
+          <p className="text-sm text-gray-400">Completed</p>
+          <div className="absolute inset-0 bg-gradient-to-br from-green-500/0 to-emerald-500/0 group-hover:from-green-500/10 group-hover:to-emerald-500/10 rounded-2xl transition-all" />
+        </div>
+
+        <div className="stat-card group cursor-pointer" onClick={() => router.push('/dashboard/time-tracker')}>
+          <div className="stat-icon bg-gradient-to-br from-blue-500 to-cyan-600 mb-4">
+            <Clock className="w-6 h-6 text-white" />
+          </div>
+          <p className="text-3xl md:text-4xl font-bold text-white mb-1">{stats.timeLogged}h</p>
+          <p className="text-sm text-gray-400">Time Logged</p>
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/0 to-cyan-500/0 group-hover:from-blue-500/10 group-hover:to-cyan-500/10 rounded-2xl transition-all" />
+        </div>
+
+        <div className="stat-card group cursor-pointer" onClick={() => router.push('/dashboard/tasks')}>
+          <div className="stat-icon bg-gradient-to-br from-purple-500 to-pink-600 mb-4">
+            <Target className="w-6 h-6 text-white" />
+          </div>
+          <p className="text-3xl md:text-4xl font-bold text-white mb-1">{stats.activeTasks}</p>
+          <p className="text-sm text-gray-400">Active Tasks</p>
+          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/0 to-pink-500/0 group-hover:from-purple-500/10 group-hover:to-pink-500/10 rounded-2xl transition-all" />
+        </div>
+
+        <div className="stat-card group cursor-pointer" onClick={() => router.push('/dashboard/reports')}>
+          <div className="stat-icon bg-gradient-to-br from-orange-500 to-amber-600 mb-4">
+            <TrendingUp className="w-6 h-6 text-white" />
+          </div>
+          <p className="text-3xl md:text-4xl font-bold text-white mb-1">{stats.completionRate}%</p>
+          <p className="text-sm text-gray-400">Success Rate</p>
+          <div className="absolute inset-0 bg-gradient-to-br from-orange-500/0 to-amber-500/0 group-hover:from-orange-500/10 group-hover:to-amber-500/10 rounded-2xl transition-all" />
+        </div>
+      </div>
+
+      {/* Upcoming Tasks Section */}
+      <div className="card p-6 mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold flex items-center gap-3">
+            <Calendar className="w-7 h-7 text-purple-400" />
+            Upcoming Tasks
+          </h2>
           <button
             onClick={() => router.push('/dashboard/tasks')}
-            className="bg-slate-800 border border-slate-700 p-6 rounded-xl hover:border-blue-500 transition-all group text-left"
+            className="text-purple-400 hover:text-purple-300 text-sm font-medium flex items-center gap-1"
           >
-            <div className="flex items-center justify-between mb-3">
-              <CheckCircle className="w-8 h-8 text-blue-500" />
-              <ArrowRight className="w-5 h-5 text-gray-500 group-hover:text-blue-500 transition-colors" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2">View All Tasks</h3>
-            <p className="text-gray-400">Manage and track your tasks</p>
-          </button>
-
-          <button
-            onClick={() => router.push('/dashboard/projects')}
-            className="bg-slate-800 border border-slate-700 p-6 rounded-xl hover:border-purple-500 transition-all group text-left"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <Target className="w-8 h-8 text-purple-500" />
-              <ArrowRight className="w-5 h-5 text-gray-500 group-hover:text-purple-500 transition-colors" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2">View Projects</h3>
-            <p className="text-gray-400">Manage your active projects</p>
-          </button>
-
-          <button
-            onClick={() => router.push('/dashboard/time-tracker')}
-            className="bg-slate-800 border border-slate-700 p-6 rounded-xl hover:border-green-500 transition-all group text-left"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <Clock className="w-8 h-8 text-green-500" />
-              <ArrowRight className="w-5 h-5 text-gray-500 group-hover:text-green-500 transition-colors" />
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2">Time Tracker</h3>
-            <p className="text-gray-400">Log and track your time</p>
+            View All
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Empty State Message */}
-        <div className="bg-slate-800 border border-slate-700 p-12 rounded-xl text-center">
-          <div className="w-20 h-20 bg-slate-700 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Target className="w-10 h-10 text-gray-500" />
+        {stats.dueToday.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-blue-purple flex items-center justify-center">
+              <CheckCircle className="w-8 h-8 text-white" />
+            </div>
+            <p className="text-gray-400 text-lg mb-2">No upcoming tasks! 🎉</p>
+            <p className="text-gray-500 text-sm">You're all caught up. Great job!</p>
           </div>
-          <h3 className="text-2xl font-bold text-white mb-2">Ready to get started?</h3>
-          <p className="text-gray-400 mb-6">Create your first project and start tracking your work</p>
-          <button
-            onClick={() => router.push('/dashboard/projects')}
-            className="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors inline-flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            Create Project
-          </button>
-        </div>
+        ) : (
+          <div className="space-y-3">
+            {stats.dueToday.map((task) => (
+              <div
+                key={task.id}
+                className={`card p-4 card-hover flex items-center gap-4 border ${getPriorityColor(task.priority)}`}
+              >
+                <button
+                  onClick={() => toggleTaskComplete(task.id, task.is_completed)}
+                  className="flex-shrink-0"
+                >
+                  {task.is_completed ? (
+                    <CheckCircle className="w-6 h-6 text-green-400" />
+                  ) : (
+                    <div className="w-6 h-6 rounded-full border-2 border-gray-500 hover:border-purple-400 transition-colors" />
+                  )}
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  <h4 className={`font-medium mb-1 ${task.is_completed ? 'line-through text-gray-500' : ''}`}>
+                    {task.title}
+                  </h4>
+                  {task.description && (
+                    <p className="text-sm text-gray-400 truncate">{task.description}</p>
+                  )}
+                </div>
+
+                {task.estimated_hours && (
+                  <div className="flex-shrink-0 text-sm text-gray-400 flex items-center gap-1">
+                    <Clock className="w-4 h-4" />
+                    {task.estimated_hours}h
+                  </div>
+                )}
+
+                <button
+                  onClick={() => handleStartTaskTimer(task.id)}
+                  className="flex-shrink-0 btn-primary px-3 py-2 text-sm"
+                >
+                  <Play className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <button
+          onClick={() => router.push('/dashboard/tasks')}
+          className="card p-6 card-hover text-left group"
+        >
+          <div className="stat-icon bg-gradient-blue-purple mb-4 group-hover:scale-110 transition-transform">
+            <CheckCircle className="w-6 h-6 text-white" />
+          </div>
+          <h3 className="font-semibold mb-1">Tasks</h3>
+          <p className="text-sm text-gray-400">Manage tasks</p>
+        </button>
+
+        <button
+          onClick={() => router.push('/dashboard/projects')}
+          className="card p-6 card-hover text-left group"
+        >
+          <div className="stat-icon bg-gradient-to-br from-purple-500 to-pink-600 mb-4 group-hover:scale-110 transition-transform">
+            <Target className="w-6 h-6 text-white" />
+          </div>
+          <h3 className="font-semibold mb-1">Projects</h3>
+          <p className="text-sm text-gray-400">View projects</p>
+        </button>
+
+        <button
+          onClick={() => router.push('/dashboard/team')}
+          className="card p-6 card-hover text-left group"
+        >
+          <div className="stat-icon bg-gradient-to-br from-blue-500 to-cyan-600 mb-4 group-hover:scale-110 transition-transform">
+            <Users className="w-6 h-6 text-white" />
+          </div>
+          <h3 className="font-semibold mb-1">Team</h3>
+          <p className="text-sm text-gray-400">Team members</p>
+        </button>
+
+        <button
+          onClick={() => router.push('/dashboard/reports')}
+          className="card p-6 card-hover text-left group"
+        >
+          <div className="stat-icon bg-gradient-orange mb-4 group-hover:scale-110 transition-transform">
+            <Zap className="w-6 h-6 text-white" />
+          </div>
+          <h3 className="font-semibold mb-1">Reports</h3>
+          <p className="text-sm text-gray-400">View insights</p>
+        </button>
       </div>
     </div>
   )

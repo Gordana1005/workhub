@@ -1,16 +1,198 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
+import { supabase } from '@/lib/supabase'
 import { Plus, Search, Filter, CheckCircle, Circle, Clock, User, Calendar } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
+interface Task {
+  id: string
+  title: string
+  description: string | null
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  due_date: string | null
+  is_completed: boolean
+  project_id: string | null
+  project?: { name: string }
+  assignee?: { id: string; full_name: string }
+}
+
 export default function TasksPage() {
   const { currentWorkspace } = useWorkspaceStore()
-  const [tasks, setTasks] = useState<any[]>([])
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [projects, setProjects] = useState<any[]>([])
+  const [teamMembers, setTeamMembers] = useState<any[]>([])
   const [filter, setFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [showEditDialog, setShowEditDialog] = useState(false)
+  const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  console.log('TasksPage render - currentWorkspace:', currentWorkspace)
+
+  // Form state
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    project_id: '',
+    priority: 'medium',
+    due_date: '',
+    assignee_id: ''
+  })
+
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadTasks()
+      loadProjects()
+    }
+  }, [currentWorkspace])
+
+  // Also load data on mount in case currentWorkspace is already set
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (currentWorkspace) {
+        loadTasks()
+        loadProjects()
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const loadTasks = async () => {
+    console.log('loadTasks called, currentWorkspace:', currentWorkspace)
+    if (!currentWorkspace) {
+      console.log('No current workspace, skipping loadTasks')
+      setLoading(false)
+      return
+    }
+
+    try {
+      setLoading(true)
+      console.log('Loading tasks for workspace:', currentWorkspace.id)
+      
+      const { data, error } = await supabase
+        .from('tasks')
+        .select(`
+          *,
+          project:projects!project_id(name),
+          assignee:profiles!assignee_id(full_name)
+        `)
+        .eq('workspace_id', currentWorkspace.id)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Error loading tasks:', error)
+        setTasks([])
+        return
+      }
+
+      console.log('Loaded tasks:', data?.length || 0, 'tasks', data)
+      setTasks(data || [])
+    } catch (error) {
+      console.error('Error loading tasks:', error)
+      setTasks([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadProjects = async () => {
+    if (!currentWorkspace) return
+
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name')
+        .eq('workspace_id', currentWorkspace.id)
+        .order('name')
+
+      if (error) throw error
+      setProjects(data || [])
+    } catch (error) {
+      console.error('Error loading projects:', error)
+    }
+  }
+
+  const toggleTaskComplete = async (taskId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ 
+          is_completed: !currentStatus,
+          completed_at: !currentStatus ? new Date().toISOString() : null
+        })
+        .eq('id', taskId)
+
+      if (!error) {
+        loadTasks()
+      }
+    } catch (error) {
+      console.error('Error toggling task:', error)
+    }
+  }
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!currentWorkspace) {
+      alert('Please select a workspace first')
+      return
+    }
+
+    console.log('Creating task with data:', {
+      workspace_id: currentWorkspace.id,
+      title: formData.title,
+      project_id: formData.project_id || null,
+      assignee_id: formData.assignee_id || null
+    })
+
+    try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('You must be logged in to create tasks')
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('tasks')
+        .insert({
+          workspace_id: currentWorkspace.id,
+          creator_id: user.id,
+          title: formData.title,
+          description: formData.description || null,
+          project_id: formData.project_id || null,
+          priority: formData.priority,
+          due_date: formData.due_date || null,
+          assignee_id: formData.assignee_id || null
+        })
+        .select()
+
+      if (error) {
+        console.error('Error creating task:', error)
+        throw error
+      }
+
+      console.log('Task created successfully:', data)
+
+      // Reset form and reload
+      setFormData({
+        title: '',
+        description: '',
+        project_id: '',
+        priority: 'medium',
+        due_date: '',
+        assignee_id: ''
+      })
+      setShowCreateDialog(false)
+      loadTasks()
+    } catch (error) {
+      console.error('Error creating task:', error)
+      alert(`Failed to create task: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
 
   const getPriorityColor = (priority: string) => {
     const colors = {
@@ -82,7 +264,14 @@ export default function TasksPage() {
         </div>
 
         {/* Tasks List */}
-        {tasks.length === 0 ? (
+        {loading ? (
+          <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-12 text-center">
+            <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <div className="animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full"></div>
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">Loading tasks...</h3>
+          </div>
+        ) : tasks.length === 0 ? (
           <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-12 text-center">
             <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-10 h-10 text-gray-500" />
@@ -99,15 +288,33 @@ export default function TasksPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {tasks.map((task) => (
+            {tasks
+              .filter((task) => {
+                if (filter === 'all') return true
+                if (filter === 'active') return !task.is_completed
+                if (filter === 'completed') return task.is_completed
+                if (filter === 'overdue') {
+                  if (!task.due_date || task.is_completed) return false
+                  return new Date(task.due_date) < new Date()
+                }
+                return true
+              })
+              .filter((task) =>
+                task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (task.description && task.description.toLowerCase().includes(searchQuery.toLowerCase()))
+              )
+              .map((task) => (
               <div
                 key={task.id}
                 className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-5 hover:bg-slate-800/70 transition-all group"
               >
                 <div className="flex items-start gap-4">
-                  <button className="mt-1">
+                  <button 
+                    onClick={() => toggleTaskComplete(task.id, task.is_completed)}
+                    className="mt-1 flex-shrink-0"
+                  >
                     {task.is_completed ? (
-                      <CheckCircle className="w-6 h-6 text-green-500" />
+                      <CheckCircle className="w-6 h-6 text-green-500 hover:text-green-400 transition-colors" />
                     ) : (
                       <Circle className="w-6 h-6 text-gray-500 group-hover:text-blue-500 transition-colors" />
                     )}
@@ -137,13 +344,13 @@ export default function TasksPage() {
                       {task.assignee && (
                         <div className="flex items-center gap-1 text-gray-400 text-sm">
                           <User className="w-4 h-4" />
-                          {task.assignee}
+                          {task.assignee.full_name}
                         </div>
                       )}
 
                       {task.project && (
                         <div className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-xs">
-                          {task.project}
+                          {task.project.name}
                         </div>
                       )}
                     </div>
@@ -161,13 +368,16 @@ export default function TasksPage() {
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold text-white mb-6">Create New Task</h2>
             
-            <div className="space-y-4">
+            <form onSubmit={handleCreateTask} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Task Title</label>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Task Title *</label>
                 <input
                   type="text"
+                  value={formData.title}
+                  onChange={(e) => setFormData({...formData, title: e.target.value})}
                   className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter task title..."
+                  required
                 />
               </div>
 
@@ -175,6 +385,8 @@ export default function TasksPage() {
                 <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
                 <textarea
                   rows={4}
+                  value={formData.description}
+                  onChange={(e) => setFormData({...formData, description: e.target.value})}
                   className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter task description..."
                 />
@@ -183,7 +395,11 @@ export default function TasksPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">Priority</label>
-                  <select className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <select 
+                    value={formData.priority}
+                    onChange={(e) => setFormData({...formData, priority: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
@@ -195,32 +411,43 @@ export default function TasksPage() {
                   <label className="block text-sm font-medium text-gray-300 mb-2">Due Date</label>
                   <input
                     type="date"
+                    value={formData.due_date}
+                    onChange={(e) => setFormData({...formData, due_date: e.target.value})}
                     className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Project</label>
-                <select className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">Select project...</option>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Project (Optional)</label>
+                <select 
+                  value={formData.project_id}
+                  onChange={(e) => setFormData({...formData, project_id: e.target.value})}
+                  className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">No project</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>{project.name}</option>
+                  ))}
                 </select>
               </div>
 
               <div className="flex gap-3 pt-4">
                 <Button
+                  type="button"
                   onClick={() => setShowCreateDialog(false)}
                   className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600"
                 >
                   Cancel
                 </Button>
                 <Button
+                  type="submit"
                   className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg"
                 >
                   Create Task
                 </Button>
               </div>
-            </div>
+            </form>
           </div>
         </div>
       )}

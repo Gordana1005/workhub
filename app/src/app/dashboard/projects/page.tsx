@@ -43,6 +43,16 @@ export default function ProjectsPage() {
     }
   }, [currentWorkspace])
 
+  // Also load data on mount in case currentWorkspace is already set
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (currentWorkspace) {
+        loadProjects()
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [])
+
   const loadProjects = async () => {
     if (!currentWorkspace) return
     
@@ -66,13 +76,24 @@ export default function ProjectsPage() {
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!currentWorkspace) return
+    if (!currentWorkspace) {
+      alert('Please select a workspace first')
+      return
+    }
 
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('You must be logged in to create projects')
+        return
+      }
+
       const { error } = await supabase
         .from('projects')
         .insert({
           workspace_id: currentWorkspace.id,
+          creator_id: user.id,
           name: formData.name,
           description: formData.description || null,
           color: formData.color,
@@ -96,7 +117,7 @@ export default function ProjectsPage() {
       loadProjects()
     } catch (error) {
       console.error('Error creating project:', error)
-      alert('Failed to create project')
+      alert(`Failed to create project: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -176,7 +197,7 @@ export default function ProjectsPage() {
           </Button>
         </div>
       ) : (
-        <div className={view === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-4'}>
+        <div className={view === 'grid' ? 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-4'}>
           {filteredProjects.map((project) => (
             <div
               key={project.id}

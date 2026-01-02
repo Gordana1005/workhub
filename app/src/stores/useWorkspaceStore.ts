@@ -31,7 +31,7 @@ interface WorkspaceState {
 
 export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   workspaces: [],
-  currentWorkspace: null,
+  currentWorkspace: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('currentWorkspace') || 'null') : null,
   loading: false,
   error: null,
 
@@ -49,6 +49,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         workspaces: data.workspaces || [],
         loading: false
       })
+
+      // Restore current workspace from localStorage if it exists
+      const savedWorkspace = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('currentWorkspace') || 'null') : null
+      if (savedWorkspace && data.workspaces?.find((w: Workspace) => w.id === savedWorkspace.id)) {
+        set({ currentWorkspace: savedWorkspace })
+      }
     } catch (error) {
       set({
         error: error instanceof Error ? error.message : 'Failed to fetch workspaces',
@@ -91,6 +97,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   setCurrentWorkspace: (workspace) => {
     set({ currentWorkspace: workspace })
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('currentWorkspace', JSON.stringify(workspace))
+    }
   },
 
   updateWorkspace: async (id: string, name: string) => {

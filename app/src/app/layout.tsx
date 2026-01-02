@@ -10,7 +10,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "ProductivityHub",
+  title: "worktrack",
   description: "Collaborative productivity platform with task management, time tracking, and team collaboration",
 };
 

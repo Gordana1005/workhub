@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { ChevronDown, Plus, Loader2 } from 'lucide-react'
 import CreateWorkspaceDialog from '@/components/workspace/CreateWorkspaceDialog'
@@ -15,6 +15,12 @@ export default function WorkspaceSwitcher() {
   } = useWorkspaceStore()
   const [isOpen, setIsOpen] = useState(false)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  // Fix hydration mismatch
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   return (
     <>
@@ -27,11 +33,16 @@ export default function WorkspaceSwitcher() {
           {loading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
           ) : (
-            <span className="font-medium text-text-primary">
-              {currentWorkspace?.name || 'Select Workspace'}
-            </span>
+            <>
+              <div className="flex items-center space-x-2">
+                <Plus className="w-4 h-4 text-text-secondary md:hidden" />
+                <span className="font-medium text-text-primary hidden md:inline">
+                  {mounted ? (currentWorkspace?.name || 'Select Workspace') : 'Loading...'}
+                </span>
+              </div>
+              <ChevronDown className="w-4 h-4 text-text-secondary" />
+            </>
           )}
-          <ChevronDown className="w-4 h-4 text-text-secondary" />
         </button>
 
         {isOpen && (

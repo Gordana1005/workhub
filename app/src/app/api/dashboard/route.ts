@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const cookieStore = await cookies();
     const supabase = createServerClient(
@@ -27,15 +27,19 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get current workspace from query param (optional)
-    // If you want to scope stats to a workspace, pass ?workspaceId=xxx
-    // Otherwise, stats are for all user's workspaces
+    // Get workspace from query params
+    const { searchParams } = new URL(request.url);
+    const workspaceId = searchParams.get('workspaceId');
 
-    // Get tasks completed
+    if (!workspaceId) {
+      return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 });
+    }
+
+    // Get tasks completed in this workspace
     const { data: completedTasks, error: completedError } = await supabase
       .from('tasks')
       .select('id', { count: 'exact' })
-      .eq('assignee_id', user.id)
+      .eq('workspace_id', workspaceId)
       .eq('is_completed', true);
 
     if (completedError) {
@@ -46,6 +50,7 @@ export async function GET() {
     const { data: timeEntries, error: timeError } = await supabase
       .from('time_entries')
       .select('duration')
+      .eq('workspace_id', workspaceId)
       .eq('user_id', user.id);
 
     if (timeError) {
@@ -55,11 +60,11 @@ export async function GET() {
     const totalTimeLogged = timeEntries?.reduce((sum, entry) => sum + (entry.duration || 0), 0) || 0;
     const tasksCompleted = completedTasks?.length || 0;
 
-    // Get active tasks
+    // Get active tasks in this workspace
     const { data: activeTasks, error: activeError } = await supabase
       .from('tasks')
       .select('id', { count: 'exact' })
-      .eq('assignee_id', user.id)
+      .eq('workspace_id', workspaceId)
       .eq('is_completed', false);
 
     if (activeError) {
@@ -73,11 +78,28 @@ export async function GET() {
       ? Math.round((tasksCompleted / (activeTasksCount + tasksCompleted)) * 100)
       : 0;
 
+    // Get tasks due today or overdue
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const { data: upcomingTasks, error: upcomingError } = await supabase
+      .from('tasks')
+      .select('*')
+      .eq('workspace_id', workspaceId)
+      .eq('is_completed', false)
+      .order('due_date', { ascending: true })
+      .limit(10);
+
+    if (upcomingError) {
+      console.error('Error fetching upcoming tasks:', upcomingError);
+    }
+
     return NextResponse.json({
       tasksCompleted,
-      timeLogged: totalTimeLogged,
+      timeLogged: Math.round(totalTimeLogged / 3600), // Convert seconds to hours
       activeTasks: activeTasksCount,
       completionRate,
+      dueToday: upcomingTasks || [],
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

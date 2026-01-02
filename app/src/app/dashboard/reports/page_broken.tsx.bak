@@ -1,0 +1,416 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
+import { supabase } from '@/lib/supabase'
+import { Download, TrendingUp, Calendar, BarChart3, PieChart, FileText, Filter, Users } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+
+// Reports and Analytics Page
+
+interface TeamMember {
+  id: string
+  full_name: string
+  avatar_url?: string
+}
+
+interface MemberStats {
+  memberId: string
+  totalHours: number
+  tasksCompleted: number
+  productivity: number
+  timeEntries: any[]
+}
+
+export default function ReportsPage() {
+  const { currentWorkspace } = useWorkspaceStore()
+  const [dateRange, setDateRange] = useState('week')
+  const [selectedMember, setSelectedMember] = useState<string>('all')
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [stats, setStats] = useState<MemberStats[]>([])
+  const [loading, setLoading] = useState(true)
+  const [projectStats, setProjectStats] = useState<any[]>([])
+  const [timeDistribution, setTimeDistribution] = useState<any[]>([])
+
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadTeamMembers()
+      loadStats()
+    }
+  }, [currentWorkspace, dateRange, selectedMember])
+
+  const loadTeamMembers = async () => {
+    if (!currentWorkspace) return
+
+    try {
+      const { data, error } = await supabase
+        .from('workspace_members')
+        .select(`
+          user_id,
+          profiles:user_id (
+            id,
+            full_name,
+            avatar_url
+          )
+        `)
+        .eq('workspace_id', currentWorkspace.id)
+
+      if (error) throw error
+
+      const members = data?.map(m => m.profiles).filter(Boolean).flat() || []
+      setTeamMembers(members)
+    } catch (error) {
+      console.error('Error loading team members:', error)
+    }
+  }
+
+  const loadStats = async () => {
+    if (!currentWorkspace) return
+
+    try {
+      setLoading(true)
+
+      // Calculate date range
+      const now = new Date()
+      let startDate: Date
+      switch (dateRange) {
+        case 'today':
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+          break
+        case 'week':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          break
+        case 'month':
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+          break
+        case 'year':
+          startDate = new Date(now.getFullYear(), 0, 1)
+          break
+        default:
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+      }
+
+      let query = supabase
+        .from('time_entries')
+        .select(`
+          duration,
+          user_id,
+          task_id,
+          tasks (
+            is_completed
+          )
+        `)
+        .eq('workspace_id', currentWorkspace.id)
+        .gte('date', startDate.toISOString().split('T')[0])
+
+      if (selectedMember !== 'all') {
+        query = query.eq('user_id', selectedMember)
+      }
+
+      const { data: timeEntries, error } = await query
+
+      if (error) throw error
+
+      // Group by user
+      const userStats: { [key: string]: MemberStats } = {}
+
+      timeEntries?.forEach(entry => {
+        const userId = entry.user_id
+        if (!userStats[userId]) {
+          userStats[userId] = {
+            memberId: userId,
+            totalHours: 0,
+            tasksCompleted: 0,
+            productivity: 0,
+            timeEntries: []
+          }
+        }
+
+        userStats[userId].totalHours += entry.duration / 3600 // Convert to hours
+        if (entry.tasks && typeof entry.tasks === 'object' && 'is_completed' in entry.tasks && entry.tasks.is_completed) {
+          userStats[userId].tasksCompleted += 1
+        }
+        userStats[userId].timeEntries.push(entry)
+      })
+
+      // Calculate productivity (tasks per hour)
+      Object.values(userStats).forEach(stat => {
+        stat.productivity = stat.totalHours > 0 ? (stat.tasksCompleted / stat.totalHours) * 100 : 0
+      })
+
+      setStats(Object.values(userStats))
+
+      // Load project stats
+      await loadProjectStats(startDate)
+
+      // Calculate time distribution
+      calculateTimeDistribution(timeEntries || [])
+    } catch (error) {
+      console.error('Error loading stats:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const calculateTimeDistribution = (timeEntries: any[]) => {
+    const categories = {
+      'Development': 0,
+      'Design': 0,
+      'Planning': 0,
+      'Meetings': 0,
+      'Other': 0
+    }
+
+    const totalHours = timeEntries.reduce((sum, entry) => sum + (entry.duration / 3600), 0)
+
+    // Simple categorization based on description keywords
+    timeEntries.forEach(entry => {
+      const desc = (entry.description || '').toLowerCase()
+      let category = 'Other'
+
+      if (desc.includes('dev') || desc.includes('code') || desc.includes('implement')) {
+        category = 'Development'
+      } else if (desc.includes('design') || desc.includes('ui') || desc.includes('ux')) {
+        category = 'Design'
+      } else if (desc.includes('plan') || desc.includes('review')) {
+        category = 'Planning'
+      } else if (desc.includes('meeting') || desc.includes('call') || desc.includes('sync')) {
+        category = 'Meetings'
+      }
+
+      categories[category as keyof typeof categories] += entry.duration / 3600
+    })
+
+    const distribution = Object.entries(categories).map(([category, hours]) => ({
+      category,
+      hours: Math.round(hours * 10) / 10,
+      percentage: totalHours > 0 ? Math.round((hours / totalHours) * 100) : 0,
+      color: category === 'Development' ? '#3B82F6' :
+             category === 'Design' ? '#8B5CF6' :
+             category === 'Planning' ? '#10B981' :
+             category === 'Meetings' ? '#F59E0B' : '#6B7280'
+    }))
+
+    setTimeDistribution(distribution)
+  }
+
+  const loadProjectStats = async (startDate: Date) => {
+    if (!currentWorkspace) return
+
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select(`
+          id, name,
+          tasks (
+            id, is_completed
+          ),
+          time_entries!inner (
+            duration
+          )
+        `)
+        .eq('workspace_id', currentWorkspace.id)
+        .gte('time_entries.date', startDate.toISOString().split('T')[0])
+
+      if (error) throw error
+
+      const projectData = data?.map(project => {
+        const totalTasks = project.tasks?.length || 0
+        const completedTasks = project.tasks?.filter((t: any) => t.is_completed).length || 0
+        const totalHours = project.time_entries?.reduce((sum: number, entry: any) => sum + (entry.duration / 3600), 0) || 0
+        const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
+
+        return {
+          name: project.name,
+          tasks: totalTasks,
+          hours: Math.round(totalHours * 10) / 10,
+          progress,
+          color: progress > 75 ? '#10B981' : progress > 50 ? '#F59E0B' : '#EF4444'
+        }
+      }) || []
+
+      setProjectStats(projectData)
+    } catch (error) {
+      console.error('Error loading project stats:', error)
+      setProjectStats([])
+    }
+  }
+
+  // Calculate aggregated stats
+  const totalHours = stats.reduce((sum, stat) => sum + stat.totalHours, 0)
+  const totalTasks = stats.reduce((sum, stat) => sum + stat.tasksCompleted, 0)
+  const avgProductivity = stats.length > 0 ? stats.reduce((sum, stat) => sum + stat.productivity, 0) / stats.length : 0
+
+  return (
+    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto animate-fadeIn">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-bold mb-2 gradient-text">
+            📊 Reports & Analytics
+          </h1>
+          <p className="text-gray-400 text-base md:text-lg">Track your productivity and performance</p>
+        </div>
+        <div className="flex gap-3 mt-4 md:mt-0">
+          <select
+            value={selectedMember}
+            onChange={(e) => setSelectedMember(e.target.value)}
+            className="input-field"
+          >
+            <option value="all">All Team Members</option>
+            {teamMembers.map((member) => (
+              <option key={member.id} value={member.id}>{member.full_name}</option>
+            ))}
+          </select>
+          <select
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value)}
+            className="input-field"
+          >
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+            <option value="year">This Year</option>
+          </select>
+          <button className="btn-primary flex items-center gap-2">
+            <Download className="w-5 h-5" />
+            Export
+          </button>
+        </div>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="stat-card">
+          <div className="stat-icon bg-gradient-blue-purple mb-4">
+            <BarChart3 className="w-6 h-6 text-white" />
+          </div>
+          <p className="text-3xl font-bold text-white mb-1">{totalHours.toFixed(1)}h</p>
+          <p className="text-sm text-gray-400">Total Hours</p>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon bg-gradient-to-br from-green-500 to-emerald-600 mb-4">
+            <FileText className="w-6 h-6 text-white" />
+          </div>
+          <p className="text-3xl font-bold text-white mb-1">{totalTasks}</p>
+          <p className="text-sm text-gray-400">Tasks Completed</p>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon bg-gradient-orange mb-4">
+            <PieChart className="w-6 h-6 text-white" />
+          </div>
+          <p className="text-3xl font-bold text-white mb-1">{avgProductivity.toFixed(0)}%</p>
+          <p className="text-sm text-gray-400">Productivity</p>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon bg-gradient-to-br from-purple-500 to-pink-600 mb-4">
+            <Users className="w-6 h-6 text-white" />
+          </div>
+          <p className="text-3xl font-bold text-white mb-1">{stats.length}</p>
+          <p className="text-sm text-gray-400">Active Members</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Project Performance */}
+        <div className="card p-6">
+            <h2 className="text-2xl font-bold text-white mb-6">Project Performance</h2>
+            <div className="space-y-6">
+              {projectStats.map((project) => (
+                <div key={project.name} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold text-gray-900 dark:text-white">{project.name}</h3>
+                      <p className="text-sm text-gray-500">{project.tasks} tasks • {project.hours}h logged</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold" style={{ color: project.color }}>
+                        {project.progress}%
+                      </div>
+                    </div>
+                  </div>
+                  <div className="relative h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div
+                      className="absolute top-0 left-0 h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${project.progress}%`,
+                        background: `linear-gradient(90deg, ${project.color}, ${project.color}dd)`
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+
+        {/* Time Distribution */}
+        <div className="bg-white dark:bg-gray-800 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-gray-700">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Time Distribution</h2>
+          <div className="space-y-4">
+              {timeDistribution.map((item) => (
+                <div key={item.category} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div
+                        className="w-4 h-4 rounded-full mr-3"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      <span className="font-medium text-gray-900 dark:text-white">{item.category}</span>
+                    </div>
+                    <span className="font-bold text-gray-900 dark:text-white">{item.percentage}%</span>
+                  </div>
+                  <div className="relative h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden ml-7">
+                    <div
+                      className="absolute top-0 left-0 h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${item.percentage}%`,
+                        backgroundColor: item.color
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pie Chart Visualization */}
+            <div className="mt-8 flex items-center justify-center">
+              <div className="relative w-48 h-48">
+                <svg className="transform -rotate-90" width="192" height="192" viewBox="0 0 192 192">
+                  {timeDistribution.reduce((acc, item, index) => {
+                    const prevPercentage = timeDistribution.slice(0, index).reduce((sum, i) => sum + i.percentage, 0)
+                    const strokeDasharray = `${(item.percentage / 100) * 565} 565`
+                    const strokeDashoffset = -((prevPercentage / 100) * 565)
+                    
+                    return [...acc, (
+                      <circle
+                        key={item.category}
+                        cx="96"
+                        cy="96"
+                        r="90"
+                        fill="none"
+                        stroke={item.color}
+                        strokeWidth="24"
+                        strokeDasharray={strokeDasharray}
+                        strokeDashoffset={strokeDashoffset}
+                        className="transition-all duration-500"
+                      />
+                    )]
+                  }, [] as React.ReactElement[])}
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="text-3xl font-bold text-gray-900 dark:text-white">100%</div>
+                    <div className="text-sm text-gray-500">Total Time</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -74,7 +74,8 @@ END $$;
 
 create table if not exists tasks (
   id uuid default uuid_generate_v4() primary key,
-  project_id uuid references projects(id) on delete cascade not null,
+  workspace_id uuid references workspaces(id) on delete cascade not null,
+  project_id uuid references projects(id) on delete cascade,
   creator_id uuid references profiles(id),
   assignee_id uuid references profiles(id),
   title text not null,
@@ -166,14 +167,14 @@ create policy "Users can create projects in their workspaces" on projects for in
   exists (select 1 from workspace_members where workspace_id = projects.workspace_id and user_id = auth.uid())
 );
 
--- Tasks: Users can only see tasks in projects from workspaces they belong to
+-- Tasks: Users can only see tasks in workspaces they belong to
 drop policy if exists "Users can view tasks in their workspaces" on tasks;
 create policy "Users can view tasks in their workspaces" on tasks for select using (
-  exists (select 1 from workspace_members wm join projects p on p.workspace_id = wm.workspace_id where p.id = tasks.project_id and wm.user_id = auth.uid())
+  exists (select 1 from workspace_members where workspace_id = tasks.workspace_id and user_id = auth.uid())
 );
 drop policy if exists "Users can create tasks in their workspaces" on tasks;
 create policy "Users can create tasks in their workspaces" on tasks for insert with check (
-  exists (select 1 from workspace_members wm join projects p on p.workspace_id = wm.workspace_id where p.id = tasks.project_id and wm.user_id = auth.uid())
+  exists (select 1 from workspace_members where workspace_id = tasks.workspace_id and user_id = auth.uid())
 );
 
 -- Time Entries: Users can only see their own time entries
