@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { X, Calendar, User, Flag, FolderOpen, Repeat, Link2, MessageSquare, Save } from 'lucide-react'
 import RecurrenceSelector from './RecurrenceSelector'
 import DependencySelector from './DependencySelector'
@@ -21,6 +22,7 @@ interface TaskDetailModalProps {
   workspaceId: string
   projects: any[]
   teamMembers: any[]
+  templateData?: any
   onClose: () => void
   onSave: () => void
 }
@@ -29,20 +31,21 @@ export default function TaskDetailModal({
   task, 
   workspaceId, 
   projects, 
-  teamMembers, 
+  teamMembers,
+  templateData,
   onClose, 
   onSave 
 }: TaskDetailModalProps) {
   const [formData, setFormData] = useState({
-    title: task?.title || '',
-    description: task?.description || '',
+    title: task?.title || templateData?.title || '',
+    description: task?.description || templateData?.description || '',
     project_id: task?.project_id || '',
-    priority: task?.priority || 'medium',
+    priority: task?.priority || templateData?.priority || 'medium',
     due_date: task?.due_date || '',
     assignee_id: task?.assignee_id || '',
-    category: task?.category || '',
-    estimated_hours: task?.estimated_hours || '',
-    tags: task?.tags?.join(', ') || ''
+    category: task?.category || templateData?.category || '',
+    estimated_hours: task?.estimated_hours || templateData?.estimated_hours || '',
+    tags: task?.tags?.join(', ') || templateData?.tags?.join(', ') || ''
   })
 
   const [recurrence, setRecurrence] = useState<RecurrencePattern | null>(null)
@@ -180,8 +183,20 @@ export default function TaskDetailModal({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+    >
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="bg-slate-800 border border-slate-700 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-700">
           <h2 className="text-2xl font-bold text-white">
@@ -442,7 +457,7 @@ export default function TaskDetailModal({
             )}
           </Button>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   )
 }

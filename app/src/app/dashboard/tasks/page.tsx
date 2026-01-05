@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, Filter, CheckCircle, Circle, Clock, User, Calendar, List, LayoutGrid, CalendarDays, Download, Trash2 } from 'lucide-react'
+import { Plus, Search, Filter, CheckCircle, Circle, Clock, User, Calendar, List, LayoutGrid, CalendarDays, Download, Trash2, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import KanbanBoard from '@/components/tasks/KanbanBoard'
 import CalendarView from '@/components/tasks/CalendarView'
@@ -11,6 +12,7 @@ import AdvancedFilter from '@/components/tasks/AdvancedFilter'
 import BulkActions from '@/components/tasks/BulkActions'
 import ExportDialog from '@/components/ExportDialog'
 import TaskDetailModal from '@/components/tasks/TaskDetailModal'
+import TemplateSelector from '@/components/tasks/TemplateSelector'
 
 interface Task {
   id: string
@@ -35,6 +37,8 @@ export default function TasksPage() {
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false)
+  const [templateData, setTemplateData] = useState<any>(null)
   
   // New UI state
   const [viewMode, setViewMode] = useState<'list' | 'board' | 'calendar'>('list')
@@ -301,9 +305,20 @@ export default function TasksPage() {
                 <Download className="w-5 h-5" />
                 Export
               </button>
+
+              <button 
+                onClick={() => setShowTemplateSelector(true)}
+                className="px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-gray-300 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
+              >
+                <FileText className="w-5 h-5" />
+                From Template
+              </button>
               
               <Button 
-                onClick={() => setShowCreateDialog(true)}
+                onClick={() => {
+                  setTemplateData(null)
+                  setShowCreateDialog(true)
+                }}
                 className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg hover:shadow-blue-500/30 transition-all flex items-center gap-2"
               >
                 <Plus className="w-5 h-5" />
@@ -465,9 +480,14 @@ export default function TasksPage() {
               </div>
             )}
 
-            {filteredTasks.map((task) => (
-              <div
+            {filteredTasks.map((task, index) => (
+              <motion.div
                 key={task.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, delay: index * 0.02 }}
+                layout
                 className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-5 hover:bg-slate-800/70 transition-all group"
               >
                 <div className="flex items-start gap-4">
@@ -485,7 +505,9 @@ export default function TasksPage() {
                     className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-2 focus:ring-blue-500"
                   />
 
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => toggleTaskComplete(task.id, task.is_completed)}
                     className="mt-1 flex-shrink-0"
                   >
@@ -494,7 +516,7 @@ export default function TasksPage() {
                     ) : (
                       <Circle className="w-6 h-6 text-gray-500 group-hover:text-blue-500 transition-colors" />
                     )}
-                  </button>
+                  </motion.button>
 
                   <div className="flex-1">
                     <h3 
@@ -538,48 +560,73 @@ export default function TasksPage() {
                     </div>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}
       </div>
 
       {/* Export Dialog */}
-      {showExportDialog && (
-        <ExportDialog
-          isOpen={showExportDialog}
-          onClose={() => setShowExportDialog(false)}
-          data={filteredTasks}
-          dataType="tasks"
-          defaultFilename="tasks-export"
-        />
-      )}
+      <AnimatePresence>
+        {showExportDialog && (
+          <ExportDialog
+            isOpen={showExportDialog}
+            onClose={() => setShowExportDialog(false)}
+            data={filteredTasks}
+            dataType="tasks"
+            defaultFilename="tasks-export"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Template Selector */}
+      <AnimatePresence>
+        {showTemplateSelector && (
+          <TemplateSelector
+            workspaceId={currentWorkspace?.id || ''}
+            onClose={() => setShowTemplateSelector(false)}
+            onSelectTemplate={(data) => {
+              setTemplateData(data)
+              setShowTemplateSelector(false)
+              setShowCreateDialog(true)
+            }}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Create Task Dialog */}
-      {showCreateDialog && (
-        <TaskDetailModal
-          workspaceId={currentWorkspace?.id || ''}
-          projects={projects}
-          teamMembers={teamMembers}
-          onClose={() => setShowCreateDialog(false)}
-          onSave={loadTasks}
-        />
-      )}
+      <AnimatePresence>
+        {showCreateDialog && (
+          <TaskDetailModal
+            workspaceId={currentWorkspace?.id || ''}
+            projects={projects}
+            teamMembers={teamMembers}
+            templateData={templateData}
+            onClose={() => {
+              setShowCreateDialog(false)
+              setTemplateData(null)
+            }}
+            onSave={loadTasks}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Edit Task Dialog */}
-      {showEditDialog && editingTask && (
-        <TaskDetailModal
-          task={editingTask}
-          workspaceId={currentWorkspace?.id || ''}
-          projects={projects}
-          teamMembers={teamMembers}
-          onClose={() => {
-            setShowEditDialog(false)
-            setEditingTask(null)
-          }}
-          onSave={loadTasks}
-        />
-      )}
+      <AnimatePresence>
+        {showEditDialog && editingTask && (
+          <TaskDetailModal
+            task={editingTask}
+            workspaceId={currentWorkspace?.id || ''}
+            projects={projects}
+            teamMembers={teamMembers}
+            onClose={() => {
+              setShowEditDialog(false)
+              setEditingTask(null)
+            }}
+            onSave={loadTasks}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }
