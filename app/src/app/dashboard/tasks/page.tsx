@@ -3,8 +3,14 @@
 import { useState, useEffect } from 'react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, Filter, CheckCircle, Circle, Clock, User, Calendar } from 'lucide-react'
+import { Plus, Search, Filter, CheckCircle, Circle, Clock, User, Calendar, List, LayoutGrid, CalendarDays, Download, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import KanbanBoard from '@/components/tasks/KanbanBoard'
+import CalendarView from '@/components/tasks/CalendarView'
+import AdvancedFilter from '@/components/tasks/AdvancedFilter'
+import BulkActions from '@/components/tasks/BulkActions'
+import ExportDialog from '@/components/ExportDialog'
+import TaskDetailModal from '@/components/tasks/TaskDetailModal'
 
 interface Task {
   id: string
@@ -29,23 +35,30 @@ export default function TasksPage() {
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | null>(null)
   const [loading, setLoading] = useState(true)
+  
+  // New UI state
+  const [viewMode, setViewMode] = useState<'list' | 'board' | 'calendar'>('list')
+  const [selectedTasks, setSelectedTasks] = useState<string[]>([])
+  const [showExportDialog, setShowExportDialog] = useState(false)
+  const [showAdvancedFilter, setShowAdvancedFilter] = useState(false)
+  const [taskFilters, setTaskFilters] = useState({
+    status: 'all' as 'all' | 'completed' | 'active',
+    priority: 'all' as 'all' | 'low' | 'medium' | 'high' | 'urgent',
+    category: 'all' as 'all' | string,
+    assignee: 'all' as 'all' | string,
+    dateRange: 'all' as 'all' | 'today' | 'week' | 'month' | 'overdue',
+    search: ''
+  })
 
   console.log('TasksPage render - currentWorkspace:', currentWorkspace)
 
-  // Form state
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    project_id: '',
-    priority: 'medium',
-    due_date: '',
-    assignee_id: ''
-  })
+  // No longer needed - formData, handleCreateTask function can be removed as TaskDetailModal handles this now
 
   useEffect(() => {
     if (currentWorkspace) {
       loadTasks()
       loadProjects()
+      loadTeamMembers()
     }
   }, [currentWorkspace])
 
@@ -55,6 +68,7 @@ export default function TasksPage() {
       if (currentWorkspace) {
         loadTasks()
         loadProjects()
+        loadTeamMembers()
       }
     }, 100)
     return () => clearTimeout(timer)
@@ -115,6 +129,36 @@ export default function TasksPage() {
     }
   }
 
+  const loadTeamMembers = async () => {
+    if (!currentWorkspace) return
+
+    try {
+      const { data, error } = await supabase
+        .from('workspace_members')
+        .select(`
+          user_id,
+          profiles:user_id (
+            id,
+            full_name,
+            email
+          )
+        `)
+        .eq('workspace_id', currentWorkspace.id)
+
+      if (error) throw error
+      
+      const members = data?.map((m: any) => ({
+        id: m.profiles.id,
+        full_name: m.profiles.full_name,
+        email: m.profiles.email
+      })) || []
+      
+      setTeamMembers(members)
+    } catch (error) {
+      console.error('Error loading team members:', error)
+    }
+  }
+
   const toggleTaskComplete = async (taskId: string, currentStatus: boolean) => {
     try {
       const { error } = await supabase
@@ -133,67 +177,6 @@ export default function TasksPage() {
     }
   }
 
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!currentWorkspace) {
-      alert('Please select a workspace first')
-      return
-    }
-
-    console.log('Creating task with data:', {
-      workspace_id: currentWorkspace.id,
-      title: formData.title,
-      project_id: formData.project_id || null,
-      assignee_id: formData.assignee_id || null
-    })
-
-    try {
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        alert('You must be logged in to create tasks')
-        return
-      }
-
-      const { data, error } = await supabase
-        .from('tasks')
-        .insert({
-          workspace_id: currentWorkspace.id,
-          creator_id: user.id,
-          title: formData.title,
-          description: formData.description || null,
-          project_id: formData.project_id || null,
-          priority: formData.priority,
-          due_date: formData.due_date || null,
-          assignee_id: formData.assignee_id || null
-        })
-        .select()
-
-      if (error) {
-        console.error('Error creating task:', error)
-        throw error
-      }
-
-      console.log('Task created successfully:', data)
-
-      // Reset form and reload
-      setFormData({
-        title: '',
-        description: '',
-        project_id: '',
-        priority: 'medium',
-        due_date: '',
-        assignee_id: ''
-      })
-      setShowCreateDialog(false)
-      loadTasks()
-    } catch (error) {
-      console.error('Error creating task:', error)
-      alert(`Failed to create task: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-  }
-
   const getPriorityColor = (priority: string) => {
     const colors = {
       urgent: 'bg-red-500/20 text-red-400 border-red-500/30',
@@ -203,6 +186,79 @@ export default function TasksPage() {
     }
     return colors[priority as keyof typeof colors] || colors.medium
   }
+
+  // Bulk action handlers
+  const handleSelectAll = () => {
+    if (selectedTasks.length === filteredTasks.length) {
+      setSelectedTasks([])
+    } else {
+      setSelectedTasks(filteredTasks.map(t => t.id))
+    }
+  }
+
+  const handleBulkComplete = async () => {
+    try {
+      await Promise.all(
+        selectedTasks.map(id => 
+          supabase
+            .from('tasks')
+            .update({ is_completed: true, completed_at: new Date().toISOString() })
+            .eq('id', id)
+        )
+      )
+      setSelectedTasks([])
+      loadTasks()
+    } catch (error) {
+      console.error('Error completing tasks:', error)
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (!confirm(`Delete ${selectedTasks.length} tasks? This cannot be undone.`)) return
+    
+    try {
+      await Promise.all(
+        selectedTasks.map(id => 
+          supabase.from('tasks').delete().eq('id', id)
+        )
+      )
+      setSelectedTasks([])
+      loadTasks()
+    } catch (error) {
+      console.error('Error deleting tasks:', error)
+    }
+  }
+
+  const handleBulkPriority = async (priority: string) => {
+    try {
+      await Promise.all(
+        selectedTasks.map(id => 
+          supabase.from('tasks').update({ priority }).eq('id', id)
+        )
+      )
+      setSelectedTasks([])
+      loadTasks()
+    } catch (error) {
+      console.error('Error updating priority:', error)
+    }
+  }
+
+  // Filter tasks
+  const filteredTasks = tasks
+    .filter((task) => {
+      if (filter === 'all') return true
+      if (filter === 'active') return !task.is_completed
+      if (filter === 'completed') return task.is_completed
+      if (filter === 'overdue') {
+        if (!task.due_date || task.is_completed) return false
+        return new Date(task.due_date) < new Date()
+      }
+      return true
+    })
+    .filter((task) =>
+      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (task.description && task.description.toLowerCase().includes(searchQuery.toLowerCase()))
+    )
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
@@ -230,9 +286,20 @@ export default function TasksPage() {
             </div>
             
             <div className="flex gap-3">
-              <button className="px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-gray-300 hover:bg-slate-700/50 transition-colors flex items-center gap-2">
+              <button 
+                onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
+                className="px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-gray-300 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
+              >
                 <Filter className="w-5 h-5" />
                 Filter
+              </button>
+
+              <button 
+                onClick={() => setShowExportDialog(true)}
+                className="px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-gray-300 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
+              >
+                <Download className="w-5 h-5" />
+                Export
               </button>
               
               <Button 
@@ -245,8 +312,45 @@ export default function TasksPage() {
             </div>
           </div>
 
+          {/* View Switcher */}
+          <div className="flex gap-2 mt-4 mb-4">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                viewMode === 'list'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-900/30 text-gray-400 hover:bg-slate-700/50'
+              }`}
+            >
+              <List className="w-4 h-4" />
+              List
+            </button>
+            <button
+              onClick={() => setViewMode('board')}
+              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                viewMode === 'board'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-900/30 text-gray-400 hover:bg-slate-700/50'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4" />
+              Board
+            </button>
+            <button
+              onClick={() => setViewMode('calendar')}
+              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                viewMode === 'calendar'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-slate-900/30 text-gray-400 hover:bg-slate-700/50'
+              }`}
+            >
+              <CalendarDays className="w-4 h-4" />
+              Calendar
+            </button>
+          </div>
+
           {/* Filter Tabs */}
-          <div className="flex gap-2 mt-4">
+          <div className="flex gap-2">
             {['all', 'active', 'completed', 'overdue'].map((f) => (
               <button
                 key={f}
@@ -263,7 +367,34 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {/* Tasks List */}
+        {/* Advanced Filter */}
+        {showAdvancedFilter && (
+          <div className="mb-6">
+            <AdvancedFilter
+              filters={taskFilters}
+              onFiltersChange={setTaskFilters}
+            />
+            <button 
+              onClick={() => setShowAdvancedFilter(false)}
+              className="mt-2 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+            >
+              Hide Filters
+            </button>
+          </div>
+        )}
+
+        {/* Bulk Actions */}
+        {selectedTasks.length > 0 && (
+          <BulkActions
+            selectedTasks={selectedTasks}
+            onClearSelection={() => setSelectedTasks([])}
+            onBulkComplete={handleBulkComplete}
+            onBulkDelete={handleBulkDelete}
+            onBulkChangePriority={handleBulkPriority}
+          />
+        )}
+
+        {/* Tasks Content - View Mode Conditional */}
         {loading ? (
           <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-12 text-center">
             <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
@@ -286,29 +417,74 @@ export default function TasksPage() {
               Create Task
             </Button>
           </div>
+        ) : viewMode === 'board' ? (
+          <KanbanBoard 
+            tasks={filteredTasks.map(t => ({
+              ...t,
+              status: t.is_completed ? 'Done' : 'To Do'
+            }))} 
+            onTaskUpdate={async (taskId, updates) => {
+              await supabase
+                .from('tasks')
+                .update(updates)
+                .eq('id', taskId)
+              loadTasks()
+            }}
+          />
+        ) : viewMode === 'calendar' ? (
+          <CalendarView 
+            tasks={filteredTasks.map(t => ({
+              ...t,
+              status: t.is_completed ? 'Done' : 'To Do'
+            }))} 
+            onTaskClick={(calendarTask) => {
+              // Find the original task from filteredTasks
+              const originalTask = filteredTasks.find(t => t.id === calendarTask.id)
+              if (originalTask) {
+                setEditingTask(originalTask)
+                setShowEditDialog(true)
+              }
+            }}
+          />
         ) : (
           <div className="space-y-3">
-            {tasks
-              .filter((task) => {
-                if (filter === 'all') return true
-                if (filter === 'active') return !task.is_completed
-                if (filter === 'completed') return task.is_completed
-                if (filter === 'overdue') {
-                  if (!task.due_date || task.is_completed) return false
-                  return new Date(task.due_date) < new Date()
-                }
-                return true
-              })
-              .filter((task) =>
-                task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (task.description && task.description.toLowerCase().includes(searchQuery.toLowerCase()))
-              )
-              .map((task) => (
+            {/* Select All Checkbox */}
+            {filteredTasks.length > 0 && (
+              <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedTasks.length === filteredTasks.length}
+                  onChange={handleSelectAll}
+                  className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                />
+                <span className="text-gray-400 text-sm">
+                  {selectedTasks.length > 0 
+                    ? `${selectedTasks.length} of ${filteredTasks.length} selected` 
+                    : 'Select all'}
+                </span>
+              </div>
+            )}
+
+            {filteredTasks.map((task) => (
               <div
                 key={task.id}
                 className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-5 hover:bg-slate-800/70 transition-all group"
               >
                 <div className="flex items-start gap-4">
+                  {/* Checkbox for bulk selection */}
+                  <input
+                    type="checkbox"
+                    checked={selectedTasks.includes(task.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedTasks([...selectedTasks, task.id])
+                      } else {
+                        setSelectedTasks(selectedTasks.filter(id => id !== task.id))
+                      }
+                    }}
+                    className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                  />
+
                   <button 
                     onClick={() => toggleTaskComplete(task.id, task.is_completed)}
                     className="mt-1 flex-shrink-0"
@@ -321,7 +497,13 @@ export default function TasksPage() {
                   </button>
 
                   <div className="flex-1">
-                    <h3 className={`text-lg font-semibold mb-2 ${task.is_completed ? 'text-gray-500 line-through' : 'text-white'}`}>
+                    <h3 
+                      onClick={() => {
+                        setEditingTask(task)
+                        setShowEditDialog(true)
+                      }}
+                      className={`text-lg font-semibold mb-2 cursor-pointer hover:text-blue-400 transition-colors ${task.is_completed ? 'text-gray-500 line-through' : 'text-white'}`}
+                    >
                       {task.title}
                     </h3>
                     
@@ -362,94 +544,41 @@ export default function TasksPage() {
         )}
       </div>
 
+      {/* Export Dialog */}
+      {showExportDialog && (
+        <ExportDialog
+          isOpen={showExportDialog}
+          onClose={() => setShowExportDialog(false)}
+          data={filteredTasks}
+          dataType="tasks"
+          defaultFilename="tasks-export"
+        />
+      )}
+
       {/* Create Task Dialog */}
       {showCreateDialog && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold text-white mb-6">Create New Task</h2>
-            
-            <form onSubmit={handleCreateTask} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Task Title *</label>
-                <input
-                  type="text"
-                  value={formData.title}
-                  onChange={(e) => setFormData({...formData, title: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter task title..."
-                  required
-                />
-              </div>
+        <TaskDetailModal
+          workspaceId={currentWorkspace?.id || ''}
+          projects={projects}
+          teamMembers={teamMembers}
+          onClose={() => setShowCreateDialog(false)}
+          onSave={loadTasks}
+        />
+      )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
-                <textarea
-                  rows={4}
-                  value={formData.description}
-                  onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter task description..."
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Priority</label>
-                  <select 
-                    value={formData.priority}
-                    onChange={(e) => setFormData({...formData, priority: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Due Date</label>
-                  <input
-                    type="date"
-                    value={formData.due_date}
-                    onChange={(e) => setFormData({...formData, due_date: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Project (Optional)</label>
-                <select 
-                  value={formData.project_id}
-                  onChange={(e) => setFormData({...formData, project_id: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">No project</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>{project.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <Button
-                  type="button"
-                  onClick={() => setShowCreateDialog(false)}
-                  className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg"
-                >
-                  Create Task
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {/* Edit Task Dialog */}
+      {showEditDialog && editingTask && (
+        <TaskDetailModal
+          task={editingTask}
+          workspaceId={currentWorkspace?.id || ''}
+          projects={projects}
+          teamMembers={teamMembers}
+          onClose={() => {
+            setShowEditDialog(false)
+            setEditingTask(null)
+          }}
+          onSave={loadTasks}
+        />
       )}
     </div>
   )

@@ -2,9 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { motion } from 'framer-motion'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { useTimerStore } from '@/stores/useTimerStore'
 import { supabase } from '@/lib/supabase'
+import { extractDateFromText } from '@/lib/date-parser'
+import CommandPalette from '@/components/CommandPalette'
 import { 
   Plus, Users, Clock, CheckCircle, Target, Zap, 
   Play, Pause, Square, Calendar, TrendingUp, ArrowRight 
@@ -122,15 +125,18 @@ export default function Dashboard() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
+      // Extract date from natural language input
+      const { title, date } = extractDateFromText(quickTaskInput)
+
       const { error } = await supabase
         .from('tasks')
         .insert({
           workspace_id: currentWorkspace.id,
-          title: quickTaskInput,
+          title: title,
           creator_id: user.id,
           assignee_id: user.id,
           priority: 'medium',
-          due_date: new Date().toISOString()
+          due_date: date ? date.toISOString() : new Date().toISOString()
         })
 
       if (!error) {
@@ -423,6 +429,10 @@ export default function Dashboard() {
           <p className="text-sm text-gray-400">View insights</p>
         </button>
       </div>
+
+      <CommandPalette 
+        onToggleTimer={() => isRunning ? stop() : start()}
+      />
     </div>
   )
 }

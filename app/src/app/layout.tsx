@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from '@/components/ThemeProvider';
 import { QueryProvider } from '@/components/QueryProvider';
+import KeyboardShortcutsHelp from '@/components/KeyboardShortcutsHelp';
 import "./globals.css";
 
 const inter = Inter({
@@ -25,6 +26,7 @@ export default function RootLayout({
         <QueryProvider>
           <ThemeProvider>
             {children}
+            <KeyboardShortcutsHelp />
           </ThemeProvider>
         </QueryProvider>
       </body>
