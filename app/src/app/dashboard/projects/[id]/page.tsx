@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, Calendar, Users, CheckCircle, Circle, Clock, Target, TrendingUp, Plus } from 'lucide-react'
+import { ArrowLeft, Calendar, Users, CheckCircle, Circle, Clock, Target, TrendingUp, Plus, Filter, ArrowUpDown, Tag, X, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 interface Project {
@@ -26,6 +26,7 @@ interface Task {
   priority: 'low' | 'medium' | 'high' | 'urgent'
   due_date: string | null
   is_completed: boolean
+  category: string | null
   assignee?: { full_name: string }
 }
 
@@ -35,15 +36,39 @@ interface Member {
   avatar_url: string | null
 }
 
+interface ProjectMember {
+  id: string
+  full_name: string
+  avatar_url: string | null
+  role: string
+}
+
+interface Category {
+  id: string
+  name: string
+  color: string
+}
+
 export default function ProjectDetailPage() {
   const params = useParams()
   const router = useRouter()
   const { currentWorkspace } = useWorkspaceStore()
   const [project, setProject] = useState<Project | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
+  const [filteredTasks, setFilteredTasks] = useState<Task[]>([])
   const [members, setMembers] = useState<Member[]>([])
+  const [projectMembers, setProjectMembers] = useState<ProjectMember[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateTaskDialog, setShowCreateTaskDialog] = useState(false)
+  const [showAddMemberDialog, setShowAddMemberDialog] = useState(false)
+  const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
+
+  // Filtering and sorting
+  const [selectedCategory, setSelectedCategory] = useState<string>('all')
+  const [selectedPriority, setSelectedPriority] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<'date' | 'priority' | 'title'>('date')
+  const [showFilters, setShowFilters] = useState(false)
 
   // Task creation form
   const [taskFormData, setTaskFormData] = useState({
@@ -51,14 +76,51 @@ export default function ProjectDetailPage() {
     description: '',
     priority: 'medium',
     due_date: '',
-    assignee_id: ''
+    assignee_id: '',
+    category: ''
   })
+
+  // New category form
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [newCategoryColor, setNewCategoryColor] = useState('#667eea')
+
+  // Team member assignment
+  const [selectedMemberToAdd, setSelectedMemberToAdd] = useState('')
 
   useEffect(() => {
     if (params.id && currentWorkspace) {
       loadProjectData()
     }
   }, [params.id, currentWorkspace])
+
+  // Apply filtering and sorting when tasks or filters change
+  useEffect(() => {
+    let result = [...tasks]
+
+    // Filter by category
+    if (selectedCategory !== 'all') {
+      result = result.filter(task => task.category === selectedCategory)
+    }
+
+    // Filter by priority
+    if (selectedPriority !== 'all') {
+      result = result.filter(task => task.priority === selectedPriority)
+    }
+
+    // Sort tasks
+    result.sort((a, b) => {
+      if (sortBy === 'date') {
+        return new Date(b.due_date || 0).getTime() - new Date(a.due_date || 0).getTime()
+      } else if (sortBy === 'priority') {
+        const priorityOrder = { urgent: 4, high: 3, medium: 2, low: 1 }
+        return (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0)
+      } else {
+        return a.title.localeCompare(b.title)
+      }
+    })
+
+    setFilteredTasks(result)
+  }, [tasks, selectedCategory, selectedPriority, sortBy])
 
   const loadProjectData = async () => {
     if (!params.id || !currentWorkspace) return
@@ -98,7 +160,40 @@ export default function ProjectDetailPage() {
         setTasks(tasksData || [])
       }
 
-      // Load workspace members (potential assignees)
+      // Load workspace categories
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from('task_categories')
+        .select('*')
+        .eq('workspace_id', currentWorkspace.id)
+        .order('name')
+
+      if (!categoriesError) {
+        setCategories(categoriesData || [])
+      }
+
+      // Load project members
+      const { data: projectMembersData, error: projectMembersError } = await supabase
+        .from('project_members')
+        .select(`
+          user_id,
+          role,
+          profiles:user_id (
+            id,
+            full_name,
+            avatar_url
+          )
+        `)
+        .eq('project_id', params.id)
+
+      if (!projectMembersError) {
+        const formattedMembers = projectMembersData?.map((pm: any) => ({
+          ...pm.profiles,
+          role: pm.role
+        })).filter(Boolean).flat() || []
+        setProjectMembers(formattedMembers)
+      }
+
+      // Load workspace members (for assignment)
       const { data: membersData, error: membersError } = await supabase
         .from('workspace_members')
         .select(`
@@ -144,7 +239,8 @@ export default function ProjectDetailPage() {
           description: taskFormData.description || null,
           priority: taskFormData.priority,
           due_date: taskFormData.due_date || null,
-          assignee_id: taskFormData.assignee_id || null
+          assignee_id: taskFormData.assignee_id || null,
+          category: taskFormData.category || null
         })
 
       if (error) throw error
@@ -155,13 +251,84 @@ export default function ProjectDetailPage() {
         description: '',
         priority: 'medium',
         due_date: '',
-        assignee_id: ''
+        assignee_id: '',
+        category: ''
       })
       setShowCreateTaskDialog(false)
       loadProjectData()
     } catch (error) {
       console.error('Error creating task:', error)
       alert(`Failed to create task: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!currentWorkspace) return
+
+    try {
+      const { error } = await supabase
+        .from('task_categories')
+        .insert({
+          workspace_id: currentWorkspace.id,
+          name: newCategoryName,
+          color: newCategoryColor
+        })
+
+      if (error) throw error
+
+      setNewCategoryName('')
+      setNewCategoryColor('#667eea')
+      setShowCreateCategoryDialog(false)
+      loadProjectData()
+    } catch (error) {
+      console.error('Error creating category:', error)
+      alert(`Failed to create category: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleAddMemberToProject = async () => {
+    if (!selectedMemberToAdd || !project) return
+
+    try {
+      const { error } = await supabase
+        .from('project_members')
+        .insert({
+          project_id: project.id,
+          user_id: selectedMemberToAdd,
+          role: 'member'
+        })
+
+      if (error) throw error
+
+      setSelectedMemberToAdd('')
+      setShowAddMemberDialog(false)
+      loadProjectData()
+    } catch (error) {
+      console.error('Error adding member:', error)
+      alert(`Failed to add member: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
+  const handleRemoveProjectMember = async (userId: string) => {
+    if (!project) return
+
+    if (!confirm('Are you sure you want to remove this member from the project?')) return
+
+    try {
+      const { error } = await supabase
+        .from('project_members')
+        .delete()
+        .eq('project_id', project.id)
+        .eq('user_id', userId)
+
+      if (error) throw error
+
+      loadProjectData()
+    } catch (error) {
+      console.error('Error removing member:', error)
+      alert(`Failed to remove member: ${error instanceof Error ? error.message : 'Unknown error'}`)
     }
   }
 
@@ -323,19 +490,107 @@ export default function ProjectDetailPage() {
             <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-white">Tasks</h2>
-                <Button
-                  onClick={() => setShowCreateTaskDialog(true)}
-                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Task
-                </Button>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={() => setShowFilters(!showFilters)}
+                    className={`px-4 py-2 rounded-xl inline-flex items-center gap-2 transition-all ${
+                      showFilters 
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white' 
+                        : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
+                    }`}
+                  >
+                    <Filter className="w-4 h-4" />
+                    Filters
+                  </Button>
+                  <Button
+                    onClick={() => setShowCreateTaskDialog(true)}
+                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Task
+                  </Button>
+                </div>
               </div>
 
-              {tasks.length === 0 ? (
+              {/* Filters Panel */}
+              {showFilters && (
+                <div className="mb-6 p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Category</label>
+                      <select
+                        value={selectedCategory}
+                        onChange={(e) => setSelectedCategory(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="all">All Categories</option>
+                        {categories.map(cat => (
+                          <option key={cat.id} value={cat.name}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Priority</label>
+                      <select
+                        value={selectedPriority}
+                        onChange={(e) => setSelectedPriority(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="all">All Priorities</option>
+                        <option value="urgent">Urgent</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Sort By</label>
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as 'date' | 'priority' | 'title')}
+                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="date">Due Date</option>
+                        <option value="priority">Priority</option>
+                        <option value="title">Title (A-Z)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {(selectedCategory !== 'all' || selectedPriority !== 'all') && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className="text-sm text-gray-400">Active filters:</span>
+                      {selectedCategory !== 'all' && (
+                        <button
+                          onClick={() => setSelectedCategory('all')}
+                          className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg text-sm flex items-center gap-2 hover:bg-blue-500/30"
+                        >
+                          {selectedCategory}
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                      {selectedPriority !== 'all' && (
+                        <button
+                          onClick={() => setSelectedPriority('all')}
+                          className="px-3 py-1 bg-orange-500/20 text-orange-400 rounded-lg text-sm flex items-center gap-2 hover:bg-orange-500/30"
+                        >
+                          {selectedPriority}
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {filteredTasks.length === 0 ? (
                 <div className="text-center py-8">
                   <CheckCircle className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-                  <p className="text-gray-400">No tasks yet</p>
+                  <p className="text-gray-400">
+                    {tasks.length === 0 ? 'No tasks yet' : 'No tasks match your filters'}
+                  </p>
                   <Button
                     onClick={() => setShowCreateTaskDialog(true)}
                     className="mt-4 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2"
@@ -346,7 +601,7 @@ export default function ProjectDetailPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {tasks.map((task) => (
+                  {filteredTasks.map((task) => (
                     <div
                       key={task.id}
                       className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4 hover:bg-slate-900/70 transition-all"
@@ -376,6 +631,13 @@ export default function ProjectDetailPage() {
                             <span className={`px-3 py-1 rounded-lg text-xs font-medium border ${getPriorityColor(task.priority)}`}>
                               {task.priority}
                             </span>
+
+                            {task.category && (
+                              <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-lg text-xs font-medium border border-purple-500/30 flex items-center gap-1">
+                                <Tag className="w-3 h-3" />
+                                {task.category}
+                              </span>
+                            )}
 
                             {task.due_date && (
                               <div className="flex items-center gap-1 text-gray-400 text-sm">
@@ -447,17 +709,38 @@ export default function ProjectDetailPage() {
 
             {/* Team Members */}
             <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Team Members</h2>
-              {members.length === 0 ? (
-                <p className="text-gray-500 italic">No team members assigned</p>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-white">Project Team</h2>
+                <Button
+                  onClick={() => setShowAddMemberDialog(true)}
+                  className="px-3 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2 text-sm"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  Add Member
+                </Button>
+              </div>
+              {projectMembers.length === 0 ? (
+                <p className="text-gray-500 italic">No team members assigned yet</p>
               ) : (
                 <div className="space-y-3">
-                  {members.map((member) => (
-                    <div key={member.id} className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-medium">
-                        {member.full_name?.charAt(0).toUpperCase() || 'U'}
+                  {projectMembers.map((member) => (
+                    <div key={member.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700/50 hover:bg-slate-900/70 transition-all">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-medium">
+                          {member.full_name?.charAt(0).toUpperCase() || 'U'}
+                        </div>
+                        <div>
+                          <p className="text-gray-300 font-medium">{member.full_name || 'Unknown User'}</p>
+                          <p className="text-xs text-gray-500 capitalize">{member.role}</p>
+                        </div>
                       </div>
-                      <span className="text-gray-300">{member.full_name || 'Unknown User'}</span>
+                      <button
+                        onClick={() => handleRemoveProjectMember(member.id)}
+                        className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-colors"
+                        title="Remove from project"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -536,6 +819,30 @@ export default function ProjectDetailPage() {
                   </select>
                 </div>
 
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-300">Category (Optional)</label>
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateCategoryDialog(true)}
+                      className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      New Category
+                    </button>
+                  </div>
+                  <select
+                    value={taskFormData.category}
+                    onChange={(e) => setTaskFormData({...taskFormData, category: e.target.value})}
+                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">No Category</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.name}>{category.name}</option>
+                    ))}
+                  </select>
+                </div>
+
                 <div className="flex gap-3 pt-4">
                   <Button
                     type="button"
@@ -549,6 +856,115 @@ export default function ProjectDetailPage() {
                     className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg"
                   >
                     Create Task
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Add Member Dialog */}
+        {showAddMemberDialog && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
+              <h2 className="text-2xl font-bold text-white mb-6">Add Team Member</h2>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Select Member</label>
+                  <select
+                    value={selectedMemberToAdd}
+                    onChange={(e) => setSelectedMemberToAdd(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">Choose a member...</option>
+                    {members
+                      .filter(m => !projectMembers.find(pm => pm.id === m.id))
+                      .map((member) => (
+                        <option key={member.id} value={member.id}>{member.full_name || 'Unknown User'}</option>
+                      ))}
+                  </select>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setShowAddMemberDialog(false)
+                      setSelectedMemberToAdd('')
+                    }}
+                    className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={handleAddMemberToProject}
+                    disabled={!selectedMemberToAdd}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Add Member
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Create Category Dialog */}
+        {showCreateCategoryDialog && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
+              <h2 className="text-2xl font-bold text-white mb-6">Create New Category</h2>
+
+              <form onSubmit={handleCreateCategory} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Category Name *</label>
+                  <input
+                    type="text"
+                    value={newCategoryName}
+                    onChange={(e) => setNewCategoryName(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., SEO Optimization, Bug Fix..."
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Color</label>
+                  <div className="flex gap-3 items-center">
+                    <input
+                      type="color"
+                      value={newCategoryColor}
+                      onChange={(e) => setNewCategoryColor(e.target.value)}
+                      className="w-16 h-12 bg-slate-900/50 border border-slate-700 rounded-xl cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={newCategoryColor}
+                      onChange={(e) => setNewCategoryColor(e.target.value)}
+                      className="flex-1 px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="#667eea"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateCategoryDialog(false)
+                      setNewCategoryName('')
+                      setNewCategoryColor('#667eea')
+                    }}
+                    className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg"
+                  >
+                    Create Category
                   </Button>
                 </div>
               </form>

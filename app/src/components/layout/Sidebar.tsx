@@ -46,7 +46,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       )}
 
       <aside className={clsx(
-        'fixed lg:static inset-y-0 left-0 z-50 w-64 h-screen bg-[var(--bg-secondary)] border-r border-white/5 transform transition-transform duration-300 ease-in-out',
+        'fixed lg:static inset-y-0 left-0 z-50 w-64 h-screen bg-[var(--bg-secondary)] border-r border-white/5 transform transition-transform duration-300 ease-in-out overflow-y-auto',
         isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
       )}>
         <nav className="p-4 space-y-1">

@@ -1,6 +1,5 @@
 import { Menu } from 'lucide-react'
 import DarkModeToggle from './DarkModeToggle'
-import WorkspaceSwitcher from './WorkspaceSwitcher'
 
 interface TopbarProps {
   onMenuClick: () => void
@@ -17,7 +16,6 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
           <Menu className="w-5 h-5" />
         </button>
         <h1 className="text-xl font-bold text-text-primary">worktrack</h1>
-        <WorkspaceSwitcher />
       </div>
 
       <div className="flex items-center space-x-4">
