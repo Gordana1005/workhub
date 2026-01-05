@@ -11,8 +11,18 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "worktrack",
-  description: "Collaborative productivity platform with task management, time tracking, and team collaboration",
+  title: "WorkHub - Productivity Platform",
+  description: "Complete productivity platform with tasks, projects, time tracking, and collaboration tools",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "WorkHub",
+  },
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -22,6 +32,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icon.svg" />
+        <meta name="theme-color" content="#3b82f6" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="WorkHub" />
+        <meta name="format-detection" content="telephone=no" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+      </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         <QueryProvider>
           <ThemeProvider>
