@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { X, Save } from 'lucide-react'
+import RichTextEditor from './RichTextEditor'
 
 interface NoteEditorProps {
   initialTitle?: string
@@ -69,11 +70,11 @@ export default function NoteEditor({
             <label className="block text-sm font-medium mb-2 text-gray-300">
               Content
             </label>
-            <textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              placeholder="Write your note here... You can add links, code snippets, or any other information."
-              className="input-field w-full min-h-[300px] resize-y font-mono text-sm"
+            <RichTextEditor
+              content={content}
+              onChange={setContent}
+              placeholder="Start writing your note... Use the toolbar or markdown shortcuts"
+              editable={true}
             />
           </div>
         </div>

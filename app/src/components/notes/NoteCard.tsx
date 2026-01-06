@@ -30,7 +30,9 @@ export default function NoteCard({ note, onEdit, onDelete }: NoteCardProps) {
 
   const getPreview = (content: string) => {
     if (!content) return 'No content'
-    return content.slice(0, 150) + (content.length > 150 ? '...' : '')
+    // Strip HTML tags for preview
+    const strippedContent = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    return strippedContent.slice(0, 150) + (strippedContent.length > 150 ? '...' : '')
   }
 
   return (
