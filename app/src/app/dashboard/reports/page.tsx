@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import ProductivityCharts from '@/components/reports/ProductivityCharts';
 import ExportDialog from '@/components/ExportDialog';

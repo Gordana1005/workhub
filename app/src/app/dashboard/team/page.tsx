@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Users, Mail, UserPlus, Shield, Crown, Search, MoreVertical, Trash2, Edit } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import useWorkspaceStore from '@/stores/useWorkspaceStore'
@@ -26,13 +26,7 @@ export default function TeamPage() {
   const [showInviteDialog, setShowInviteDialog] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
 
-  useEffect(() => {
-    if (currentWorkspace) {
-      loadTeamMembers()
-    }
-  }, [currentWorkspace])
-
-  const loadTeamMembers = async () => {
+  const loadTeamMembers = useCallback(async () => {
     if (!currentWorkspace) return
 
     try {
@@ -48,7 +42,13 @@ export default function TeamPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentWorkspace])
+
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadTeamMembers()
+    }
+  }, [currentWorkspace, loadTeamMembers])
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault()

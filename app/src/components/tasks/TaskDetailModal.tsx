@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Calendar, User, Flag, FolderOpen, Repeat, Link2, MessageSquare, Save } from 'lucide-react'
 import RecurrenceSelector from './RecurrenceSelector'
@@ -55,6 +55,23 @@ export default function TaskDetailModal({
   const [saving, setSaving] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string>('')
 
+  const loadDependencies = useCallback(async () => {
+    if (!task?.id) return
+
+    try {
+      const { data, error } = await supabase
+        .from('task_dependencies')
+        .select('depends_on_task_id')
+        .eq('task_id', task.id)
+
+      if (!error && data) {
+        setDependencies(data.map(d => d.depends_on_task_id))
+      }
+    } catch (error) {
+      console.error('Error loading dependencies:', error)
+    }
+  }, [task?.id])
+
   useEffect(() => {
     // Load current user
     const loadUser = async () => {
@@ -77,24 +94,7 @@ export default function TaskDetailModal({
     if (task?.id) {
       loadDependencies()
     }
-  }, [task])
-
-  const loadDependencies = async () => {
-    if (!task?.id) return
-
-    try {
-      const { data, error } = await supabase
-        .from('task_dependencies')
-        .select('depends_on_task_id')
-        .eq('task_id', task.id)
-
-      if (!error && data) {
-        setDependencies(data.map(d => d.depends_on_task_id))
-      }
-    } catch (error) {
-      console.error('Error loading dependencies:', error)
-    }
-  }
+  }, [task, loadDependencies])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

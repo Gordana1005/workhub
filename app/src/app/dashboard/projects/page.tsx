@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
@@ -37,23 +37,7 @@ export default function ProjectsPage() {
     end_date: ''
   })
 
-  useEffect(() => {
-    if (currentWorkspace) {
-      loadProjects()
-    }
-  }, [currentWorkspace])
-
-  // Also load data on mount in case currentWorkspace is already set
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (currentWorkspace) {
-        loadProjects()
-      }
-    }, 100)
-    return () => clearTimeout(timer)
-  }, [])
-
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     if (!currentWorkspace) return
     
     try {
@@ -71,7 +55,23 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentWorkspace])
+
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadProjects()
+    }
+  }, [currentWorkspace, loadProjects])
+
+  // Also load data on mount in case currentWorkspace is already set
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (currentWorkspace) {
+        loadProjects()
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [currentWorkspace, loadProjects])
 
   const handleCreateProject = async (e: React.FormEvent) => {
     e.preventDefault()

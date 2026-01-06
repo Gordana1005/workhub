@@ -1,18 +1,30 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
+import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, Search, Filter, CheckCircle, Circle, Clock, User, Calendar, List, LayoutGrid, CalendarDays, Download, Trash2, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import KanbanBoard from '@/components/tasks/KanbanBoard'
-import CalendarView from '@/components/tasks/CalendarView'
+import { LoadingSkeleton } from '@/components/LoadingSkeleton'
+import { useDebounce } from '@/hooks/useDebounce'
 import AdvancedFilter from '@/components/tasks/AdvancedFilter'
 import BulkActions from '@/components/tasks/BulkActions'
 import ExportDialog from '@/components/ExportDialog'
 import TaskDetailModal from '@/components/tasks/TaskDetailModal'
 import TemplateSelector from '@/components/tasks/TemplateSelector'
+
+// Lazy load heavy components
+const KanbanBoard = dynamic(() => import('@/components/tasks/KanbanBoard'), {
+  loading: () => <LoadingSkeleton type="board" />,
+  ssr: false,
+})
+
+const CalendarView = dynamic(() => import('@/components/tasks/CalendarView'), {
+  loading: () => <LoadingSkeleton type="calendar" />,
+  ssr: false,
+})
 
 interface Task {
   id: string
@@ -54,31 +66,13 @@ export default function TasksPage() {
     search: ''
   })
 
+  // Debounce search query for better performance
+  const debouncedSearchQuery = useDebounce(searchQuery, 300)
+
   console.log('TasksPage render - currentWorkspace:', currentWorkspace)
 
-  // No longer needed - formData, handleCreateTask function can be removed as TaskDetailModal handles this now
-
-  useEffect(() => {
-    if (currentWorkspace) {
-      loadTasks()
-      loadProjects()
-      loadTeamMembers()
-    }
-  }, [currentWorkspace])
-
-  // Also load data on mount in case currentWorkspace is already set
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (currentWorkspace) {
-        loadTasks()
-        loadProjects()
-        loadTeamMembers()
-      }
-    }, 100)
-    return () => clearTimeout(timer)
-  }, [])
-
-  const loadTasks = async () => {
+  // Wrap data loading functions in useCallback to fix exhaustive-deps warnings
+  const loadTasks = useCallback(async () => {
     console.log('loadTasks called, currentWorkspace:', currentWorkspace)
     if (!currentWorkspace) {
       console.log('No current workspace, skipping loadTasks')
@@ -114,9 +108,9 @@ export default function TasksPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentWorkspace])
 
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     if (!currentWorkspace) return
 
     try {
@@ -131,9 +125,9 @@ export default function TasksPage() {
     } catch (error) {
       console.error('Error loading projects:', error)
     }
-  }
+  }, [currentWorkspace])
 
-  const loadTeamMembers = async () => {
+  const loadTeamMembers = useCallback(async () => {
     if (!currentWorkspace) return
 
     try {
@@ -161,7 +155,28 @@ export default function TasksPage() {
     } catch (error) {
       console.error('Error loading team members:', error)
     }
-  }
+  }, [currentWorkspace])
+
+  // Load data when workspace changes
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadTasks()
+      loadProjects()
+      loadTeamMembers()
+    }
+  }, [currentWorkspace, loadTasks, loadProjects, loadTeamMembers])
+
+  // Also load data on mount in case currentWorkspace is already set
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (currentWorkspace) {
+        loadTasks()
+        loadProjects()
+        loadTeamMembers()
+      }
+    }, 100)
+    return () => clearTimeout(timer)
+  }, [currentWorkspace, loadTasks, loadProjects, loadTeamMembers])
 
   const toggleTaskComplete = async (taskId: string, currentStatus: boolean) => {
     try {
@@ -260,8 +275,8 @@ export default function TasksPage() {
       return true
     })
     .filter((task) =>
-      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (task.description && task.description.toLowerCase().includes(searchQuery.toLowerCase()))
+      task.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
+      (task.description && task.description.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
     )
 
   return (

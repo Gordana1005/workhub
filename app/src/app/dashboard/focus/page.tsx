@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
@@ -47,11 +47,62 @@ export default function FocusMode() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [showTaskSelector, setShowTaskSelector] = useState(false)
 
+  const loadTasks = useCallback(async () => {
+    if (!currentWorkspace) return
+
+    try {
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('id, title, description, estimated_hours')
+        .eq('workspace_id', currentWorkspace.id)
+        .eq('is_completed', false)
+        .order('created_at', { ascending: false })
+        .limit(20)
+
+      if (!error && data) {
+        setTasks(data)
+      }
+    } catch (error) {
+      console.error('Error loading tasks:', error)
+    }
+  }, [currentWorkspace])
+
+  const handleSessionComplete = useCallback(() => {
+    setIsRunning(false)
+    
+    if (soundEnabled) {
+      // Browser notification sound
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Focus session complete!', {
+          body: sessionType === 'work' ? 'Time for a break!' : 'Ready for another session?',
+        })
+      }
+    }
+
+    if (sessionType === 'work') {
+      setSessionsCompleted(prev => {
+        const newCount = prev + 1
+        // After 4 work sessions, take a long break
+        if (newCount % 4 === 0) {
+          setSessionType('longBreak')
+          setTime(longBreakDuration * 60)
+        } else {
+          setSessionType('break')
+          setTime(breakDuration * 60)
+        }
+        return newCount
+      })
+    } else {
+      setSessionType('work')
+      setTime(workDuration * 60)
+    }
+  }, [soundEnabled, sessionType, breakDuration, longBreakDuration, workDuration])
+
   useEffect(() => {
     if (currentWorkspace) {
       loadTasks()
     }
-  }, [currentWorkspace])
+  }, [currentWorkspace, loadTasks])
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null
@@ -71,59 +122,7 @@ export default function FocusMode() {
     return () => {
       if (interval) clearInterval(interval)
     }
-  }, [isRunning, time])
-
-  const loadTasks = async () => {
-    if (!currentWorkspace) return
-
-    try {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('id, title, description, estimated_hours')
-        .eq('workspace_id', currentWorkspace.id)
-        .eq('is_completed', false)
-        .order('created_at', { ascending: false })
-        .limit(20)
-
-      if (!error && data) {
-        setTasks(data)
-      }
-    } catch (error) {
-      console.error('Error loading tasks:', error)
-    }
-  }
-
-  const handleSessionComplete = () => {
-    setIsRunning(false)
-    
-    if (soundEnabled) {
-      playCompletionSound()
-    }
-
-    if (sessionType === 'work') {
-      const newSessionCount = sessionsCompleted + 1
-      setSessionsCompleted(newSessionCount)
-      
-      // After 4 work sessions, take a long break
-      if (newSessionCount % 4 === 0) {
-        startSession('longBreak')
-      } else {
-        startSession('break')
-      }
-    } else {
-      startSession('work')
-    }
-  }
-
-  const playCompletionSound = () => {
-    // Browser notification sound
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('Focus Session Complete! 🎉', {
-        body: sessionType === 'work' ? 'Time for a break!' : 'Ready to focus again?',
-        icon: '/icon.png'
-      })
-    }
-  }
+  }, [isRunning, time, handleSessionComplete])
 
   const startSession = (type: SessionType) => {
     setSessionType(type)
