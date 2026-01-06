@@ -11,7 +11,8 @@ import {
   Timer,
   CheckSquare,
   FileText,
-  Zap
+  Zap,
+  Webhook
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -24,6 +25,7 @@ const navigation = [
   { name: 'Focus Mode', href: '/dashboard/focus', icon: Zap },
   { name: 'Team', href: '/dashboard/team', icon: Users },
   { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+  { name: 'Webhooks', href: '/dashboard/settings/webhooks', icon: Webhook },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ]
 

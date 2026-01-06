@@ -121,6 +121,28 @@ export default function ProjectsPage() {
     }
   }
 
+  const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    
+    if (!confirm('Are you sure you want to delete this project? This will also delete all associated tasks.')) {
+      return
+    }
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .delete()
+        .eq('id', projectId)
+
+      if (error) throw error
+
+      loadProjects()
+    } catch (error) {
+      console.error('Error deleting project:', error)
+      alert(`Failed to delete project: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
   const filteredProjects = projects.filter(project =>
     project.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -201,9 +223,18 @@ export default function ProjectsPage() {
           {filteredProjects.map((project) => (
             <div
               key={project.id}
-              className="bg-slate-800 border border-slate-700 rounded-xl p-6 hover:border-blue-500 transition-all cursor-pointer"
+              className="bg-slate-800 border border-slate-700 rounded-xl p-6 hover:border-blue-500 transition-all cursor-pointer group relative"
               onClick={() => router.push(`/dashboard/projects/${project.id}`)}
             >
+              {/* Delete button */}
+              <button
+                onClick={(e) => handleDeleteProject(project.id, e)}
+                className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 hover:text-red-300"
+                title="Delete project"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
               <div className="flex items-start justify-between mb-4">
                 <div
                   className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-xl"

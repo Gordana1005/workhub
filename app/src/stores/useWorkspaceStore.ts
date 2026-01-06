@@ -171,3 +171,5 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     set({ error: null })
   }
 }))
+
+export default useWorkspaceStore

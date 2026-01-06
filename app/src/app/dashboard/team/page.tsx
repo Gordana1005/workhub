@@ -1,56 +1,150 @@
 'use client'
 
-import { useState } from 'react'
-import { Users, Mail, UserPlus, Shield, Crown, Search, MoreVertical } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Users, Mail, UserPlus, Shield, Crown, Search, MoreVertical, Trash2, Edit } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import useWorkspaceStore from '@/stores/useWorkspaceStore'
+
+interface TeamMember {
+  id: string
+  user_id: string
+  role: 'admin' | 'member'
+  joined_at: string
+  profiles: {
+    id: string
+    full_name: string | null
+    avatar_url: string | null
+    email: string
+  }
+}
 
 export default function TeamPage() {
+  const { currentWorkspace } = useWorkspaceStore()
   const [searchQuery, setSearchQuery] = useState('')
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [showInviteDialog, setShowInviteDialog] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState('')
 
-  // Mock data
-  const teamMembers = [
-    {
-      id: '1',
-      name: 'Admin User',
-      email: 'admin@admin.com',
-      role: 'admin',
-      avatar: null,
-      joinedDate: '2025-01-01',
-      tasksCompleted: 45,
-      hoursLogged: 120,
-      status: 'active'
-    },
-    {
-      id: '2',
-      name: 'John Doe',
-      email: 'john@example.com',
-      role: 'member',
-      avatar: null,
-      joinedDate: '2025-01-15',
-      tasksCompleted: 32,
-      hoursLogged: 98,
-      status: 'active'
-    },
-    {
-      id: '3',
-      name: 'Jane Smith',
-      email: 'jane@example.com',
-      role: 'member',
-      avatar: null,
-      joinedDate: '2025-01-10',
-      tasksCompleted: 28,
-      hoursLogged: 85,
-      status: 'active'
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadTeamMembers()
     }
-  ]
+  }, [currentWorkspace])
 
-  const getInitials = (name: string) => {
+  const loadTeamMembers = async () => {
+    if (!currentWorkspace) return
+
+    try {
+      setLoading(true)
+      const response = await fetch(`/api/team?workspace_id=${currentWorkspace.id}`)
+      const data = await response.json()
+
+      if (response.ok) {
+        setTeamMembers(data.members || [])
+      }
+    } catch (error) {
+      console.error('Error loading team members:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleInvite = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentWorkspace || !inviteEmail) return
+
+    try {
+      const response = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: currentWorkspace.id,
+          email: inviteEmail
+        })
+      })
+
+      if (response.ok) {
+        alert('Invitation sent successfully!')
+        setInviteEmail('')
+        setShowInviteDialog(false)
+      } else {
+        const data = await response.json()
+        alert(data.error || 'Failed to send invitation')
+      }
+    } catch (error) {
+      console.error('Error sending invitation:', error)
+      alert('Failed to send invitation')
+    }
+  }
+
+  const handleRemoveMember = async (userId: string) => {
+    if (!currentWorkspace) return
+    if (!confirm('Are you sure you want to remove this member?')) return
+
+    try {
+      const response = await fetch(
+        `/api/team?workspace_id=${currentWorkspace.id}&user_id=${userId}`,
+        { method: 'DELETE' }
+      )
+
+      if (response.ok) {
+        loadTeamMembers()
+      } else {
+        const data = await response.json()
+        alert(data.error || 'Failed to remove member')
+      }
+    } catch (error) {
+      console.error('Error removing member:', error)
+      alert('Failed to remove member')
+    }
+  }
+
+  const handleChangeRole = async (userId: string, newRole: 'admin' | 'member') => {
+    if (!currentWorkspace) return
+
+    try {
+      const response = await fetch(
+        `/api/team?workspace_id=${currentWorkspace.id}&user_id=${userId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: newRole })
+        }
+      )
+
+      if (response.ok) {
+        loadTeamMembers()
+      } else {
+        const data = await response.json()
+        alert(data.error || 'Failed to update role')
+      }
+    } catch (error) {
+      console.error('Error updating role:', error)
+      alert('Failed to update role')
+    }
+  }
+
+  const getInitials = (name: string | null) => {
+    if (!name) return '?'
     return name.split(' ').map(n => n[0]).join('').toUpperCase()
   }
 
-  const getRoleColor = (role: string) => {
-    return role === 'admin' ? 'from-purple-500 to-pink-500' : 'from-blue-500 to-cyan-500'
+  const filteredMembers = teamMembers.filter(member =>
+    member.profiles.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    member.profiles.email.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  if (!currentWorkspace) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-20">
+          <p className="text-gray-400">Please select a workspace</p>
+        </div>
+      </div>
+    )
   }
+
 
   return (
     <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto animate-fadeIn">
@@ -95,9 +189,9 @@ export default function TeamPage() {
           <div className="stat-card">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-400 text-sm mb-1">Active Now</p>
+                <p className="text-gray-400 text-sm mb-1">Members</p>
                 <p className="text-4xl font-bold text-white">
-                  {teamMembers.filter(m => m.status === 'active').length}
+                  {teamMembers.filter(m => m.role === 'member').length}
                 </p>
               </div>
               <div className="stat-icon bg-gradient-green">
@@ -119,82 +213,118 @@ export default function TeamPage() {
               className="input-field w-full pl-12"
             />
           </div>
-          <button className="btn-primary flex items-center gap-2">
+          <button 
+            onClick={() => setShowInviteDialog(true)}
+            className="btn-primary flex items-center gap-2"
+          >
             <UserPlus className="w-5 h-5" />
             Invite Member
           </button>
         </div>
 
         {/* Team Members Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {teamMembers.map((member) => (
-            <div
-              key={member.id}
-              className="card p-6 card-hover"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className={`w-16 h-16 rounded-xl bg-gradient-blue-purple flex items-center justify-center text-white text-xl font-bold`}>
-                  {getInitials(member.name)}
-                </div>
-                <button className="p-2 hover:bg-surface-light rounded-lg transition-colors">
-                  <MoreVertical className="w-5 h-5 text-gray-400" />
-                </button>
-              </div>
-
-              {/* Info */}
-              <div className="mb-4">
-                <h3 className="text-xl font-bold text-white mb-1">{member.name}</h3>
-                <div className="flex items-center text-sm text-gray-400 mb-2">
-                  <Mail className="w-4 h-4 mr-1" />
-                  {member.email}
-                </div>
-                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                  member.role === 'admin' 
-                    ? 'bg-purple-500/20 text-purple-400' 
-                    : 'bg-blue-500/20 text-blue-400'
-                }`}>
-                  {member.role === 'admin' ? '👑 Admin' : '👤 Member'}
-                </span>
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div className="text-center p-3 bg-surface rounded-xl">
-                  <div className="text-2xl font-bold text-blue-400">{member.tasksCompleted}</div>
-                  <div className="text-xs text-gray-400">Tasks</div>
-                </div>
-                <div className="text-center p-3 bg-surface rounded-xl">
-                  <div className="text-2xl font-bold text-purple-400">{member.hoursLogged}h</div>
-                  <div className="text-xs text-gray-400">Hours</div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="pt-4 border-t border-white/10 flex items-center justify-between text-sm text-gray-400">
-                <span>Joined {new Date(member.joinedDate).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
-                <div className="flex items-center">
-                  <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse" />
-                  Active
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Invite Card */}
-        <div className="mt-8 card p-8 bg-gradient-blue-purple">
-          <div className="flex flex-col md:flex-row items-center justify-between">
-            <div className="mb-6 md:mb-0">
-              <h2 className="text-2xl font-bold mb-2 text-white">Grow Your Team</h2>
-              <p className="text-blue-100">Invite team members to collaborate on projects</p>
-            </div>
-            <button className="bg-white text-purple-600 px-6 py-3 rounded-xl hover:shadow-xl transition-all font-semibold flex items-center gap-2">
-              <Mail className="w-5 h-5" />
-              Send Invitations
-            </button>
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredMembers.map((member) => (
+              <div
+                key={member.id}
+                className="card p-6 card-hover"
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-16 h-16 rounded-xl bg-gradient-blue-purple flex items-center justify-center text-white text-xl font-bold">
+                    {getInitials(member.profiles.full_name)}
+                  </div>
+                  <div className="relative group">
+                    <button className="p-2 hover:bg-surface-light rounded-lg transition-colors">
+                      <MoreVertical className="w-5 h-5 text-gray-400" />
+                    </button>
+                    <div className="absolute right-0 top-full mt-2 bg-slate-800 border border-slate-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10 min-w-[160px]">
+                      <button
+                        onClick={() => handleChangeRole(member.user_id, member.role === 'admin' ? 'member' : 'admin')}
+                        className="w-full px-4 py-2 text-left text-sm text-white hover:bg-slate-700 flex items-center gap-2"
+                      >
+                        <Edit className="w-4 h-4" />
+                        {member.role === 'admin' ? 'Make Member' : 'Make Admin'}
+                      </button>
+                      <button
+                        onClick={() => handleRemoveMember(member.user_id)}
+                        className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-slate-700 flex items-center gap-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info */}
+                <div className="mb-4">
+                  <h3 className="text-xl font-bold text-white mb-1">
+                    {member.profiles.full_name || 'Unnamed User'}
+                  </h3>
+                  <div className="flex items-center text-sm text-gray-400 mb-2">
+                    <Mail className="w-4 h-4 mr-1" />
+                    {member.profiles.email}
+                  </div>
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
+                    member.role === 'admin' 
+                      ? 'bg-purple-500/20 text-purple-400' 
+                      : 'bg-blue-500/20 text-blue-400'
+                  }`}>
+                    {member.role === 'admin' ? '👑 Admin' : '👤 Member'}
+                  </span>
+                </div>
+
+                {/* Footer */}
+                <div className="pt-4 border-t border-white/10 text-sm text-gray-400">
+                  <span>Joined {new Date(member.joined_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Invite Dialog */}
+        {showInviteDialog && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
+              <h2 className="text-2xl font-bold text-white mb-4">Invite Team Member</h2>
+              <form onSubmit={handleInvite}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="colleague@example.com"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowInviteDialog(false)}
+                    className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+                  >
+                    Send Invite
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
   )
 }
