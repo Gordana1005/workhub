@@ -147,6 +147,7 @@ export default function NotesPage() {
         <NotesList
           notes={filteredNotes}
           projectId={selectedProjectId}
+          workspaceId={currentWorkspace?.id || ''}
           onRefresh={loadNotes}
         />
       )}

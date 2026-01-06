@@ -3,7 +3,14 @@
 import { useState } from 'react'
 import NoteCard from './NoteCard'
 import NoteEditor from './NoteEditor'
-import { Plus, FileText } from 'lucide-react'
+import TemplateSelector from './TemplateSelector'
+import { Plus, FileText, Sparkles } from 'lucide-react'
+
+interface Tag {
+  id: string
+  name: string
+  color: string
+}
 
 interface Note {
   id: string
@@ -11,30 +18,35 @@ interface Note {
   content: string
   created_at: string
   project_id?: string
+  tags?: Tag[]
 }
 
 interface NotesListProps {
   notes: Note[]
   projectId?: string
+  workspaceId: string
   onRefresh: () => void
 }
 
-export default function NotesList({ notes, projectId, onRefresh }: NotesListProps) {
+export default function NotesList({ notes, projectId, workspaceId, onRefresh }: NotesListProps) {
   const [showEditor, setShowEditor] = useState(false)
+  const [showTemplates, setShowTemplates] = useState(false)
   const [editingNote, setEditingNote] = useState<Note | null>(null)
+  const [templateContent, setTemplateContent] = useState<string>('')
 
-  const handleCreate = async (title: string, content: string) => {
+  const handleCreate = async (title: string, content: string, tags: Tag[]) => {
     if (!projectId) return
 
     try {
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId, title, content }),
+        body: JSON.stringify({ project_id: projectId, title, content, tags }),
       })
 
       if (res.ok) {
         setShowEditor(false)
+        setTemplateContent('')
         onRefresh()
       }
     } catch (error) {
@@ -42,14 +54,14 @@ export default function NotesList({ notes, projectId, onRefresh }: NotesListProp
     }
   }
 
-  const handleUpdate = async (title: string, content: string) => {
+  const handleUpdate = async (title: string, content: string, tags: Tag[]) => {
     if (!editingNote) return
 
     try {
       const res = await fetch('/api/notes', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editingNote.id, title, content }),
+        body: JSON.stringify({ id: editingNote.id, title, content, tags }),
       })
 
       if (res.ok) {
@@ -89,13 +101,22 @@ export default function NotesList({ notes, projectId, onRefresh }: NotesListProp
           Notes
         </h2>
         {projectId && (
-          <button
-            onClick={() => setShowEditor(true)}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            New Note
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowTemplates(true)}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Sparkles className="w-4 h-4" />
+              From Template
+            </button>
+            <button
+              onClick={() => setShowEditor(true)}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              New Note
+            </button>
+          </div>
         )}
       </div>
 
@@ -133,18 +154,38 @@ export default function NotesList({ notes, projectId, onRefresh }: NotesListProp
 
       {showEditor && (
         <NoteEditor
+          workspaceId={workspaceId}
+          initialContent={templateContent}
           onSave={handleCreate}
-          onCancel={() => setShowEditor(false)}
+          onCancel={() => {
+            setShowEditor(false)
+            setTemplateContent('')
+          }}
         />
       )}
 
       {editingNote && (
         <NoteEditor
+          workspaceId={workspaceId}
+          noteId={editingNote.id}
           initialTitle={editingNote.title}
           initialContent={editingNote.content}
+          initialTags={editingNote.tags || []}
           onSave={handleUpdate}
           onCancel={() => setEditingNote(null)}
           isEdit
+        />
+      )}
+
+      {showTemplates && (
+        <TemplateSelector
+          workspaceId={workspaceId}
+          onSelect={(template) => {
+            setTemplateContent(template.content)
+            setShowEditor(true)
+            setShowTemplates(false)
+          }}
+          onClose={() => setShowTemplates(false)}
         />
       )}
     </div>
