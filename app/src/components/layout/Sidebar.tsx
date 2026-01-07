@@ -14,12 +14,14 @@ import {
   Zap,
   Webhook,
   Target,
-  DollarSign
+  DollarSign,
+  Building2
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
+  { name: 'Workspaces', href: '/dashboard/workspaces', icon: Building2 },
   { name: 'Tasks', href: '/dashboard/tasks', icon: CheckSquare },
   { name: 'Projects', href: '/dashboard/projects', icon: FolderKanban },
   { name: 'Plans', href: '/dashboard/plans', icon: Target },

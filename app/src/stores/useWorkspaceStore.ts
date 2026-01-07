@@ -5,6 +5,9 @@ interface Workspace {
   id: string
   name: string
   owner_id: string
+  category?: string
+  color?: string
+  description?: string
   created_at: string
   userRole?: 'admin' | 'member'
   memberCount?: number
@@ -22,9 +25,9 @@ interface WorkspaceState {
 
   // Actions
   fetchWorkspaces: () => Promise<void>
-  createWorkspace: (name: string) => Promise<Workspace | null>
+  createWorkspace: (name: string, category?: string, color?: string, description?: string) => Promise<Workspace | null>
   setCurrentWorkspace: (workspace: Workspace | null) => void
-  updateWorkspace: (id: string, name: string) => Promise<boolean>
+  updateWorkspace: (id: string, updates: { name?: string; category?: string; color?: string; description?: string }) => Promise<boolean>
   deleteWorkspace: (id: string) => Promise<boolean>
   clearError: () => void
 }
@@ -63,13 +66,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  createWorkspace: async (name: string) => {
+  createWorkspace: async (name: string, category?: string, color?: string, description?: string) => {
     set({ loading: true, error: null })
     try {
       const response = await fetch('/api/workspaces', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        body: JSON.stringify({ name, category, color, description })
       })
 
       const data = await response.json()
@@ -102,13 +105,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  updateWorkspace: async (id: string, name: string) => {
+  updateWorkspace: async (id: string, updates: { name?: string; category?: string; color?: string; description?: string }) => {
     set({ loading: true, error: null })
     try {
       const response = await fetch(`/api/workspaces/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name })
+        body: JSON.stringify(updates)
       })
 
       const data = await response.json()

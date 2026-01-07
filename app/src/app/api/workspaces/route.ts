@@ -91,7 +91,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { name } = await request.json()
+    const { name, category, color, description } = await request.json()
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Workspace name is required' }, { status: 400 })
     }
@@ -99,7 +99,13 @@ export async function POST(request: Request) {
     // Create workspace
     const { data: workspace, error: workspaceError } = await supabase
       .from('workspaces')
-      .insert({ name: name.trim(), owner_id: user.id })
+      .insert({ 
+        name: name.trim(), 
+        owner_id: user.id,
+        category: category || null,
+        color: color || '#667eea',
+        description: description || null
+      })
       .select()
       .single()
 

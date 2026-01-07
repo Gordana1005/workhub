@@ -5,6 +5,7 @@ import { Menu, Bell } from 'lucide-react'
 import { motion } from 'framer-motion'
 import DarkModeToggle from './DarkModeToggle'
 import NotificationCenter from '../notifications/NotificationCenter'
+import WorkspaceSwitcher from './WorkspaceSwitcher'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
 
@@ -70,6 +71,11 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
             <Menu className="w-5 h-5" />
           </button>
           <h1 className="text-xl font-bold text-text-primary">worktrack</h1>
+          
+          {/* Workspace Switcher */}
+          <div className="hidden md:block">
+            <WorkspaceSwitcher />
+          </div>
         </div>
 
         <div className="flex items-center space-x-4">

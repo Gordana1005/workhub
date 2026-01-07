@@ -97,7 +97,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { name } = await request.json()
+    const { name, category, color, description } = await request.json()
 
     const { data: membership, error: memberError } = await supabase
       .from('workspace_members')
@@ -110,13 +110,20 @@ export async function PUT(
       return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
     }
 
-    if (!name?.trim()) {
-      return NextResponse.json({ error: 'Workspace name is required' }, { status: 400 })
+    // Build update object with only provided fields
+    const updates: any = {}
+    if (name !== undefined && name.trim()) updates.name = name.trim()
+    if (category !== undefined) updates.category = category
+    if (color !== undefined) updates.color = color
+    if (description !== undefined) updates.description = description
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
     }
 
     const { data: workspace, error: updateError } = await supabase
       .from('workspaces')
-      .update({ name: name.trim() })
+      .update(updates)
       .eq('id', workspaceId)
       .select()
       .single()
