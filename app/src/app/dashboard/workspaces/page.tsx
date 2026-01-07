@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { Building2, Plus, Settings, Users, FolderKanban, CheckSquare, Trash2, Edit, Loader2 } from 'lucide-react'
@@ -22,7 +22,7 @@ interface WorkspaceWithStats {
   created_at: string
 }
 
-export default function WorkspacesPage() {
+function WorkspacesContent() {
   const { workspaces, currentWorkspace, setCurrentWorkspace, deleteWorkspace, loading } = useWorkspaceStore()
   const searchParams = useSearchParams()
   const shouldCreate = searchParams.get('create') === 'true'
@@ -283,5 +283,20 @@ export default function WorkspacesPage() {
         workspace={editingWorkspace}
       />
     </div>
+  )
+}
+
+export default function WorkspacesPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-blue-400 animate-spin mx-auto mb-4" />
+          <p className="text-slate-400">Loading workspaces...</p>
+        </div>
+      </div>
+    }>
+      <WorkspacesContent />
+    </Suspense>
   )
 }
