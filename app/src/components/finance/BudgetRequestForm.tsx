@@ -33,7 +33,7 @@ export default function BudgetRequestForm({ projectId, onClose, onSuccess }: Bud
         .from('project_budget_requests')
         .insert({
           project_id: projectId,
-          requested_by: user.id,
+          requester_id: user.id,
           amount: parseFloat(formData.amount),
           description: formData.description,
           category: formData.category || null,

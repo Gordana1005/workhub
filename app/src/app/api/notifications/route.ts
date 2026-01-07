@@ -3,16 +3,21 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
 // Create Supabase client for API routes
-function createClient() {
-  const cookieStore = cookies()
+async function createClient() {
+  const cookieStore = await cookies()
   
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options)
+          })
         },
       },
     }
@@ -22,7 +27,7 @@ function createClient() {
 // GET /api/notifications - List notifications for current user
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const searchParams = request.nextUrl.searchParams
     const unreadOnly = searchParams.get('unread_only') === 'true'
     const limit = parseInt(searchParams.get('limit') || '50')
@@ -36,14 +41,10 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Build query
+    // Build query - use simpler select to avoid foreign key issues
     let query = supabase
       .from('notifications')
-      .select(`
-        *,
-        related_user:profiles!notifications_related_user_id_fkey(full_name, email),
-        related_task:tasks!notifications_related_task_id_fkey(title)
-      `)
+      .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(limit)
@@ -57,13 +58,17 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('Error fetching notifications:', error)
+      // If table doesn't exist, return empty array instead of error
+      if (error.code === 'PGRST205' || error.message?.includes('does not exist')) {
+        return NextResponse.json({ notifications: [] })
+      }
       return NextResponse.json(
         { error: 'Failed to fetch notifications' },
         { status: 500 }
       )
     }
 
-    return NextResponse.json({ notifications })
+    return NextResponse.json({ notifications: notifications || [] })
   } catch (error) {
     console.error('Error in GET /api/notifications:', error)
     return NextResponse.json(
@@ -76,7 +81,7 @@ export async function GET(request: NextRequest) {
 // PATCH /api/notifications - Mark notification(s) as read
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const body = await request.json()
     const { id, ids, mark_all_read } = body
 
@@ -162,7 +167,7 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/notifications - Delete notification(s)
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const searchParams = request.nextUrl.searchParams
     const id = searchParams.get('id')
     const deleteAll = searchParams.get('delete_all') === 'true'
@@ -230,7 +235,7 @@ export async function DELETE(request: NextRequest) {
 // POST /api/notifications - Create notification (for manual triggers)
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     const body = await request.json()
 
     const {
