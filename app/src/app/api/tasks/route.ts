@@ -1,6 +1,13 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+
+// Service role client for bypassing RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -28,14 +35,26 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Verify user has access to this workspace
+  const { data: membership } = await supabaseAdmin
+    .from('workspace_members')
+    .select('role')
+    .eq('workspace_id', workspaceId)
+    .eq('user_id', user.id)
+    .single()
+
+  if (!membership) {
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  }
+
   try {
-    const { data: tasks, error } = await supabase
+    const { data: tasks, error } = await supabaseAdmin
       .from('tasks')
       .select(`
         *,
-        projects(name),
-        assignee:profiles!assignee_id(id, full_name),
-        creator:profiles!creator_id(id, full_name)
+        projects(name, workspace_id),
+        assignee:profiles!tasks_assignee_id_fkey(id, full_name),
+        creator:profiles!tasks_creator_id_fkey(id, full_name)
       `)
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false })
@@ -72,7 +91,19 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { workspace_id, title, description, priority, due_date, project_id, assignee_id, category } = body
 
-    const { data: task, error } = await supabase
+    // Verify workspace access
+    const { data: membership } = await supabaseAdmin
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspace_id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!membership) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    const { data: task, error } = await supabaseAdmin
       .from('tasks')
       .insert({
         workspace_id,
@@ -88,8 +119,7 @@ export async function POST(request: Request) {
       })
       .select(`
         *,
-        projects(name),
-        assignee:profiles!assignee_id(id, full_name)
+        projects(name)
       `)
       .single()
 
@@ -125,14 +155,13 @@ export async function PATCH(request: Request) {
     const body = await request.json()
     const { id, ...updates } = body
 
-    const { data: task, error } = await supabase
+    const { data: task, error } = await supabaseAdmin
       .from('tasks')
       .update(updates)
       .eq('id', id)
       .select(`
         *,
-        projects(name),
-        assignee:profiles!assignee_id(id, full_name)
+        projects(name)
       `)
       .single()
 
@@ -172,7 +201,7 @@ export async function DELETE(request: Request) {
     if (bulkIds) {
       // Bulk delete
       const ids = bulkIds.split(',')
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('tasks')
         .delete()
         .in('id', ids)
@@ -182,7 +211,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ message: `Deleted ${ids.length} tasks` })
     } else if (taskId) {
       // Single delete
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('tasks')
         .delete()
         .eq('id', taskId)

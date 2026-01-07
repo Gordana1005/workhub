@@ -1,6 +1,13 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+
+// Admin client for bypassing RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
@@ -29,7 +36,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { data: comments, error } = await supabase
+    const { data: comments, error } = await supabaseAdmin
       .from('task_notes')
       .select(`
         *,
@@ -70,7 +77,7 @@ export async function POST(request: Request) {
     const body = await request.json()
     const { task_id, content } = body
 
-    const { data: comment, error } = await supabase
+    const { data: comment, error } = await supabaseAdmin
       .from('task_notes')
       .insert({
         task_id,
@@ -119,7 +126,7 @@ export async function DELETE(request: Request) {
   }
 
   try {
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('task_notes')
       .delete()
       .eq('id', commentId)

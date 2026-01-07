@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
-// Create Supabase client for API routes
-async function createClient() {
+// Admin client for bypassing RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+// Create Supabase client for authentication
+async function createAuthClient() {
   const cookieStore = await cookies()
   
   return createServerClient(
@@ -27,7 +34,7 @@ async function createClient() {
 // GET /api/notifications - List notifications for current user
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const supabase = await createAuthClient()
     const searchParams = request.nextUrl.searchParams
     const unreadOnly = searchParams.get('unread_only') === 'true'
     const limit = parseInt(searchParams.get('limit') || '50')
@@ -41,8 +48,8 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Build query - use simpler select to avoid foreign key issues
-    let query = supabase
+    // Build query using admin client
+    let query = supabaseAdmin
       .from('notifications')
       .select('*')
       .eq('user_id', user.id)
@@ -81,7 +88,7 @@ export async function GET(request: NextRequest) {
 // PATCH /api/notifications - Mark notification(s) as read
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const supabase = await createAuthClient()
     const body = await request.json()
     const { id, ids, mark_all_read } = body
 
@@ -96,7 +103,7 @@ export async function PATCH(request: NextRequest) {
 
     // Mark all as read
     if (mark_all_read) {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('notifications')
         .update({ read: true })
         .eq('user_id', user.id)
@@ -115,7 +122,7 @@ export async function PATCH(request: NextRequest) {
 
     // Mark multiple as read
     if (ids && Array.isArray(ids)) {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('notifications')
         .update({ read: true })
         .in('id', ids)
@@ -134,7 +141,7 @@ export async function PATCH(request: NextRequest) {
 
     // Mark single as read
     if (id) {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('notifications')
         .update({ read: true })
         .eq('id', id)
@@ -167,7 +174,7 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/notifications - Delete notification(s)
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const supabase = await createAuthClient()
     const searchParams = request.nextUrl.searchParams
     const id = searchParams.get('id')
     const deleteAll = searchParams.get('delete_all') === 'true'
@@ -183,7 +190,7 @@ export async function DELETE(request: NextRequest) {
 
     // Delete all read notifications
     if (deleteAll) {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('notifications')
         .delete()
         .eq('user_id', user.id)
@@ -202,7 +209,7 @@ export async function DELETE(request: NextRequest) {
 
     // Delete single notification
     if (id) {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('notifications')
         .delete()
         .eq('id', id)
@@ -235,7 +242,7 @@ export async function DELETE(request: NextRequest) {
 // POST /api/notifications - Create notification (for manual triggers)
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    const supabase = await createAuthClient()
     const body = await request.json()
 
     const {
@@ -267,7 +274,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create notification
-    const { data: notification, error } = await supabase
+    const { data: notification, error } = await supabaseAdmin
       .from('notifications')
       .insert({
         user_id,

@@ -1,17 +1,25 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 
+// Admin client for bypassing RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
 export async function POST(request: Request) {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        }
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll() {}
       }
     }
   )
@@ -33,7 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { data: currentMember } = await supabase
+    const { data: currentMember } = await supabaseAdmin
       .from('workspace_members')
       .select('role')
       .eq('workspace_id', workspace_id)
@@ -48,7 +56,7 @@ export async function POST(request: Request) {
     }
 
     // Check if invitation already exists
-    const { data: existing } = await supabase
+    const { data: existing } = await supabaseAdmin
       .from('invitations')
       .select('id')
       .eq('workspace_id', workspace_id)
@@ -64,7 +72,7 @@ export async function POST(request: Request) {
     }
 
     // Create invitation
-    const { data: invitation, error } = await supabase
+    const { data: invitation, error } = await supabaseAdmin
       .from('invitations')
       .insert({
         workspace_id,
@@ -91,18 +99,24 @@ export async function POST(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        }
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll() {}
       }
     }
   )
+
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  if (userError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
   const { searchParams } = new URL(request.url)
   const workspace_id = searchParams.get('workspace_id')
@@ -112,7 +126,19 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { data: invitations, error } = await supabase
+    // Verify workspace access
+    const { data: membership } = await supabaseAdmin
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspace_id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!membership) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    const { data: invitations, error } = await supabaseAdmin
       .from('invitations')
       .select('*')
       .eq('workspace_id', workspace_id)

@@ -1,19 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
-// Create Supabase client for API routes
-function createClient() {
-  const cookieStore = cookies()
+// Admin client for bypassing RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+// Create Supabase client for authentication
+async function createAuthClient() {
+  const cookieStore = await cookies()
   
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
+        getAll() {
+          return cookieStore.getAll()
         },
+        setAll() {}
       },
     }
   )
@@ -22,9 +30,14 @@ function createClient() {
 // GET /api/templates - List all templates for a workspace
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createAuthClient()
     const searchParams = request.nextUrl.searchParams
     const workspaceId = searchParams.get('workspace_id')
+
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    if (userError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     if (!workspaceId) {
       return NextResponse.json(
@@ -33,7 +46,19 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const { data: templates, error } = await supabase
+    // Verify workspace access
+    const { data: membership } = await supabaseAdmin
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!membership) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    const { data: templates, error } = await supabaseAdmin
       .from('task_templates')
       .select('*, created_by_profile:profiles!task_templates_created_by_fkey(full_name, email)')
       .eq('workspace_id', workspaceId)
@@ -60,7 +85,7 @@ export async function GET(request: NextRequest) {
 // POST /api/templates - Create a new template
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createAuthClient()
     const body = await request.json()
 
     const {
@@ -88,8 +113,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Verify workspace access
+    const { data: membership } = await supabaseAdmin
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspace_id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (!membership) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
     // Create template
-    const { data: template, error } = await supabase
+    const { data: template, error } = await supabaseAdmin
       .from('task_templates')
       .insert({
         workspace_id,
@@ -123,7 +160,7 @@ export async function POST(request: NextRequest) {
 // PATCH /api/templates - Update a template
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createAuthClient()
     const body = await request.json()
 
     const {
@@ -151,7 +188,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Update template
-    const { data: template, error } = await supabase
+    const { data: template, error } = await supabaseAdmin
       .from('task_templates')
       .update({
         name,
@@ -185,7 +222,7 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/templates - Delete a template
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = await createAuthClient()
     const searchParams = request.nextUrl.searchParams
     const id = searchParams.get('id')
 
@@ -206,11 +243,11 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete template
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('task_templates')
       .delete()
       .eq('id', id)
-      .eq('created_by', user.id) // Only creator can delete (or admin via RLS)
+      .eq('created_by', user.id) // Only creator can delete
 
     if (error) {
       console.error('Error deleting template:', error)

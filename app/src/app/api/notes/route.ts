@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+
+// Admin client for bypassing RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function GET(request: Request) {
   try {
@@ -31,7 +38,21 @@ export async function GET(request: Request) {
     const projectId = searchParams.get('projectId');
     const workspaceId = searchParams.get('workspaceId');
 
-    let query = supabase
+    // Verify workspace access
+    if (workspaceId) {
+      const { data: membership } = await supabaseAdmin
+        .from('workspace_members')
+        .select('role')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', user.id)
+        .single();
+
+      if (!membership) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      }
+    }
+
+    let query = supabaseAdmin
       .from('notes')
       .select(`
         *,
@@ -43,7 +64,7 @@ export async function GET(request: Request) {
     if (projectId) {
       query = query.eq('project_id', projectId);
     } else if (workspaceId) {
-      query = query.eq('project.workspace_id', workspaceId);
+      query = query.eq('workspace_id', workspaceId);
     }
 
     const { data, error } = await query;
@@ -96,8 +117,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get workspace_id from project (required for RLS)
-    const { data: project, error: projectError } = await supabase
+    // Get workspace_id from project
+    const { data: project, error: projectError } = await supabaseAdmin
       .from('projects')
       .select('workspace_id')
       .eq('id', project_id)
@@ -108,8 +129,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 });
     }
 
+    // Verify workspace access
+    const { data: membership } = await supabaseAdmin
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', project.workspace_id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (!membership) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+    }
+
     // Insert the note with workspace_id
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('notes')
       .insert({
         project_id,
@@ -138,7 +171,7 @@ export async function POST(request: Request) {
             tagIds.push(tag.id);
           } else {
             // Create new tag
-            const { data: tagData, error: tagError } = await supabase
+            const { data: tagData, error: tagError } = await supabaseAdmin
               .from('tags')
               .upsert(
                 { 
@@ -169,7 +202,7 @@ export async function POST(request: Request) {
             tag_id: tagId
           }));
 
-          const { error: noteTagsError } = await supabase
+          const { error: noteTagsError } = await supabaseAdmin
             .from('note_tags')
             .insert(noteTagsData);
 
@@ -227,7 +260,7 @@ export async function PUT(request: Request) {
     }
 
     // Update the note
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('notes')
       .update({ title, content })
       .eq('id', id)
@@ -244,7 +277,7 @@ export async function PUT(request: Request) {
     if (tags && Array.isArray(tags)) {
       try {
         // First, delete existing note_tags
-        await supabase
+        await supabaseAdmin
           .from('note_tags')
           .delete()
           .eq('note_id', id);
@@ -255,7 +288,7 @@ export async function PUT(request: Request) {
           
           // Ensure all tags exist and get their IDs
           for (const tag of tags) {
-            const { data: tagData, error: tagError } = await supabase
+            const { data: tagData, error: tagError } = await supabaseAdmin
               .from('tags')
               .upsert(
                 { 
@@ -285,7 +318,7 @@ export async function PUT(request: Request) {
               tag_id: tagId
             }));
 
-            const { error: noteTagsError } = await supabase
+            const { error: noteTagsError } = await supabaseAdmin
               .from('note_tags')
               .insert(noteTagsData);
 
@@ -342,7 +375,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Note ID is required' }, { status: 400 });
     }
 
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('notes')
       .delete()
       .eq('id', id)
