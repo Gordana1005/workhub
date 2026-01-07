@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, Calendar, Users, CheckCircle, Circle, Clock, Target, TrendingUp, Plus, Filter, ArrowUpDown, Tag, X, UserPlus } from 'lucide-react'
+import { ArrowLeft, Calendar, Users, CheckCircle, Circle, Clock, Target, TrendingUp, Plus, Filter, ArrowUpDown, Tag, X, UserPlus, Edit2, Save, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import ProjectBudgetCard from '@/components/finance/ProjectBudgetCard'
 
@@ -17,6 +17,7 @@ interface Project {
   start_date: string | null
   end_date: string | null
   created_at: string
+  creator_id?: string
   creator?: { full_name: string }
 }
 
@@ -65,6 +66,17 @@ export default function ProjectDetailPage() {
   const [showAddMemberDialog, setShowAddMemberDialog] = useState(false)
   const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
 
+  // Project editing state
+  const [isEditingProject, setIsEditingProject] = useState(false)
+  const [editProjectData, setEditProjectData] = useState({
+    name: '',
+    description: '',
+    status: 'active',
+    start_date: '',
+    end_date: ''
+  })
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+
   // Filtering and sorting
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [selectedPriority, setSelectedPriority] = useState<string>('all')
@@ -93,6 +105,15 @@ export default function ProjectDetailPage() {
       loadProjectData()
     }
   }, [params.id, currentWorkspace])
+
+  // Get current user
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) setCurrentUserId(user.id)
+    }
+    getCurrentUser()
+  }, [])
 
   // Apply filtering and sorting when tasks or filters change
   useEffect(() => {
@@ -142,6 +163,15 @@ export default function ProjectDetailPage() {
 
       if (projectError) throw projectError
       setProject(projectData)
+
+      // Initialize edit form data
+      setEditProjectData({
+        name: projectData.name || '',
+        description: projectData.description || '',
+        status: projectData.status || 'active',
+        start_date: projectData.start_date || '',
+        end_date: projectData.end_date || ''
+      })
 
       // Load project tasks
       const { data: tasksData, error: tasksError } = await supabase
@@ -351,6 +381,48 @@ export default function ProjectDetailPage() {
     }
   }
 
+  const handleStartEditingProject = () => {
+    if (!project) return
+    setEditProjectData({
+      name: project.name || '',
+      description: project.description || '',
+      status: project.status || 'active',
+      start_date: project.start_date || '',
+      end_date: project.end_date || ''
+    })
+    setIsEditingProject(true)
+  }
+
+  const handleCancelEditingProject = () => {
+    setIsEditingProject(false)
+  }
+
+  const handleSaveProject = async () => {
+    if (!project || !currentWorkspace) return
+
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          name: editProjectData.name,
+          description: editProjectData.description || null,
+          status: editProjectData.status,
+          start_date: editProjectData.start_date || null,
+          end_date: editProjectData.end_date || null
+        })
+        .eq('id', project.id)
+        .eq('workspace_id', currentWorkspace.id)
+
+      if (error) throw error
+
+      setIsEditingProject(false)
+      loadProjectData()
+    } catch (error) {
+      console.error('Error updating project:', error)
+      alert(`Failed to update project: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
   const getPriorityColor = (priority: string) => {
     const colors = {
       urgent: 'bg-red-500/20 text-red-400 border-red-500/30',
@@ -417,16 +489,64 @@ export default function ProjectDetailPage() {
             Back to Projects
           </Button>
 
-          <div className="flex items-center gap-4 mb-4">
+          <div className="flex items-start gap-4 mb-4">
             <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg"
+              className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
               style={{ backgroundColor: project.color || '#667eea' }}
             >
               {project.name.charAt(0).toUpperCase()}
             </div>
-            <div>
-              <h1 className="text-4xl font-bold text-white">{project.name}</h1>
-              <p className="text-gray-400 text-lg">Project Details</p>
+            <div className="flex-1">
+              {isEditingProject ? (
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={editProjectData.name}
+                    onChange={(e) => setEditProjectData({ ...editProjectData, name: e.target.value })}
+                    className="w-full text-3xl font-bold bg-slate-800/50 text-white border border-slate-600 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Project name"
+                  />
+                  <textarea
+                    value={editProjectData.description}
+                    onChange={(e) => setEditProjectData({ ...editProjectData, description: e.target.value })}
+                    className="w-full bg-slate-800/50 text-gray-300 border border-slate-600 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-none"
+                    placeholder="Project description"
+                    rows={2}
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveProject}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg inline-flex items-center gap-2 text-sm font-medium"
+                    >
+                      <Save className="w-4 h-4" />
+                      Save Changes
+                    </button>
+                    <button
+                      onClick={handleCancelEditingProject}
+                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg inline-flex items-center gap-2 text-sm font-medium"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3">
+                    <h1 className="text-4xl font-bold text-white">{project.name}</h1>
+                    {currentUserId && project.creator_id === currentUserId && (
+                      <button
+                        onClick={handleStartEditingProject}
+                        className="p-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-colors"
+                        title="Edit project"
+                      >
+                        <Edit2 className="w-5 h-5" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-gray-400 text-lg mt-1">{project.description || 'No description'}</p>
+                </>
+              )}
             </div>
           </div>
 
@@ -677,14 +797,28 @@ export default function ProjectDetailPage() {
               <h2 className="text-xl font-semibold text-white mb-4">Project Info</h2>
               <div className="space-y-4">
                 <div>
-                  <p className="text-gray-400 text-sm">Status</p>
-                  <span className={`px-3 py-1 rounded-lg text-xs font-medium capitalize ${
-                    project.status === 'active' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                    project.status === 'completed' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                    'bg-gray-500/20 text-gray-400 border border-gray-500/30'
-                  }`}>
-                    {project.status}
-                  </span>
+                  <p className="text-gray-400 text-sm mb-1">Status</p>
+                  {isEditingProject ? (
+                    <select
+                      value={editProjectData.status}
+                      onChange={(e) => setEditProjectData({ ...editProjectData, status: e.target.value })}
+                      className="w-full bg-slate-800/50 text-white border border-slate-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    >
+                      <option value="active">Active</option>
+                      <option value="planning">Planning</option>
+                      <option value="on_hold">On Hold</option>
+                      <option value="completed">Completed</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  ) : (
+                    <span className={`inline-block px-3 py-1 rounded-lg text-xs font-medium capitalize ${
+                      project.status === 'active' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                      project.status === 'completed' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
+                      'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+                    }`}>
+                      {project.status.replace('_', ' ')}
+                    </span>
+                  )}
                 </div>
 
                 <div>
@@ -699,19 +833,33 @@ export default function ProjectDetailPage() {
                   </div>
                 )}
 
-                {project.start_date && (
-                  <div>
-                    <p className="text-gray-400 text-sm">Start Date</p>
-                    <p className="text-white">{new Date(project.start_date).toLocaleDateString()}</p>
-                  </div>
-                )}
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">Start Date</p>
+                  {isEditingProject ? (
+                    <input
+                      type="date"
+                      value={editProjectData.start_date}
+                      onChange={(e) => setEditProjectData({ ...editProjectData, start_date: e.target.value })}
+                      className="w-full bg-slate-800/50 text-white border border-slate-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  ) : (
+                    <p className="text-white">{project.start_date ? new Date(project.start_date).toLocaleDateString() : 'Not set'}</p>
+                  )}
+                </div>
 
-                {project.end_date && (
-                  <div>
-                    <p className="text-gray-400 text-sm">End Date</p>
-                    <p className="text-white">{new Date(project.end_date).toLocaleDateString()}</p>
-                  </div>
-                )}
+                <div>
+                  <p className="text-gray-400 text-sm mb-1">End Date</p>
+                  {isEditingProject ? (
+                    <input
+                      type="date"
+                      value={editProjectData.end_date}
+                      onChange={(e) => setEditProjectData({ ...editProjectData, end_date: e.target.value })}
+                      className="w-full bg-slate-800/50 text-white border border-slate-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  ) : (
+                    <p className="text-white">{project.end_date ? new Date(project.end_date).toLocaleDateString() : 'Not set'}</p>
+                  )}
+                </div>
               </div>
             </div>
 

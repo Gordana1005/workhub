@@ -103,17 +103,14 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
 
       if (error) throw error;
 
-      // Update the financials state immediately with the new values
-      if (financials) {
-        setFinancials({
-          ...financials,
-          budget: updateData.budget || financials.budget,
-          hourly_rate: updateData.hourly_rate || financials.hourly_rate,
-        });
-      }
-
-      // Close edit mode
+      // Close edit mode first
       setIsEditing(false);
+      
+      // Force state to null to trigger re-render
+      setFinancials(null);
+      
+      // Wait a moment for the view to update
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Reload financials from server to get calculated fields
       await loadFinancials();

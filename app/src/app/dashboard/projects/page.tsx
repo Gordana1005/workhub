@@ -361,24 +361,24 @@ export default function ProjectsPage() {
               onClick={() => router.push(`/dashboard/projects/${project.id}`)}
             >
               {/* Action buttons - fixed z-index and positioning */}
-              <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
-                {project.creator_id === currentUserId && (
-                  <button
-                    onClick={(e) => handleEditProject(project, e)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg text-blue-400 hover:text-blue-300"
-                    title="Edit project"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                )}
-                {project.creator_id === currentUserId && (
-                  <button
-                    onClick={(e) => handleDeleteProject(project.id, e)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 hover:text-red-300"
-                    title="Delete project"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+              <div className="absolute top-4 right-4 flex items-center gap-2" style={{ zIndex: 20 }}>
+                {currentUserId && project.creator_id === currentUserId && (
+                  <>
+                    <button
+                      onClick={(e) => handleEditProject(project, e)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg text-blue-400 hover:text-blue-300"
+                      title="Edit project"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => handleDeleteProject(project.id, e)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 hover:text-red-300"
+                      title="Delete project"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>
                 )}
               </div>
 

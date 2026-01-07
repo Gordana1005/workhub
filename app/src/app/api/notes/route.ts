@@ -115,32 +115,53 @@ export async function POST(request: Request) {
 
     // Handle tags if provided
     if (tags && Array.isArray(tags) && tags.length > 0 && data) {
-      // First, ensure all tags exist
-      for (const tag of tags) {
-        const { error: tagError } = await supabase
-          .from('tags')
-          .upsert(
-            { name: tag.name, workspace_id: tag.workspace_id, color: tag.color || '#667eea' },
-            { onConflict: 'workspace_id,name' }
-          );
+      try {
+        // First, ensure all tags exist and get their IDs
+        const tagIds: string[] = [];
         
-        if (tagError) {
-          console.error('Error creating tag:', tagError);
+        for (const tag of tags) {
+          // Upsert tag
+          const { data: tagData, error: tagError } = await supabase
+            .from('tags')
+            .upsert(
+              { 
+                name: tag.name, 
+                workspace_id: tag.workspace_id, 
+                color: tag.color || '#667eea' 
+              },
+              { onConflict: 'workspace_id,name' }
+            )
+            .select('id')
+            .single();
+          
+          if (tagError) {
+            console.error('Error creating tag:', tagError);
+            continue;
+          }
+
+          if (tagData?.id) {
+            tagIds.push(tagData.id);
+          }
         }
-      }
 
-      // Then create note_tags associations
-      const noteTagsData = tags.map(tag => ({
-        note_id: data.id,
-        tag_id: tag.id
-      }));
+        // Then create note_tags associations with the actual tag IDs
+        if (tagIds.length > 0) {
+          const noteTagsData = tagIds.map(tagId => ({
+            note_id: data.id,
+            tag_id: tagId
+          }));
 
-      const { error: noteTagsError } = await supabase
-        .from('note_tags')
-        .insert(noteTagsData);
+          const { error: noteTagsError } = await supabase
+            .from('note_tags')
+            .insert(noteTagsData);
 
-      if (noteTagsError) {
-        console.error('Error associating tags with note:', noteTagsError);
+          if (noteTagsError) {
+            console.error('Error associating tags with note:', noteTagsError);
+            // Don't fail the whole request if tags fail
+          }
+        }
+      } catch (tagError) {
+        console.error('Error handling tags:', tagError);
         // Don't fail the whole request if tags fail
       }
     }
@@ -203,41 +224,61 @@ export async function PUT(request: Request) {
 
     // Handle tags if provided
     if (tags && Array.isArray(tags)) {
-      // First, delete existing note_tags
-      await supabase
-        .from('note_tags')
-        .delete()
-        .eq('note_id', id);
+      try {
+        // First, delete existing note_tags
+        await supabase
+          .from('note_tags')
+          .delete()
+          .eq('note_id', id);
 
-      // Then create new associations
-      if (tags.length > 0) {
-        // Ensure all tags exist
-        for (const tag of tags) {
-          const { error: tagError } = await supabase
-            .from('tags')
-            .upsert(
-              { name: tag.name, workspace_id: tag.workspace_id, color: tag.color || '#667eea' },
-              { onConflict: 'workspace_id,name' }
-            );
+        // Then create new associations if there are tags
+        if (tags.length > 0) {
+          const tagIds: string[] = [];
           
-          if (tagError) {
-            console.error('Error creating tag:', tagError);
+          // Ensure all tags exist and get their IDs
+          for (const tag of tags) {
+            const { data: tagData, error: tagError } = await supabase
+              .from('tags')
+              .upsert(
+                { 
+                  name: tag.name, 
+                  workspace_id: tag.workspace_id, 
+                  color: tag.color || '#667eea' 
+                },
+                { onConflict: 'workspace_id,name' }
+              )
+              .select('id')
+              .single();
+            
+            if (tagError) {
+              console.error('Error creating tag:', tagError);
+              continue;
+            }
+
+            if (tagData?.id) {
+              tagIds.push(tagData.id);
+            }
+          }
+
+          // Create note_tags associations with the actual tag IDs
+          if (tagIds.length > 0) {
+            const noteTagsData = tagIds.map(tagId => ({
+              note_id: id,
+              tag_id: tagId
+            }));
+
+            const { error: noteTagsError } = await supabase
+              .from('note_tags')
+              .insert(noteTagsData);
+
+            if (noteTagsError) {
+              console.error('Error associating tags with note:', noteTagsError);
+            }
           }
         }
-
-        // Create note_tags associations
-        const noteTagsData = tags.map(tag => ({
-          note_id: id,
-          tag_id: tag.id
-        }));
-
-        const { error: noteTagsError } = await supabase
-          .from('note_tags')
-          .insert(noteTagsData);
-
-        if (noteTagsError) {
-          console.error('Error associating tags with note:', noteTagsError);
-        }
+      } catch (tagError) {
+        console.error('Error handling tags:', tagError);
+        // Don't fail the whole request if tags fail
       }
     }
 
