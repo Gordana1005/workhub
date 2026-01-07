@@ -96,11 +96,24 @@ export async function POST(request: Request) {
       );
     }
 
-    // Insert the note
+    // Get workspace_id from project (required for RLS)
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('workspace_id')
+      .eq('id', project_id)
+      .single();
+
+    if (projectError || !project) {
+      console.error('Error fetching project:', projectError);
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    }
+
+    // Insert the note with workspace_id
     const { data, error } = await supabase
       .from('notes')
       .insert({
         project_id,
+        workspace_id: project.workspace_id,
         author_id: user.id,
         title,
         content: content || '',

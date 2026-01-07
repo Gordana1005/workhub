@@ -153,24 +153,35 @@ export default function ProjectDetailPage() {
       // Load project details
       const { data: projectData, error: projectError } = await supabase
         .from('projects')
-        .select(`
-          *,
-          creator:profiles(full_name)
-        `)
+        .select('*')
         .eq('id', params.id)
         .eq('workspace_id', currentWorkspace.id)
         .single()
 
       if (projectError) throw projectError
+
+      // Load creator info separately
+      if (projectData.creator_id) {
+        const { data: creatorData } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', projectData.creator_id)
+          .single()
+        
+        if (creatorData) {
+          projectData.creator = creatorData
+        }
+      }
+
       setProject(projectData)
 
-      // Initialize edit form data
+      // Initialize edit form data with properly formatted dates
       setEditProjectData({
         name: projectData.name || '',
         description: projectData.description || '',
         status: projectData.status || 'active',
-        start_date: projectData.start_date || '',
-        end_date: projectData.end_date || ''
+        start_date: projectData.start_date ? projectData.start_date.split('T')[0] : '',
+        end_date: projectData.end_date ? projectData.end_date.split('T')[0] : ''
       })
 
       // Load project tasks
@@ -401,22 +412,38 @@ export default function ProjectDetailPage() {
     if (!project || !currentWorkspace) return
 
     try {
+      // Format dates properly (YYYY-MM-DD only, no time)
+      const updateData: any = {
+        name: editProjectData.name,
+        description: editProjectData.description || null,
+        status: editProjectData.status
+      }
+
+      if (editProjectData.start_date) {
+        updateData.start_date = editProjectData.start_date.split('T')[0]
+      } else {
+        updateData.start_date = null
+      }
+
+      if (editProjectData.end_date) {
+        updateData.end_date = editProjectData.end_date.split('T')[0]
+      } else {
+        updateData.end_date = null
+      }
+
+      console.log('Updating project with:', updateData)
+
       const { error } = await supabase
         .from('projects')
-        .update({
-          name: editProjectData.name,
-          description: editProjectData.description || null,
-          status: editProjectData.status,
-          start_date: editProjectData.start_date || null,
-          end_date: editProjectData.end_date || null
-        })
+        .update(updateData)
         .eq('id', project.id)
         .eq('workspace_id', currentWorkspace.id)
 
       if (error) throw error
 
       setIsEditingProject(false)
-      loadProjectData()
+      await loadProjectData()
+      alert('Project updated successfully!')
     } catch (error) {
       console.error('Error updating project:', error)
       alert(`Failed to update project: ${error instanceof Error ? error.message : 'Unknown error'}`)

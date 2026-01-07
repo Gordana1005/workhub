@@ -30,6 +30,7 @@ export default function ProjectsPage() {
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editingProject, setEditingProject] = useState<Project | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [userLoading, setUserLoading] = useState(true)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   
   // Form state
@@ -47,6 +48,7 @@ export default function ProjectsPage() {
     const getCurrentUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) setCurrentUserId(user.id)
+      setUserLoading(false)
     }
     getCurrentUser()
   }, [])
@@ -333,7 +335,7 @@ export default function ProjectsPage() {
       </div>
 
       {/* Projects Grid/List */}
-      {loading ? (
+      {loading || userLoading ? (
         <div className="text-center py-12">
           <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
         </div>

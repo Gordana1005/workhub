@@ -69,12 +69,17 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
       .eq('project_id', projectId)
       .single();
 
+    console.log('Loaded financials:', data);
+
     if (data) {
       setFinancials(data);
-      setBudgetForm({
+      // Always update form with latest values
+      const newBudgetForm = {
         budget: data.budget?.toString() || '',
         hourly_rate: data.hourly_rate?.toString() || '',
-      });
+      };
+      console.log('Setting budget form to:', newBudgetForm);
+      setBudgetForm(newBudgetForm);
     }
     setLoading(false);
   };
@@ -103,17 +108,14 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
 
       if (error) throw error;
 
-      // Close edit mode first
-      setIsEditing(false);
+      // Wait for database view to refresh
+      await new Promise(resolve => setTimeout(resolve, 800));
       
-      // Force state to null to trigger re-render
-      setFinancials(null);
-      
-      // Wait a moment for the view to update
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Reload financials from server to get calculated fields
+      // Reload financials from server
       await loadFinancials();
+      
+      // Close edit mode after data is loaded
+      setIsEditing(false);
       
       alert('Budget saved successfully!');
     } catch (error: any) {
