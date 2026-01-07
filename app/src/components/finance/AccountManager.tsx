@@ -170,6 +170,7 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
                   <option value="IDR">IDR - Indonesian Rupiah</option>
                   <option value="AED">AED - UAE Dirham</option>
                   <option value="SAR">SAR - Saudi Riyal</option>
+                  <option value="MKD">MKD - Macedonian Denar</option>
                 </select>
               </div>
 

@@ -81,21 +81,34 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
 
   const handleSaveBudget = async () => {
     try {
-      const { error } = await supabase
+      console.log('Saving budget:', budgetForm, 'for project:', projectId);
+      
+      const updateData: any = {};
+      if (budgetForm.budget) {
+        updateData.budget = parseFloat(budgetForm.budget);
+      }
+      if (budgetForm.hourly_rate) {
+        updateData.hourly_rate = parseFloat(budgetForm.hourly_rate);
+      }
+
+      console.log('Update data:', updateData);
+
+      const { data, error } = await supabase
         .from('projects')
-        .update({
-          budget: budgetForm.budget ? parseFloat(budgetForm.budget) : null,
-          hourly_rate: budgetForm.hourly_rate ? parseFloat(budgetForm.hourly_rate) : null,
-        })
-        .eq('id', projectId);
+        .update(updateData)
+        .eq('id', projectId)
+        .select();
+
+      console.log('Update result:', { data, error });
 
       if (error) throw error;
 
+      alert('Budget saved successfully!');
       setIsEditing(false);
       await loadFinancials();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to save budget:', error);
-      alert('Failed to save budget');
+      alert(`Failed to save budget: ${error.message || 'Unknown error'}`);
     }
   };
 
