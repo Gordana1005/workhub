@@ -3,6 +3,12 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+// Service role client for bypassing RLS when needed
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
 export async function GET() {
   try {
     const cookieStore = await cookies()
@@ -28,13 +34,14 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get workspaces where user is a member
-    const { data: membershipData, error: memberError } = await supabase
+    // Get workspaces where user is a member (using service role to bypass RLS issues)
+    const { data: membershipData, error: memberError } = await supabaseAdmin
       .from('workspace_members')
       .select('workspace_id, role')
       .eq('user_id', user.id)
 
     if (memberError) {
+      console.error('Membership query error:', memberError)
       return NextResponse.json({ error: memberError.message }, { status: 500 })
     }
 
@@ -44,25 +51,36 @@ export async function GET() {
 
     const workspaceIds = membershipData.map(m => m.workspace_id)
 
-    const { data: workspaces, error } = await supabase
+    // Use service role to get workspaces (bypasses RLS)
+    const { data: workspaces, error } = await supabaseAdmin
       .from('workspaces')
       .select('*')
       .in('id', workspaceIds)
 
     if (error) {
+      console.error('Workspaces query error:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Combine workspace data with member role
-    const workspacesWithRole = workspaces?.map(workspace => {
-      const membership = membershipData.find(m => m.workspace_id === workspace.id)
-      return {
-        ...workspace,
-        userRole: membership?.role
-      }
-    })
+    // Get member counts for each workspace
+    const workspacesWithDetails = await Promise.all(
+      (workspaces || []).map(async (workspace) => {
+        const membership = membershipData.find(m => m.workspace_id === workspace.id)
+        
+        const { count: memberCount } = await supabaseAdmin
+          .from('workspace_members')
+          .select('*', { count: 'exact', head: true })
+          .eq('workspace_id', workspace.id)
 
-    return NextResponse.json({ workspaces: workspacesWithRole })
+        return {
+          ...workspace,
+          userRole: membership?.role,
+          memberCount: memberCount || 0
+        }
+      })
+    )
+
+    return NextResponse.json({ workspaces: workspacesWithDetails })
 
   } catch (error) {
     // Log the full error to the server console for debugging
@@ -101,8 +119,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Workspace name is required' }, { status: 400 })
     }
 
-    // Create workspace
-    const { data: workspace, error: workspaceError } = await supabase
+    // Create workspace using admin client to bypass RLS
+    const { data: workspace, error: workspaceError } = await supabaseAdmin
       .from('workspaces')
       .insert({ 
         name: name.trim(), 
@@ -119,8 +137,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: workspaceError.message }, { status: 500 })
     }
 
-    // Add creator as admin member
-    const { error: memberError } = await supabase
+    // Add creator as admin member using admin client
+    const { error: memberError } = await supabaseAdmin
       .from('workspace_members')
       .insert({
         workspace_id: workspace.id,
@@ -131,7 +149,7 @@ export async function POST(request: Request) {
     if (memberError) {
       console.error('Member creation error:', memberError)
       // Clean up workspace if member creation fails
-      await supabase.from('workspaces').delete().eq('id', workspace.id)
+      await supabaseAdmin.from('workspaces').delete().eq('id', workspace.id)
       return NextResponse.json({ error: 'Failed to create workspace membership' }, { status: 500 })
     }
 

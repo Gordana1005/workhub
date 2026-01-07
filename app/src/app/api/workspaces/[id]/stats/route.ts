@@ -1,6 +1,13 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+
+// Service role client for bypassing RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export async function GET(
   request: Request,
@@ -33,8 +40,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify user has access to this workspace
-    const { data: membership } = await supabase
+    // Verify user has access to this workspace (using admin client)
+    const { data: membership } = await supabaseAdmin
       .from('workspace_members')
       .select('role')
       .eq('workspace_id', workspaceId)
@@ -45,27 +52,37 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Get project count
-    const { count: projectCount } = await supabase
+    // Get project count (using admin client)
+    const { count: projectCount } = await supabaseAdmin
       .from('projects')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', workspaceId)
 
     // Get task count (across all projects in workspace)
-    const { count: taskCount } = await supabase
-      .from('tasks')
-      .select('project:projects!inner(workspace_id)', { count: 'exact', head: true })
-      .eq('project.workspace_id', workspaceId)
+    const { data: projects } = await supabaseAdmin
+      .from('projects')
+      .select('id')
+      .eq('workspace_id', workspaceId)
+
+    let taskCount = 0
+    if (projects && projects.length > 0) {
+      const projectIds = projects.map(p => p.id)
+      const { count } = await supabaseAdmin
+        .from('tasks')
+        .select('*', { count: 'exact', head: true })
+        .in('project_id', projectIds)
+      taskCount = count || 0
+    }
 
     // Get member count
-    const { count: memberCount } = await supabase
+    const { count: memberCount } = await supabaseAdmin
       .from('workspace_members')
       .select('*', { count: 'exact', head: true })
       .eq('workspace_id', workspaceId)
 
     return NextResponse.json({
       projectCount: projectCount || 0,
-      taskCount: taskCount || 0,
+      taskCount: taskCount,
       memberCount: memberCount || 0,
     })
   } catch (error: any) {

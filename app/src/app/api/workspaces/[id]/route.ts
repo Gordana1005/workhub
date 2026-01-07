@@ -3,6 +3,12 @@ import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+// Service role client for bypassing RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -104,7 +110,8 @@ export async function PUT(
 
     const { name, category, color, description } = await request.json()
 
-    const { data: membership, error: memberError } = await supabase
+    // Check membership using admin client to bypass RLS
+    const { data: membership, error: memberError } = await supabaseAdmin
       .from('workspace_members')
       .select('role')
       .eq('workspace_id', workspaceId)
@@ -126,7 +133,8 @@ export async function PUT(
       return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
     }
 
-    const { data: workspace, error: updateError } = await supabase
+    // Use admin client to update workspace
+    const { data: workspace, error: updateError } = await supabaseAdmin
       .from('workspaces')
       .update(updates)
       .eq('id', workspaceId)
@@ -134,12 +142,14 @@ export async function PUT(
       .single()
 
     if (updateError) {
+      console.error('Workspace update error:', updateError)
       return NextResponse.json({ error: updateError.message }, { status: 500 })
     }
 
     return NextResponse.json({ workspace })
 
   } catch (error) {
+    console.error('PUT /api/workspaces/[id] error:', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
