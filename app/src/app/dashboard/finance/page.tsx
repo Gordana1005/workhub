@@ -1,11 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, Wallet, Plus } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Wallet, Plus, Upload } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
+import AccountManager from '@/components/finance/AccountManager';
+import QuickAddTransaction from '@/components/finance/QuickAddTransaction';
+import ImportTransactions from '@/components/finance/ImportTransactions';
 
 interface Account {
   id: string;
@@ -43,6 +46,9 @@ export default function FinancePage() {
     netIncome: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const { currentWorkspace } = useWorkspaceStore();
 
   useEffect(() => {
@@ -135,13 +141,22 @@ export default function FinancePage() {
           <p className="text-slate-400">Track income, expenses, and financial goals</p>
         </div>
         
-        <button
-          onClick={() => {/* TODO: Open add transaction modal */}}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          Add Transaction
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={() => setShowImportModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"
+          >
+            <Upload className="w-5 h-5" />
+            Import CSV
+          </button>
+          <button
+            onClick={() => setShowTransactionModal(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
+          >
+            <Plus className="w-5 h-5" />
+            Add Transaction
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -248,14 +263,17 @@ export default function FinancePage() {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-white">Accounts</h3>
-          <button className="text-sm text-blue-500 hover:text-blue-400">
-            Manage Accounts
+          <button 
+            onClick={() => setShowAccountModal(true)}
+            className="text-sm text-blue-500 hover:text-blue-400"
+          >
+            + Add Account
           </button>
         </div>
         {accounts.length > 0 ? (
           <div className="grid grid-cols-4 gap-4">
             {accounts.map(account => (
-              <div key={account.id} className="bg-slate-800 rounded-xl p-4">
+              <div key={account.id} className="bg-slate-800 rounded-xl p-4 hover:bg-slate-700 transition-colors cursor-pointer">
                 <div className="text-sm text-slate-400 mb-1">{account.name}</div>
                 <div className="text-2xl font-bold text-white mb-1">
                   ${parseFloat(account.current_balance.toString()).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -267,12 +285,56 @@ export default function FinancePage() {
         ) : (
           <div className="text-center py-8">
             <p className="text-slate-500 mb-4">No accounts yet</p>
-            <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors">
+            <button 
+              onClick={() => setShowAccountModal(true)}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+            >
               Create Your First Account
             </button>
           </div>
         )}
       </div>
+
+      {/* Modals */}
+      {showAccountModal && (
+        <AccountManager
+          onClose={() => setShowAccountModal(false)}
+          onSave={() => {
+            setShowAccountModal(false);
+            loadFinanceData();
+          }}
+        />
+      )}
+
+      {showTransactionModal && accounts.length > 0 && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6">
+            <QuickAddTransaction
+              accountId={accounts[0].id}
+              onAdd={() => {
+                setShowTransactionModal(false);
+                loadFinanceData();
+              }}
+            />
+            <button
+              onClick={() => setShowTransactionModal(false)}
+              className="mt-4 w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showImportModal && accounts.length > 0 && (
+        <ImportTransactions
+          accountId={accounts[0].id}
+          onImport={() => {
+            loadFinanceData();
+          }}
+          onClose={() => setShowImportModal(false)}
+        />
+      )}
     </div>
   );
 }

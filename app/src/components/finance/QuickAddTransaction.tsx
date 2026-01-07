@@ -110,19 +110,15 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
 
   if (accounts.length === 0) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="text-center py-8">
-          <p className="text-slate-400 mb-4">You need to create an account first</p>
-          <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-            Create Account
-          </button>
-        </div>
+      <div className="text-center py-8">
+        <p className="text-slate-400 mb-4">You need to create an account first</p>
+        <p className="text-sm text-slate-500">Close this dialog and create an account to start tracking transactions</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+    <div>
       <div className="flex items-center gap-2 mb-4">
         <Sparkles className="w-5 h-5 text-blue-500" />
         <h3 className="text-lg font-semibold text-white">Quick Add with AI</h3>

@@ -1,0 +1,207 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { X, Plus } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
+
+interface Account {
+  id?: string;
+  name: string;
+  type: 'bank' | 'cash' | 'credit_card' | 'investment' | 'crypto';
+  currency: string;
+  initial_balance: number;
+  current_balance?: number;
+  is_active: boolean;
+}
+
+interface AccountManagerProps {
+  account?: Account;
+  onClose: () => void;
+  onSave: () => void;
+}
+
+export default function AccountManager({ account, onClose, onSave }: AccountManagerProps) {
+  const [formData, setFormData] = useState<Account>({
+    name: '',
+    type: 'bank',
+    currency: 'USD',
+    initial_balance: 0,
+    is_active: true,
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const { currentWorkspace } = useWorkspaceStore();
+
+  useEffect(() => {
+    if (account) {
+      setFormData(account);
+    }
+  }, [account]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentWorkspace?.id) return;
+
+    setIsSaving(true);
+
+    try {
+      if (account?.id) {
+        // Update existing account
+        const { error } = await supabase
+          .from('finance_accounts')
+          .update({
+            name: formData.name,
+            type: formData.type,
+            is_active: formData.is_active,
+          })
+          .eq('id', account.id);
+
+        if (error) throw error;
+      } else {
+        // Create new account
+        const { error } = await supabase
+          .from('finance_accounts')
+          .insert({
+            workspace_id: currentWorkspace.id,
+            name: formData.name,
+            type: formData.type,
+            currency: formData.currency,
+            initial_balance: formData.initial_balance,
+            current_balance: formData.initial_balance,
+            is_active: formData.is_active,
+          });
+
+        if (error) throw error;
+      }
+
+      onSave();
+      onClose();
+    } catch (error) {
+      console.error('Failed to save account:', error);
+      alert('Failed to save account. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full">
+        <div className="flex items-center justify-between p-6 border-b border-slate-800">
+          <h2 className="text-xl font-bold text-white">
+            {account ? 'Edit Account' : 'Create Account'}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">
+              Account Name *
+            </label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              placeholder="e.g., Main Checking, Savings, Cash Wallet"
+              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm text-slate-400 mb-2">
+              Account Type *
+            </label>
+            <select
+              value={formData.type}
+              onChange={(e) => setFormData({ ...formData, type: e.target.value as Account['type'] })}
+              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              required
+            >
+              <option value="bank">Bank Account</option>
+              <option value="cash">Cash</option>
+              <option value="credit_card">Credit Card</option>
+              <option value="investment">Investment</option>
+              <option value="crypto">Cryptocurrency</option>
+            </select>
+          </div>
+
+          {!account && (
+            <>
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">
+                  Currency
+                </label>
+                <select
+                  value={formData.currency}
+                  onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                >
+                  <option value="USD">USD - US Dollar</option>
+                  <option value="EUR">EUR - Euro</option>
+                  <option value="GBP">GBP - British Pound</option>
+                  <option value="JPY">JPY - Japanese Yen</option>
+                  <option value="CAD">CAD - Canadian Dollar</option>
+                  <option value="AUD">AUD - Australian Dollar</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm text-slate-400 mb-2">
+                  Initial Balance
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={formData.initial_balance}
+                  onChange={(e) => setFormData({ ...formData, initial_balance: parseFloat(e.target.value) || 0 })}
+                  placeholder="0.00"
+                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                />
+                <p className="text-xs text-slate-500 mt-1">
+                  The current balance when you start tracking
+                </p>
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="is_active"
+              checked={formData.is_active}
+              onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+              className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="is_active" className="text-sm text-slate-300">
+              Active account
+            </label>
+          </div>
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+            >
+              {isSaving ? 'Saving...' : account ? 'Update' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
