@@ -103,9 +103,22 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
 
       if (error) throw error;
 
-      alert('Budget saved successfully!');
+      // Update the financials state immediately with the new values
+      if (financials) {
+        setFinancials({
+          ...financials,
+          budget: updateData.budget || financials.budget,
+          hourly_rate: updateData.hourly_rate || financials.hourly_rate,
+        });
+      }
+
+      // Close edit mode
       setIsEditing(false);
+      
+      // Reload financials from server to get calculated fields
       await loadFinancials();
+      
+      alert('Budget saved successfully!');
     } catch (error: any) {
       console.error('Failed to save budget:', error);
       alert(`Failed to save budget: ${error.message || 'Unknown error'}`);

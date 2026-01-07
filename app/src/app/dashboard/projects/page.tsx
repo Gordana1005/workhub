@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, Grid, List, Calendar, X } from 'lucide-react'
+import { Plus, Search, Grid, List, Calendar, X, Edit2, Trash2, Upload, Image as ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
 interface Project {
@@ -16,6 +16,8 @@ interface Project {
   start_date: string | null
   end_date: string | null
   created_at: string
+  creator_id: string
+  logo_url: string | null
 }
 
 export default function ProjectsPage() {
@@ -26,6 +28,9 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
+  const [editingProject, setEditingProject] = useState<Project | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   
   // Form state
   const [formData, setFormData] = useState({
@@ -34,8 +39,17 @@ export default function ProjectsPage() {
     color: '#667eea',
     status: 'active',
     start_date: '',
-    end_date: ''
+    end_date: '',
+    logo_file: null as File | null
   })
+
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) setCurrentUserId(user.id)
+    }
+    getCurrentUser()
+  }, [])
 
   const loadProjects = useCallback(async () => {
     if (!currentWorkspace) return
@@ -89,18 +103,47 @@ export default function ProjectsPage() {
         return
       }
 
+      let logo_url = null
+
+      // Upload logo if provided
+      if (formData.logo_file) {
+        setUploadingLogo(true)
+        const fileExt = formData.logo_file.name.split('.').pop()
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`
+        const filePath = `project-logos/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('project-assets')
+          .upload(filePath, formData.logo_file)
+
+        if (uploadError) throw uploadError
+
+        const { data: urlData } = supabase.storage
+          .from('project-assets')
+          .getPublicUrl(filePath)
+
+        logo_url = urlData.publicUrl
+        setUploadingLogo(false)
+      }
+
+      const projectData: any = {
+        workspace_id: currentWorkspace.id,
+        creator_id: user.id,
+        name: formData.name,
+        description: formData.description || null,
+        color: formData.color,
+        status: formData.status,
+        start_date: formData.start_date || null,
+        end_date: formData.end_date || null
+      }
+
+      if (logo_url) {
+        projectData.logo_url = logo_url
+      }
+
       const { error } = await supabase
         .from('projects')
-        .insert({
-          workspace_id: currentWorkspace.id,
-          creator_id: user.id,
-          name: formData.name,
-          description: formData.description || null,
-          color: formData.color,
-          status: formData.status,
-          start_date: formData.start_date || null,
-          end_date: formData.end_date || null
-        })
+        .insert(projectData)
 
       if (error) throw error
 
@@ -111,13 +154,104 @@ export default function ProjectsPage() {
         color: '#667eea',
         status: 'active',
         start_date: '',
-        end_date: ''
+        end_date: '',
+        logo_file: null
       })
       setShowCreateDialog(false)
       loadProjects()
     } catch (error) {
       console.error('Error creating project:', error)
       alert(`Failed to create project: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setUploadingLogo(false)
+    }
+  }
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!editingProject) return
+
+    try {
+      let logo_url = editingProject.logo_url
+
+      // Upload new logo if provided
+      if (formData.logo_file) {
+        setUploadingLogo(true)
+        const fileExt = formData.logo_file.name.split('.').pop()
+        const fileName = `${editingProject.id}-${Date.now()}.${fileExt}`
+        const filePath = `project-logos/${fileName}`
+
+        const { error: uploadError } = await supabase.storage
+          .from('project-assets')
+          .upload(filePath, formData.logo_file)
+
+        if (uploadError) throw uploadError
+
+        const { data: urlData } = supabase.storage
+          .from('project-assets')
+          .getPublicUrl(filePath)
+
+        logo_url = urlData.publicUrl
+        setUploadingLogo(false)
+      }
+
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          name: formData.name,
+          description: formData.description || null,
+          color: formData.color,
+          status: formData.status,
+          start_date: formData.start_date || null,
+          end_date: formData.end_date || null,
+          logo_url: logo_url
+        })
+        .eq('id', editingProject.id)
+
+      if (error) throw error
+
+      // Reset form and reload
+      setFormData({
+        name: '',
+        description: '',
+        color: '#667eea',
+        status: 'active',
+        start_date: '',
+        end_date: '',
+        logo_file: null
+      })
+      setEditingProject(null)
+      loadProjects()
+    } catch (error) {
+      console.error('Error updating project:', error)
+      alert(`Failed to update project: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setUploadingLogo(false)
+    }
+  }
+
+  const handleEditProject = (project: Project, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditingProject(project)
+    setFormData({
+      name: project.name,
+      description: project.description || '',
+      color: project.color || '#667eea',
+      status: project.status,
+      start_date: project.start_date || '',
+      end_date: project.end_date || '',
+      logo_file: null
+    })
+  }
+
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      // Check file size (3MB max)
+      if (file.size > 3 * 1024 * 1024) {
+        alert('File size must be less than 3MB')
+        return
+      }
+      setFormData({ ...formData, logo_file: file })
     }
   }
 
@@ -226,21 +360,44 @@ export default function ProjectsPage() {
               className="bg-slate-800 border border-slate-700 rounded-xl p-6 hover:border-blue-500 transition-all cursor-pointer group relative"
               onClick={() => router.push(`/dashboard/projects/${project.id}`)}
             >
-              {/* Delete button */}
-              <button
-                onClick={(e) => handleDeleteProject(project.id, e)}
-                className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 hover:text-red-300"
-                title="Delete project"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              {/* Action buttons - fixed z-index and positioning */}
+              <div className="absolute top-4 right-4 flex items-center gap-2 z-10">
+                {project.creator_id === currentUserId && (
+                  <button
+                    onClick={(e) => handleEditProject(project, e)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg text-blue-400 hover:text-blue-300"
+                    title="Edit project"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                )}
+                {project.creator_id === currentUserId && (
+                  <button
+                    onClick={(e) => handleDeleteProject(project.id, e)}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 hover:text-red-300"
+                    title="Delete project"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
 
               <div className="flex items-start justify-between mb-4">
-                <div
-                  className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-xl"
-                  style={{ backgroundColor: project.color || '#667eea' }}
-                >
-                  {project.name.charAt(0).toUpperCase()}
+                <div className="flex items-center gap-3">
+                  {project.logo_url ? (
+                    <img
+                      src={project.logo_url}
+                      alt={project.name}
+                      className="w-12 h-12 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-xl"
+                      style={{ backgroundColor: project.color || '#667eea' }}
+                    >
+                      {project.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                 </div>
                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                   project.status === 'active' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
@@ -276,21 +433,35 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      {/* Create Project Dialog */}
-      {showCreateDialog && (
+      {/* Create/Edit Project Dialog */}
+      {(showCreateDialog || editingProject) && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-white">Create New Project</h2>
+              <h2 className="text-2xl font-bold text-white">
+                {editingProject ? 'Edit Project' : 'Create New Project'}
+              </h2>
               <button
-                onClick={() => setShowCreateDialog(false)}
+                onClick={() => {
+                  setShowCreateDialog(false)
+                  setEditingProject(null)
+                  setFormData({
+                    name: '',
+                    description: '',
+                    color: '#667eea',
+                    status: 'active',
+                    start_date: '',
+                    end_date: '',
+                    logo_file: null
+                  })
+                }}
                 className="text-gray-400 hover:text-white transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
             
-            <form onSubmit={handleCreateProject} className="space-y-4">
+            <form onSubmit={editingProject ? handleUpdateProject : handleCreateProject} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Project Name *</label>
                 <input
@@ -312,6 +483,47 @@ export default function ProjectsPage() {
                   className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter project description..."
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Project Logo (Max 3MB)
+                </label>
+                <div className="flex items-center gap-4">
+                  {formData.logo_file && (
+                    <div className="relative w-16 h-16 rounded-lg overflow-hidden">
+                      <img
+                        src={URL.createObjectURL(formData.logo_file)}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  {editingProject?.logo_url && !formData.logo_file && (
+                    <div className="relative w-16 h-16 rounded-lg overflow-hidden">
+                      <img
+                        src={editingProject.logo_url}
+                        alt="Current logo"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <label className="flex-1 cursor-pointer">
+                    <div className="flex items-center gap-2 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-gray-400 hover:text-white hover:border-blue-500 transition-all">
+                      <Upload className="w-5 h-5" />
+                      <span>{formData.logo_file ? formData.logo_file.name : 'Choose logo image...'}</span>
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLogoChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Recommended: Square image, PNG or JPG, max 3MB
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -373,16 +585,29 @@ export default function ProjectsPage() {
               <div className="flex gap-3 pt-4">
                 <Button
                   type="button"
-                  onClick={() => setShowCreateDialog(false)}
+                  onClick={() => {
+                    setShowCreateDialog(false)
+                    setEditingProject(null)
+                    setFormData({
+                      name: '',
+                      description: '',
+                      color: '#667eea',
+                      status: 'active',
+                      start_date: '',
+                      end_date: '',
+                      logo_file: null
+                    })
+                  }}
                   className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+                  disabled={uploadingLogo}
+                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50"
                 >
-                  Create Project
+                  {uploadingLogo ? 'Uploading...' : editingProject ? 'Update Project' : 'Create Project'}
                 </Button>
               </div>
             </form>
