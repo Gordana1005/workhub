@@ -361,14 +361,12 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
                   Budget Requests
                 </h4>
                 <div className="flex gap-2">
-                  {!isOwner && (
-                    <button
-                      onClick={() => setShowRequestForm(true)}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
-                    >
-                      Request Budget
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setShowRequestForm(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
+                  >
+                    Request Budget
+                  </button>
                   <button
                     onClick={() => setShowRequestsList(!showRequestsList)}
                     className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm transition-colors"

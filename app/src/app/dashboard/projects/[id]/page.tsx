@@ -561,7 +561,7 @@ export default function ProjectDetailPage() {
                 <>
                   <div className="flex items-center gap-3">
                     <h1 className="text-4xl font-bold text-white">{project.name}</h1>
-                    {currentUserId && project.creator_id === currentUserId && (
+                    {currentUserId && (
                       <button
                         onClick={handleStartEditingProject}
                         className="p-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-colors"
