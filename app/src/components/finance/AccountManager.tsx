@@ -147,8 +147,29 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
                   <option value="EUR">EUR - Euro</option>
                   <option value="GBP">GBP - British Pound</option>
                   <option value="JPY">JPY - Japanese Yen</option>
+                  <option value="CNY">CNY - Chinese Yuan</option>
+                  <option value="CHF">CHF - Swiss Franc</option>
                   <option value="CAD">CAD - Canadian Dollar</option>
                   <option value="AUD">AUD - Australian Dollar</option>
+                  <option value="NZD">NZD - New Zealand Dollar</option>
+                  <option value="SGD">SGD - Singapore Dollar</option>
+                  <option value="HKD">HKD - Hong Kong Dollar</option>
+                  <option value="SEK">SEK - Swedish Krona</option>
+                  <option value="NOK">NOK - Norwegian Krone</option>
+                  <option value="DKK">DKK - Danish Krone</option>
+                  <option value="KRW">KRW - South Korean Won</option>
+                  <option value="INR">INR - Indian Rupee</option>
+                  <option value="MXN">MXN - Mexican Peso</option>
+                  <option value="BRL">BRL - Brazilian Real</option>
+                  <option value="ZAR">ZAR - South African Rand</option>
+                  <option value="TRY">TRY - Turkish Lira</option>
+                  <option value="RUB">RUB - Russian Ruble</option>
+                  <option value="PLN">PLN - Polish Złoty</option>
+                  <option value="THB">THB - Thai Baht</option>
+                  <option value="MYR">MYR - Malaysian Ringgit</option>
+                  <option value="IDR">IDR - Indonesian Rupiah</option>
+                  <option value="AED">AED - UAE Dirham</option>
+                  <option value="SAR">SAR - Saudi Riyal</option>
                 </select>
               </div>
 

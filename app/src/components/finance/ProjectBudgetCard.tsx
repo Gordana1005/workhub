@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, Clock, AlertTriangle, Edit2, Check, X } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Clock, AlertTriangle, Edit2, Check, X, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import BudgetRequestForm from './BudgetRequestForm';
+import BudgetRequestsList from './BudgetRequestsList';
 
 interface ProjectBudgetCardProps {
   projectId: string;
@@ -23,11 +25,18 @@ interface ProjectFinancials {
   profit: number;
   transaction_count: number;
   time_entry_count: number;
+  pending_requests_amount: number;
+  pending_requests_count: number;
+  approved_requests_amount: number;
+  paid_requests_amount: number;
 }
 
 export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps) {
   const [financials, setFinancials] = useState<ProjectFinancials | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [showRequestsList, setShowRequestsList] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
   const [budgetForm, setBudgetForm] = useState({
     budget: '',
     hourly_rate: '',
@@ -36,7 +45,21 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
 
   useEffect(() => {
     loadFinancials();
+    checkIfOwner();
   }, [projectId]);
+
+  const checkIfOwner = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('projects')
+      .select('creator_id')
+      .eq('id', projectId)
+      .single();
+
+    setIsOwner(data?.creator_id === user.id);
+  };
 
   const loadFinancials = async () => {
     setLoading(true);
@@ -57,17 +80,22 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
   };
 
   const handleSaveBudget = async () => {
-    const { error } = await supabase
-      .from('projects')
-      .update({
-        budget: budgetForm.budget ? parseFloat(budgetForm.budget) : null,
-        hourly_rate: budgetForm.hourly_rate ? parseFloat(budgetForm.hourly_rate) : null,
-      })
-      .eq('id', projectId);
+    try {
+      const { error } = await supabase
+        .from('projects')
+        .update({
+          budget: budgetForm.budget ? parseFloat(budgetForm.budget) : null,
+          hourly_rate: budgetForm.hourly_rate ? parseFloat(budgetForm.hourly_rate) : null,
+        })
+        .eq('id', projectId);
 
-    if (!error) {
+      if (error) throw error;
+
       setIsEditing(false);
       await loadFinancials();
+    } catch (error) {
+      console.error('Failed to save budget:', error);
+      alert('Failed to save budget');
     }
   };
 
@@ -241,6 +269,32 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
               </div>
             </div>
 
+            <div className="bg-slate-800 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Clock className="w-4 h-4 text-amber-500" />
+                <span className="text-sm text-slate-400">Pending Requests</span>
+              </div>
+              <div className="text-2xl font-bold text-amber-500">
+                ${financials.pending_requests_amount?.toLocaleString() || '0'}
+              </div>
+              <div className="text-xs text-slate-500 mt-1">
+                {financials.pending_requests_count || 0} request{financials.pending_requests_count !== 1 ? 's' : ''}
+              </div>
+            </div>
+
+            <div className="bg-slate-800 rounded-xl p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Check className="w-4 h-4 text-green-500" />
+                <span className="text-sm text-slate-400">Approved</span>
+              </div>
+              <div className="text-2xl font-bold text-white">
+                ${financials.approved_requests_amount?.toLocaleString() || '0'}
+              </div>
+              <div className="text-xs text-slate-500 mt-1">
+                ${financials.paid_requests_amount?.toLocaleString() || '0'} paid
+              </div>
+            </div>
+
             {financials.hourly_rate && financials.hourly_rate > 0 && (
               <div className="bg-slate-800 rounded-xl p-4">
                 <div className="flex items-center gap-2 mb-2">
@@ -273,6 +327,42 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
             </div>
           </div>
 
+          {/* Budget Requests Section */}
+          {hasBudget && (
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h4 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <FileText className="w-5 h-5" />
+                  Budget Requests
+                </h4>
+                <div className="flex gap-2">
+                  {!isOwner && (
+                    <button
+                      onClick={() => setShowRequestForm(true)}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
+                    >
+                      Request Budget
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowRequestsList(!showRequestsList)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm transition-colors"
+                  >
+                    {showRequestsList ? 'Hide' : 'View'} Requests
+                  </button>
+                </div>
+              </div>
+
+              {showRequestsList && (
+                <BudgetRequestsList
+                  projectId={projectId}
+                  isOwner={isOwner}
+                  onUpdate={loadFinancials}
+                />
+              )}
+            </div>
+          )}
+
           {/* Quick Actions */}
           <div className="flex gap-3">
             <button
@@ -289,6 +379,18 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
             </button>
           </div>
         </>
+      )}
+
+      {/* Request Form Modal */}
+      {showRequestForm && (
+        <BudgetRequestForm
+          projectId={projectId}
+          onClose={() => setShowRequestForm(false)}
+          onSuccess={() => {
+            setShowRequestForm(false);
+            loadFinancials();
+          }}
+        />
       )}
     </div>
   );

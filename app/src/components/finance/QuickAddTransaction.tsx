@@ -22,6 +22,7 @@ interface QuickAddTransactionProps {
 export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransactionProps) {
   const [input, setInput] = useState('');
   const [preview, setPreview] = useState<ParsedTransaction | null>(null);
+  const [manualType, setManualType] = useState<'income' | 'expense'>('expense');
   const [accounts, setAccounts] = useState<any[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState(accountId || '');
   const [categories, setCategories] = useState<any[]>([]);
@@ -68,8 +69,20 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
   const handleInputChange = (value: string) => {
     setInput(value);
     const parsed = parseNaturalLanguageTransaction(value);
-    setPreview(parsed);
+    if (parsed) {
+      // Override the parsed type with manual selection
+      setPreview({ ...parsed, type: manualType });
+    } else {
+      setPreview(null);
+    }
   };
+
+  // Update preview when manual type changes
+  useEffect(() => {
+    if (preview) {
+      setPreview({ ...preview, type: manualType });
+    }
+  }, [manualType]);
 
   const handleSubmit = async () => {
     if (!preview || !currentWorkspace?.id || !selectedAccountId) return;
@@ -137,6 +150,34 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-sm text-slate-400 mb-2">Transaction Type</label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setManualType('expense')}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+              manualType === 'expense'
+                ? 'bg-red-600 text-white'
+                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+          >
+            Expense
+          </button>
+          <button
+            type="button"
+            onClick={() => setManualType('income')}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
+              manualType === 'income'
+                ? 'bg-green-600 text-white'
+                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+            }`}
+          >
+            Income
+          </button>
+        </div>
       </div>
 
       <div className="mb-4">
