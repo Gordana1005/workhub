@@ -38,8 +38,8 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const projectId = searchParams.get('projectId');
-    const workspaceId = searchParams.get('workspaceId');
+    const projectId = searchParams.get('projectId') || searchParams.get('project_id');
+    const workspaceId = searchParams.get('workspace_id') || searchParams.get('workspaceId');
 
     // Verify workspace access
     if (workspaceId) {

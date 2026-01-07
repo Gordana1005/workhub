@@ -39,7 +39,7 @@ export async function GET(request: Request) {
 
     // Get workspace from query params
     const { searchParams } = new URL(request.url);
-    const workspaceId = searchParams.get('workspaceId');
+    const workspaceId = searchParams.get('workspace_id') || searchParams.get('workspaceId');
 
     if (!workspaceId) {
       return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 });
