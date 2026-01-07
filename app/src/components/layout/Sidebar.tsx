@@ -13,7 +13,8 @@ import {
   FileText,
   Zap,
   Webhook,
-  Target
+  Target,
+  DollarSign
 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -22,6 +23,7 @@ const navigation = [
   { name: 'Tasks', href: '/dashboard/tasks', icon: CheckSquare },
   { name: 'Projects', href: '/dashboard/projects', icon: FolderKanban },
   { name: 'Plans', href: '/dashboard/plans', icon: Target },
+  { name: 'Finance', href: '/dashboard/finance', icon: DollarSign },
   { name: 'Notes', href: '/dashboard/notes', icon: FileText },
   { name: 'Time Tracker', href: '/dashboard/time-tracker', icon: Timer },
   { name: 'Focus Mode', href: '/dashboard/focus', icon: Zap },

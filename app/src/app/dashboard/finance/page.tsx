@@ -1,0 +1,309 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { DollarSign, TrendingUp, TrendingDown, Wallet, Plus } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
+
+interface Account {
+  id: string;
+  name: string;
+  type: string;
+  current_balance: number;
+}
+
+interface Transaction {
+  id: string;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense' | 'transfer';
+  date: string;
+  category: {
+    name: string;
+    color: string;
+  } | null;
+}
+
+interface Stats {
+  totalBalance: number;
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  netIncome: number;
+}
+
+export default function FinancePage() {
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [stats, setStats] = useState<Stats>({
+    totalBalance: 0,
+    monthlyIncome: 0,
+    monthlyExpenses: 0,
+    netIncome: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const { currentWorkspace } = useWorkspaceStore();
+
+  useEffect(() => {
+    if (currentWorkspace?.id) {
+      loadFinanceData();
+    }
+  }, [currentWorkspace?.id]);
+
+  const loadFinanceData = async () => {
+    if (!currentWorkspace?.id) return;
+    
+    setLoading(true);
+
+    // Load accounts
+    const { data: accountsData } = await supabase
+      .from('finance_accounts')
+      .select('*')
+      .eq('workspace_id', currentWorkspace.id)
+      .eq('is_active', true);
+
+    if (accountsData) {
+      setAccounts(accountsData);
+      const total = accountsData.reduce((sum, acc) => sum + parseFloat(acc.current_balance.toString()), 0);
+      setStats(prev => ({ ...prev, totalBalance: total }));
+    }
+
+    // Load this month's transactions
+    const startDate = startOfMonth(new Date()).toISOString().split('T')[0];
+    const endDate = endOfMonth(new Date()).toISOString().split('T')[0];
+
+    const { data: transData } = await supabase
+      .from('finance_transactions')
+      .select('*, category:finance_categories(*)')
+      .eq('workspace_id', currentWorkspace.id)
+      .gte('date', startDate)
+      .lte('date', endDate)
+      .order('date', { ascending: false });
+
+    if (transData) {
+      setTransactions(transData);
+      
+      const income = transData
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+      
+      const expenses = transData
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
+      
+      setStats(prev => ({
+        ...prev,
+        monthlyIncome: income,
+        monthlyExpenses: expenses,
+        netIncome: income - expenses,
+      }));
+    }
+
+    setLoading(false);
+  };
+
+  // Chart data
+  const categoryData = transactions
+    .filter(t => t.type === 'expense' && t.category)
+    .reduce((acc, t) => {
+      const cat = t.category!.name;
+      acc[cat] = (acc[cat] || 0) + parseFloat(t.amount.toString());
+      return acc;
+    }, {} as Record<string, number>);
+
+  const pieData = Object.entries(categoryData).map(([name, value]) => ({
+    name,
+    value,
+  }));
+
+  const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4', '#f43f5e', '#14b8a6'];
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <div className="text-white">Loading finance data...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-8">
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">Finance</h1>
+          <p className="text-slate-400">Track income, expenses, and financial goals</p>
+        </div>
+        
+        <button
+          onClick={() => {/* TODO: Open add transaction modal */}}
+          className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          Add Transaction
+        </button>
+      </div>
+
+      {/* Stats Grid */}
+      <div className="grid grid-cols-4 gap-6 mb-8">
+        <StatCard
+          label="Total Balance"
+          value={`$${stats.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          icon={<Wallet className="w-6 h-6" />}
+          trend={stats.netIncome >= 0 ? 'up' : 'down'}
+          color="blue"
+        />
+        <StatCard
+          label="Monthly Income"
+          value={`$${stats.monthlyIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          icon={<TrendingUp className="w-6 h-6" />}
+          color="green"
+        />
+        <StatCard
+          label="Monthly Expenses"
+          value={`$${stats.monthlyExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          icon={<TrendingDown className="w-6 h-6" />}
+          color="red"
+        />
+        <StatCard
+          label="Net Income"
+          value={`$${stats.netIncome.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          icon={<DollarSign className="w-6 h-6" />}
+          trend={stats.netIncome >= 0 ? 'up' : 'down'}
+          color={stats.netIncome >= 0 ? 'green' : 'red'}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-6 mb-8">
+        {/* Spending by Category */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Spending by Category</h3>
+          {pieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <RePieChart>
+                <Pie
+                  data={pieData}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  label={(entry) => `${entry.name}: $${entry.value.toFixed(0)}`}
+                >
+                  {pieData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => `$${Number(value).toFixed(2)}`} />
+              </RePieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-[300px] flex items-center justify-center text-slate-500">
+              No expense data for this month
+            </div>
+          )}
+        </div>
+
+        {/* Recent Transactions */}
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Recent Transactions</h3>
+          <div className="space-y-3 max-h-[300px] overflow-auto">
+            {transactions.length > 0 ? (
+              transactions.slice(0, 10).map(transaction => (
+                <div key={transaction.id} className="flex items-center justify-between p-3 bg-slate-800 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      transaction.type === 'income' ? 'bg-green-500/10' : 'bg-red-500/10'
+                    }`}>
+                      {transaction.type === 'income' ? (
+                        <TrendingUp className="w-5 h-5 text-green-500" />
+                      ) : (
+                        <TrendingDown className="w-5 h-5 text-red-500" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-white font-medium">{transaction.description}</div>
+                      <div className="text-sm text-slate-400">
+                        {transaction.category?.name || 'Uncategorized'} · {format(new Date(transaction.date), 'MMM d')}
+                      </div>
+                    </div>
+                  </div>
+                  <div className={`text-lg font-semibold ${
+                    transaction.type === 'income' ? 'text-green-500' : 'text-red-500'
+                  }`}>
+                    {transaction.type === 'income' ? '+' : '-'}${parseFloat(transaction.amount.toString()).toFixed(2)}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center text-slate-500 py-8">
+                No transactions yet
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Accounts */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Accounts</h3>
+          <button className="text-sm text-blue-500 hover:text-blue-400">
+            Manage Accounts
+          </button>
+        </div>
+        {accounts.length > 0 ? (
+          <div className="grid grid-cols-4 gap-4">
+            {accounts.map(account => (
+              <div key={account.id} className="bg-slate-800 rounded-xl p-4">
+                <div className="text-sm text-slate-400 mb-1">{account.name}</div>
+                <div className="text-2xl font-bold text-white mb-1">
+                  ${parseFloat(account.current_balance.toString()).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </div>
+                <div className="text-xs text-slate-500 capitalize">{account.type.replace('_', ' ')}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8">
+            <p className="text-slate-500 mb-4">No accounts yet</p>
+            <button className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors">
+              Create Your First Account
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, icon, trend, color }: {
+  label: string;
+  value: string;
+  icon: React.ReactNode;
+  trend?: 'up' | 'down';
+  color: string;
+}) {
+  const colorClasses: Record<string, string> = {
+    blue: 'bg-blue-500/10 text-blue-500',
+    green: 'bg-green-500/10 text-green-500',
+    red: 'bg-red-500/10 text-red-500',
+  };
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <div className={`inline-flex p-3 rounded-lg mb-3 ${colorClasses[color]}`}>
+        {icon}
+      </div>
+      <div className="text-3xl font-bold text-white mb-1">{value}</div>
+      <div className="flex items-center gap-2">
+        <div className="text-sm text-slate-400">{label}</div>
+        {trend && (
+          <span className={`text-xs ${trend === 'up' ? 'text-green-500' : 'text-red-500'}`}>
+            {trend === 'up' ? '↑' : '↓'}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
