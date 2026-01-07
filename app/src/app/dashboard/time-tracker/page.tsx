@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
-import { supabase } from '@/lib/supabase'
 import { Play, Pause, Square, Clock, Calendar, TrendingUp, Download, Filter } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 
@@ -55,20 +54,19 @@ export default function TimeTrackerPage() {
     if (!currentWorkspace) return
 
     try {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('id, title, project:projects!project_id(name)')
-        .eq('workspace_id', currentWorkspace.id)
-        .eq('is_completed', false)
-        .order('title')
-
-      if (error) throw error
-      const formattedData = data?.map((task: any) => ({
-        id: task.id,
-        title: task.title,
-        project: Array.isArray(task.project) ? task.project[0] : task.project
-      })) || []
-      setTasks(formattedData)
+      const res = await fetch(`/api/tasks?workspace_id=${currentWorkspace.id}`)
+      const data = await res.json()
+      
+      if (Array.isArray(data)) {
+        const formattedData = data
+          .filter((task: any) => !task.is_completed)
+          .map((task: any) => ({
+            id: task.id,
+            title: task.title,
+            project: task.projects ? { name: task.projects.name } : undefined
+          }))
+        setTasks(formattedData)
+      }
     } catch (error) {
       console.error('Error loading tasks:', error)
     }
@@ -80,22 +78,12 @@ export default function TimeTrackerPage() {
     try {
       setLoading(true)
       const today = new Date().toISOString().split('T')[0]
-      const { data, error } = await supabase
-        .from('time_entries')
-        .select(`
-          id, task_id, project_id, description, duration, date,
-          task:tasks!task_id(title, project:projects!project_id(name))
-        `)
-        .eq('workspace_id', currentWorkspace.id)
-        .eq('date', today)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      const formattedData = data?.map((entry: any) => ({
-        ...entry,
-        task: entry.task ? (Array.isArray(entry.task) ? entry.task[0] : entry.task) : null
-      })) || []
-      setTimeEntries(formattedData)
+      const res = await fetch(`/api/time-entries?workspace_id=${currentWorkspace.id}&date=${today}`)
+      const data = await res.json()
+      
+      if (data.timeEntries) {
+        setTimeEntries(data.timeEntries)
+      }
 
       // Calculate weekly stats
       await loadWeeklyStats()
@@ -118,19 +106,17 @@ export default function TimeTrackerPage() {
         days.push(date.toISOString().split('T')[0])
       }
 
-      const { data, error } = await supabase
-        .from('time_entries')
-        .select('date, duration')
-        .eq('workspace_id', currentWorkspace.id)
-        .in('date', days)
+      const startDate = days[0]
+      const endDate = days[days.length - 1]
 
-      if (error) throw error
+      const res = await fetch(`/api/time-entries?workspace_id=${currentWorkspace.id}&start_date=${startDate}&end_date=${endDate}`)
+      const data = await res.json()
 
       // Calculate hours per day
       const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
       const stats = days.map((date, index) => {
-        const dayEntries = data?.filter(entry => entry.date === date) || []
-        const totalHours = dayEntries.reduce((sum, entry) => sum + (entry.duration / 3600), 0)
+        const dayEntries = data.timeEntries?.filter((entry: any) => entry.date === date) || []
+        const totalHours = dayEntries.reduce((sum: number, entry: any) => sum + (entry.duration / 3600), 0)
         return {
           day: dayNames[new Date(date).getDay()],
           hours: Math.round(totalHours * 10) / 10 // Round to 1 decimal place
@@ -165,19 +151,18 @@ export default function TimeTrackerPage() {
       const endTime = new Date()
       const duration = Math.floor((endTime.getTime() - startTime.getTime()) / 1000)
 
-      const selectedTask = tasks.find(t => t.id === currentTaskId)
-
-      await supabase
-        .from('time_entries')
-        .insert({
+      await fetch('/api/time-entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           workspace_id: currentWorkspace.id,
           task_id: currentTaskId || null,
           project_id: null,
-          user_id: (await supabase.auth.getUser()).data.user?.id,
           duration,
           description: currentDescription || 'Time tracking',
           date: new Date().toISOString().split('T')[0]
         })
+      })
 
       setIsTracking(false)
       setSeconds(0)

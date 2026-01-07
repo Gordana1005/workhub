@@ -5,7 +5,6 @@ import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import ProductivityCharts from '@/components/reports/ProductivityCharts';
 import ExportDialog from '@/components/ExportDialog';
 import { Download, TrendingUp, Clock, CheckCircle, Target } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 
 export default function ReportsPage() {
   const { currentWorkspace } = useWorkspaceStore();
@@ -33,28 +32,25 @@ export default function ReportsPage() {
 
     setLoading(true);
     try {
-      // Fetch all tasks
-      const { data: tasks } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id);
+      // Fetch all report data via API
+      const res = await fetch(`/api/reports?workspace_id=${currentWorkspace.id}`);
+      const data = await res.json();
 
-      if (tasks) {
-        // Calculate stats
-        const completed = tasks.filter(t => t.is_completed).length;
-        const active = tasks.filter(t => !t.is_completed).length;
-        const completionRate = tasks.length > 0 ? (completed / tasks.length) * 100 : 0;
-
+      if (data.stats) {
         setStats({
-          totalTasks: tasks.length,
-          completedTasks: completed,
-          activeTasks: active,
-          totalTimeLogged: 0, // TODO: Calculate from time_entries
-          completionRate,
+          totalTasks: data.stats.totalTasks || 0,
+          completedTasks: data.stats.completedTasks || 0,
+          activeTasks: data.stats.activeTasks || 0,
+          totalTimeLogged: data.stats.totalTimeLogged || 0,
+          completionRate: data.stats.completionRate || 0,
         });
+      }
+
+      if (data.tasks) {
+        const tasks = data.tasks;
 
         // Tasks by priority
-        const priorityCounts = tasks.reduce((acc: any, task) => {
+        const priorityCounts = tasks.reduce((acc: any, task: any) => {
           acc[task.priority] = (acc[task.priority] || 0) + 1;
           return acc;
         }, {});
@@ -67,7 +63,7 @@ export default function ReportsPage() {
         ]);
 
         // Tasks by category
-        const categoryCounts = tasks.reduce((acc: any, task) => {
+        const categoryCounts = tasks.reduce((acc: any, task: any) => {
           if (task.category) {
             acc[task.category] = (acc[task.category] || 0) + 1;
           }
@@ -90,10 +86,10 @@ export default function ReportsPage() {
 
         const trendData = last7Days.map(date => {
           const completed = tasks.filter(
-            t => t.completed_at && t.completed_at.startsWith(date)
+            (t: any) => t.completed_at && t.completed_at.startsWith(date)
           ).length;
           const created = tasks.filter(
-            t => t.created_at && t.created_at.startsWith(date)
+            (t: any) => t.created_at && t.created_at.startsWith(date)
           ).length;
 
           return {

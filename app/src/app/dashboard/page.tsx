@@ -122,24 +122,21 @@ export default function Dashboard() {
     if (!quickTaskInput.trim() || !currentWorkspace) return
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
       // Extract date from natural language input
       const { title, date } = extractDateFromText(quickTaskInput)
 
-      const { error } = await supabase
-        .from('tasks')
-        .insert({
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           workspace_id: currentWorkspace.id,
           title: title,
-          creator_id: user.id,
-          assignee_id: user.id,
           priority: 'medium',
           due_date: date ? date.toISOString() : new Date().toISOString()
         })
+      })
 
-      if (!error) {
+      if (response.ok) {
         setQuickTaskInput('')
         // Refresh stats
         const res = await fetch(`/api/dashboard?workspaceId=${currentWorkspace.id}`)
@@ -160,15 +157,17 @@ export default function Dashboard() {
 
   const toggleTaskComplete = async (taskId: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ 
+      const response = await fetch('/api/tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: taskId,
           is_completed: !currentStatus,
           completed_at: !currentStatus ? new Date().toISOString() : null
         })
-        .eq('id', taskId)
+      })
 
-      if (!error && currentWorkspace) {
+      if (response.ok && currentWorkspace) {
         const res = await fetch(`/api/dashboard?workspaceId=${currentWorkspace.id}`)
         if (res.ok) {
           const data = await res.json()

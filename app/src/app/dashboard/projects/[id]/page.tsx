@@ -150,28 +150,12 @@ export default function ProjectDetailPage() {
     try {
       setLoading(true)
 
-      // Load project details
-      const { data: projectData, error: projectError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('id', params.id)
-        .eq('workspace_id', currentWorkspace.id)
-        .single()
+      // Load project details via API
+      const projectResponse = await fetch(`/api/projects?id=${params.id}`)
+      const projectResult = await projectResponse.json()
 
-      if (projectError) throw projectError
-
-      // Load creator info separately
-      if (projectData.creator_id) {
-        const { data: creatorData } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', projectData.creator_id)
-          .single()
-        
-        if (creatorData) {
-          projectData.creator = creatorData
-        }
-      }
+      if (!projectResponse.ok) throw new Error(projectResult.error)
+      const projectData = projectResult.project
 
       setProject(projectData)
 
@@ -184,72 +168,34 @@ export default function ProjectDetailPage() {
         end_date: projectData.end_date ? projectData.end_date.split('T')[0] : ''
       })
 
-      // Load project tasks
-      const { data: tasksData, error: tasksError } = await supabase
-        .from('tasks')
-        .select(`
-          *,
-          assignee:profiles!assignee_id(full_name)
-        `)
-        .eq('project_id', params.id)
-        .order('created_at', { ascending: false })
+      // Load project tasks via API
+      const tasksResponse = await fetch(`/api/tasks?project_id=${params.id}`)
+      const tasksResult = await tasksResponse.json()
 
-      if (tasksError) {
-        console.error('Error loading tasks:', tasksError)
+      if (!tasksResponse.ok) {
+        console.error('Error loading tasks:', tasksResult.error)
         setTasks([])
       } else {
-        console.log('Loaded project tasks:', tasksData?.length, tasksData)
-        setTasks(tasksData || [])
+        console.log('Loaded project tasks:', tasksResult?.length, tasksResult)
+        setTasks(tasksResult || [])
       }
 
-      // Load workspace categories
-      const { data: categoriesData, error: categoriesError } = await supabase
-        .from('task_categories')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id)
-        .order('name')
-
-      if (!categoriesError) {
-        setCategories(categoriesData || [])
+      // Load workspace categories via API
+      const categoriesResponse = await fetch(`/api/task-categories?workspace_id=${currentWorkspace.id}`)
+      const categoriesResult = await categoriesResponse.json()
+      if (categoriesResponse.ok) {
+        setCategories(categoriesResult.categories || [])
       }
 
-      // Load project members
-      const { data: projectMembersData, error: projectMembersError } = await supabase
-        .from('project_members')
-        .select(`
-          user_id,
-          role,
-          profiles:user_id (
-            id,
-            full_name,
-            avatar_url
-          )
-        `)
-        .eq('project_id', params.id)
-
-      if (!projectMembersError) {
-        const formattedMembers = projectMembersData?.map((pm: any) => ({
-          ...pm.profiles,
-          role: pm.role
-        })).filter(Boolean).flat() || []
-        setProjectMembers(formattedMembers)
+      // Load project members via team API
+      const membersResponse = await fetch(`/api/team?workspace_id=${currentWorkspace.id}`)
+      const membersResult = await membersResponse.json()
+      if (membersResponse.ok) {
+        setMembers(membersResult.members?.map((m: any) => m.profiles).filter(Boolean) || [])
       }
 
-      // Load workspace members (for assignment)
-      const { data: membersData, error: membersError } = await supabase
-        .from('workspace_members')
-        .select(`
-          user_id,
-          profiles:user_id (
-            id,
-            full_name,
-            avatar_url
-          )
-        `)
-        .eq('workspace_id', currentWorkspace.id)
-
-      if (membersError) throw membersError
-      setMembers(membersData?.map(m => m.profiles).filter(Boolean).flat() || [])
+      // Project members - for now keep simple
+      setProjectMembers([])
 
     } catch (error) {
       console.error('Error loading project data:', error)
@@ -264,18 +210,11 @@ export default function ProjectDetailPage() {
     if (!currentWorkspace || !project) return
 
     try {
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        alert('You must be logged in to create tasks')
-        return
-      }
-
-      const { error } = await supabase
-        .from('tasks')
-        .insert({
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           workspace_id: currentWorkspace.id,
-          creator_id: user.id,
           project_id: project.id,
           title: taskFormData.title,
           description: taskFormData.description || null,
@@ -284,8 +223,10 @@ export default function ProjectDetailPage() {
           assignee_id: taskFormData.assignee_id || null,
           category: taskFormData.category || null
         })
+      })
 
-      if (error) throw error
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error)
 
       // Reset form and reload
       setTaskFormData({
@@ -376,15 +317,17 @@ export default function ProjectDetailPage() {
 
   const toggleTaskComplete = async (taskId: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ 
+      const response = await fetch('/api/tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: taskId,
           is_completed: !currentStatus,
           completed_at: !currentStatus ? new Date().toISOString() : null
         })
-        .eq('id', taskId)
+      })
 
-      if (!error) {
+      if (response.ok) {
         loadProjectData()
       }
     } catch (error) {
@@ -414,6 +357,8 @@ export default function ProjectDetailPage() {
     try {
       // Format dates properly (YYYY-MM-DD only, no time)
       const updateData: any = {
+        id: project.id,
+        workspace_id: currentWorkspace.id,
         name: editProjectData.name,
         description: editProjectData.description || null,
         status: editProjectData.status
@@ -433,13 +378,16 @@ export default function ProjectDetailPage() {
 
       console.log('Updating project with:', updateData)
 
-      const { error } = await supabase
-        .from('projects')
-        .update(updateData)
-        .eq('id', project.id)
-        .eq('workspace_id', currentWorkspace.id)
+      const response = await fetch('/api/projects', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      })
 
-      if (error) throw error
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to update project')
+      }
 
       setIsEditingProject(false)
       await loadProjectData()

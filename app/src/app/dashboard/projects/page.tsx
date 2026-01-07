@@ -58,14 +58,11 @@ export default function ProjectsPage() {
     
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setProjects(data || [])
+      const response = await fetch(`/api/projects?workspace_id=${currentWorkspace.id}`)
+      const data = await response.json()
+      
+      if (!response.ok) throw new Error(data.error)
+      setProjects(data.projects || [])
     } catch (error) {
       console.error('Error loading projects:', error)
     } finally {
@@ -130,7 +127,6 @@ export default function ProjectsPage() {
 
       const projectData: any = {
         workspace_id: currentWorkspace.id,
-        creator_id: user.id,
         name: formData.name,
         description: formData.description || null,
         color: formData.color,
@@ -143,11 +139,14 @@ export default function ProjectsPage() {
         projectData.logo_url = logo_url
       }
 
-      const { error } = await supabase
-        .from('projects')
-        .insert(projectData)
-
-      if (error) throw error
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(projectData)
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error)
 
       // Reset form and reload
       setFormData({
@@ -197,9 +196,11 @@ export default function ProjectsPage() {
         setUploadingLogo(false)
       }
 
-      const { error } = await supabase
-        .from('projects')
-        .update({
+      const response = await fetch('/api/projects', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingProject.id,
           name: formData.name,
           description: formData.description || null,
           color: formData.color,
@@ -208,9 +209,10 @@ export default function ProjectsPage() {
           end_date: formData.end_date || null,
           logo_url: logo_url
         })
-        .eq('id', editingProject.id)
-
-      if (error) throw error
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error)
 
       // Reset form and reload
       setFormData({
@@ -265,12 +267,12 @@ export default function ProjectsPage() {
     }
 
     try {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', projectId)
-
-      if (error) throw error
+      const response = await fetch(`/api/projects?id=${projectId}`, {
+        method: 'DELETE'
+      })
+      
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error)
 
       loadProjects()
     } catch (error) {

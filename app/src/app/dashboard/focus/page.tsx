@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
-import { supabase } from '@/lib/supabase'
 import {
   Play,
   Pause,
@@ -51,16 +50,11 @@ export default function FocusMode() {
     if (!currentWorkspace) return
 
     try {
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('id, title, description, estimated_hours')
-        .eq('workspace_id', currentWorkspace.id)
-        .eq('is_completed', false)
-        .order('created_at', { ascending: false })
-        .limit(20)
+      const res = await fetch(`/api/tasks?workspace_id=${currentWorkspace.id}`)
+      const data = await res.json()
 
-      if (!error && data) {
-        setTasks(data)
+      if (Array.isArray(data)) {
+        setTasks(data.filter((t: any) => !t.is_completed).slice(0, 20))
       }
     } catch (error) {
       console.error('Error loading tasks:', error)

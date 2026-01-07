@@ -84,24 +84,17 @@ export default function TasksPage() {
       setLoading(true)
       console.log('Loading tasks for workspace:', currentWorkspace.id)
       
-      const { data, error } = await supabase
-        .from('tasks')
-        .select(`
-          *,
-          project:projects!project_id(name),
-          assignee:profiles!assignee_id(full_name)
-        `)
-        .eq('workspace_id', currentWorkspace.id)
-        .order('created_at', { ascending: false })
+      const response = await fetch(`/api/tasks?workspace_id=${currentWorkspace.id}`)
+      const result = await response.json()
 
-      if (error) {
-        console.error('Error loading tasks:', error)
+      if (!response.ok) {
+        console.error('Error loading tasks:', result.error)
         setTasks([])
         return
       }
 
-      console.log('Loaded tasks:', data?.length || 0, 'tasks', data)
-      setTasks(data || [])
+      console.log('Loaded tasks:', result?.length || 0, 'tasks', result)
+      setTasks(result || [])
     } catch (error) {
       console.error('Error loading tasks:', error)
       setTasks([])
@@ -114,14 +107,11 @@ export default function TasksPage() {
     if (!currentWorkspace) return
 
     try {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('id, name')
-        .eq('workspace_id', currentWorkspace.id)
-        .order('name')
+      const response = await fetch(`/api/projects?workspace_id=${currentWorkspace.id}`)
+      const data = await response.json()
 
-      if (error) throw error
-      setProjects(data || [])
+      if (!response.ok) throw new Error(data.error)
+      setProjects(data.projects || [])
     } catch (error) {
       console.error('Error loading projects:', error)
     }
@@ -131,24 +121,15 @@ export default function TasksPage() {
     if (!currentWorkspace) return
 
     try {
-      const { data, error } = await supabase
-        .from('workspace_members')
-        .select(`
-          user_id,
-          profiles:user_id (
-            id,
-            full_name,
-            email
-          )
-        `)
-        .eq('workspace_id', currentWorkspace.id)
+      const response = await fetch(`/api/team?workspace_id=${currentWorkspace.id}`)
+      const data = await response.json()
 
-      if (error) throw error
+      if (!response.ok) throw new Error(data.error)
       
-      const members = data?.map((m: any) => ({
-        id: m.profiles.id,
-        full_name: m.profiles.full_name,
-        email: m.profiles.email
+      const members = data.members?.map((m: any) => ({
+        id: m.profiles?.id || m.user_id,
+        full_name: m.profiles?.full_name || 'Unknown',
+        email: m.profiles?.email || ''
       })) || []
       
       setTeamMembers(members)
@@ -180,15 +161,17 @@ export default function TasksPage() {
 
   const toggleTaskComplete = async (taskId: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({ 
+      const response = await fetch('/api/tasks', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: taskId,
           is_completed: !currentStatus,
           completed_at: !currentStatus ? new Date().toISOString() : null
         })
-        .eq('id', taskId)
+      })
 
-      if (!error) {
+      if (response.ok) {
         loadTasks()
       }
     } catch (error) {
@@ -219,10 +202,15 @@ export default function TasksPage() {
     try {
       await Promise.all(
         selectedTasks.map(id => 
-          supabase
-            .from('tasks')
-            .update({ is_completed: true, completed_at: new Date().toISOString() })
-            .eq('id', id)
+          fetch('/api/tasks', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id,
+              is_completed: true,
+              completed_at: new Date().toISOString()
+            })
+          })
         )
       )
       setSelectedTasks([])
@@ -236,11 +224,9 @@ export default function TasksPage() {
     if (!confirm(`Delete ${selectedTasks.length} tasks? This cannot be undone.`)) return
     
     try {
-      await Promise.all(
-        selectedTasks.map(id => 
-          supabase.from('tasks').delete().eq('id', id)
-        )
-      )
+      await fetch(`/api/tasks?bulkIds=${selectedTasks.join(',')}`, {
+        method: 'DELETE'
+      })
       setSelectedTasks([])
       loadTasks()
     } catch (error) {
@@ -252,7 +238,11 @@ export default function TasksPage() {
     try {
       await Promise.all(
         selectedTasks.map(id => 
-          supabase.from('tasks').update({ priority }).eq('id', id)
+          fetch('/api/tasks', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, priority })
+          })
         )
       )
       setSelectedTasks([])
@@ -454,10 +444,11 @@ export default function TasksPage() {
               status: t.is_completed ? 'Done' : 'To Do'
             }))} 
             onTaskUpdate={async (taskId, updates) => {
-              await supabase
-                .from('tasks')
-                .update(updates)
-                .eq('id', taskId)
+              await fetch('/api/tasks', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: taskId, ...updates })
+              })
               loadTasks()
             }}
           />

@@ -44,16 +44,13 @@ export default function NotesPage() {
     if (!currentWorkspace) return
 
     try {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('id, name')
-        .eq('workspace_id', currentWorkspace.id)
-        .order('name')
+      const response = await fetch(`/api/projects?workspace_id=${currentWorkspace.id}`)
+      const data = await response.json()
 
-      if (!error && data) {
-        setProjects(data)
-        if (data.length > 0 && !selectedProjectId) {
-          setSelectedProjectId(data[0].id)
+      if (response.ok && data.projects) {
+        setProjects(data.projects)
+        if (data.projects.length > 0 && !selectedProjectId) {
+          setSelectedProjectId(data.projects[0].id)
         }
       }
     } catch (error) {
@@ -67,16 +64,13 @@ export default function NotesPage() {
     try {
       setLoading(true)
       
-      const { data, error } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('project_id', selectedProjectId)
-        .order('created_at', { ascending: false })
+      const response = await fetch(`/api/notes?projectId=${selectedProjectId}`)
+      const data = await response.json()
 
-      if (!error && data) {
-        setNotes(data as any)
-      } else if (error) {
-        console.error('Error loading notes:', error)
+      if (response.ok) {
+        setNotes(data || [])
+      } else {
+        console.error('Error loading notes:', data.error)
       }
     } catch (error) {
       console.error('Error loading notes:', error)

@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { DollarSign, TrendingUp, TrendingDown, Wallet, Plus, Upload, Target } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
@@ -64,48 +63,44 @@ export default function FinancePage() {
     
     setLoading(true);
 
-    // Load accounts
-    const { data: accountsData } = await supabase
-      .from('finance_accounts')
-      .select('*')
-      .eq('workspace_id', currentWorkspace.id)
-      .eq('is_active', true);
-
-    if (accountsData) {
-      setAccounts(accountsData);
-      const total = accountsData.reduce((sum, acc) => sum + parseFloat(acc.current_balance.toString()), 0);
-      setStats(prev => ({ ...prev, totalBalance: total }));
-    }
-
-    // Load this month's transactions
-    const startDate = startOfMonth(new Date()).toISOString().split('T')[0];
-    const endDate = endOfMonth(new Date()).toISOString().split('T')[0];
-
-    const { data: transData } = await supabase
-      .from('finance_transactions')
-      .select('*, category:finance_categories(*)')
-      .eq('workspace_id', currentWorkspace.id)
-      .gte('date', startDate)
-      .lte('date', endDate)
-      .order('date', { ascending: false });
-
-    if (transData) {
-      setTransactions(transData);
+    try {
+      // Load accounts via API
+      const accountsRes = await fetch(`/api/finance?workspace_id=${currentWorkspace.id}&type=accounts`);
+      const accountsJson = await accountsRes.json();
       
-      const income = transData
-        .filter(t => t.type === 'income')
-        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
-      
-      const expenses = transData
-        .filter(t => t.type === 'expense')
-        .reduce((sum, t) => sum + parseFloat(t.amount.toString()), 0);
-      
-      setStats(prev => ({
-        ...prev,
-        monthlyIncome: income,
-        monthlyExpenses: expenses,
-        netIncome: income - expenses,
-      }));
+      if (accountsJson.accounts) {
+        setAccounts(accountsJson.accounts);
+        const total = accountsJson.accounts.reduce((sum: number, acc: Account) => sum + parseFloat(acc.current_balance.toString()), 0);
+        setStats(prev => ({ ...prev, totalBalance: total }));
+      }
+
+      // Load this month's transactions
+      const startDate = startOfMonth(new Date()).toISOString().split('T')[0];
+      const endDate = endOfMonth(new Date()).toISOString().split('T')[0];
+
+      const transRes = await fetch(`/api/finance?workspace_id=${currentWorkspace.id}&type=transactions&start_date=${startDate}&end_date=${endDate}`);
+      const transJson = await transRes.json();
+
+      if (transJson.transactions) {
+        setTransactions(transJson.transactions);
+        
+        const income = transJson.transactions
+          .filter((t: Transaction) => t.type === 'income')
+          .reduce((sum: number, t: Transaction) => sum + parseFloat(t.amount.toString()), 0);
+        
+        const expenses = transJson.transactions
+          .filter((t: Transaction) => t.type === 'expense')
+          .reduce((sum: number, t: Transaction) => sum + parseFloat(t.amount.toString()), 0);
+        
+        setStats(prev => ({
+          ...prev,
+          monthlyIncome: income,
+          monthlyExpenses: expenses,
+          netIncome: income - expenses,
+        }));
+      }
+    } catch (error) {
+      console.error('Error loading finance data:', error);
     }
 
     setLoading(false);
