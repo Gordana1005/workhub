@@ -33,7 +33,7 @@ export default function BudgetRequestForm({ projectId, onClose, onSuccess }: Bud
         .from('project_budget_requests')
         .insert({
           project_id: projectId,
-          requester_id: user.id,
+          requested_by: user.id,
           amount: parseFloat(formData.amount),
           description: formData.description,
           category: formData.category || null,
@@ -41,7 +41,10 @@ export default function BudgetRequestForm({ projectId, onClose, onSuccess }: Bud
           status: 'pending',
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Budget request error:', error);
+        throw error;
+      }
 
       onSuccess();
       onClose();

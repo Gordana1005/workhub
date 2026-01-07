@@ -129,31 +129,36 @@ export async function POST(request: Request) {
     // Handle tags if provided
     if (tags && Array.isArray(tags) && tags.length > 0 && data) {
       try {
-        // First, ensure all tags exist and get their IDs
+        // Use existing tag IDs or create new tags
         const tagIds: string[] = [];
         
         for (const tag of tags) {
-          // Upsert tag
-          const { data: tagData, error: tagError } = await supabase
-            .from('tags')
-            .upsert(
-              { 
-                name: tag.name, 
-                workspace_id: tag.workspace_id, 
-                color: tag.color || '#667eea' 
-              },
-              { onConflict: 'workspace_id,name' }
-            )
-            .select('id')
-            .single();
-          
-          if (tagError) {
-            console.error('Error creating tag:', tagError);
-            continue;
-          }
+          // If tag already has an ID, use it directly
+          if (tag.id) {
+            tagIds.push(tag.id);
+          } else {
+            // Create new tag
+            const { data: tagData, error: tagError } = await supabase
+              .from('tags')
+              .upsert(
+                { 
+                  name: tag.name, 
+                  workspace_id: project.workspace_id, 
+                  color: tag.color || '#667eea' 
+                },
+                { onConflict: 'workspace_id,name' }
+              )
+              .select('id')
+              .single();
+            
+            if (tagError) {
+              console.error('Error creating tag:', tagError);
+              continue;
+            }
 
-          if (tagData?.id) {
-            tagIds.push(tagData.id);
+            if (tagData?.id) {
+              tagIds.push(tagData.id);
+            }
           }
         }
 
