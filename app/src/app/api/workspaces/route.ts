@@ -79,8 +79,13 @@ export async function POST(request: Request) {
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
+          getAll() {
+            return cookieStore.getAll()
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options)
+            })
           },
         },
       }
@@ -110,6 +115,7 @@ export async function POST(request: Request) {
       .single()
 
     if (workspaceError) {
+      console.error('Workspace creation error:', workspaceError)
       return NextResponse.json({ error: workspaceError.message }, { status: 500 })
     }
 
@@ -123,6 +129,7 @@ export async function POST(request: Request) {
       })
 
     if (memberError) {
+      console.error('Member creation error:', memberError)
       // Clean up workspace if member creation fails
       await supabase.from('workspaces').delete().eq('id', workspace.id)
       return NextResponse.json({ error: 'Failed to create workspace membership' }, { status: 500 })
@@ -131,6 +138,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ workspace })
 
   } catch (error) {
+    console.error('POST /api/workspaces error:', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 })
   }
 }
