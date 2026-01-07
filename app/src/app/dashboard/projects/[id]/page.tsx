@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
 import { ArrowLeft, Calendar, Users, CheckCircle, Circle, Clock, Target, TrendingUp, Plus, Filter, ArrowUpDown, Tag, X, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import ProjectBudgetCard from '@/components/finance/ProjectBudgetCard'
 
 interface Project {
   id: string
@@ -472,6 +473,13 @@ export default function ProjectDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* Project Budget Card */}
+        {project && (
+          <div className="mb-8">
+            <ProjectBudgetCard projectId={project.id} />
+          </div>
+        )}
 
         {/* Project Details */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">

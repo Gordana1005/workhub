@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, Wallet, Plus, Upload } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, Wallet, Plus, Upload, Target } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
@@ -9,6 +9,7 @@ import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import AccountManager from '@/components/finance/AccountManager';
 import QuickAddTransaction from '@/components/finance/QuickAddTransaction';
 import ImportTransactions from '@/components/finance/ImportTransactions';
+import GoalsDashboard from '@/components/finance/GoalsDashboard';
 
 interface Account {
   id: string;
@@ -49,6 +50,7 @@ export default function FinancePage() {
   const [showAccountModal, setShowAccountModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'overview' | 'goals'>('overview');
   const { currentWorkspace } = useWorkspaceStore();
 
   useEffect(() => {
@@ -142,25 +144,64 @@ export default function FinancePage() {
         </div>
         
         <div className="flex gap-3">
-          <button
-            onClick={() => setShowImportModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"
-          >
-            <Upload className="w-5 h-5" />
-            Import CSV
-          </button>
-          <button
-            onClick={() => setShowTransactionModal(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
-          >
-            <Plus className="w-5 h-5" />
-            Add Transaction
-          </button>
+          {activeTab === 'overview' && (
+            <>
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                Import CSV
+              </button>
+              <button
+                onClick={() => setShowAccountModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                Add Account
+              </button>
+              <button
+                onClick={() => setShowTransactionModal(true)}
+                className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                Add Transaction
+              </button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-4 gap-6 mb-8">
+      {/* Tab Navigation */}
+      <div className="flex gap-4 mb-8 border-b border-slate-800">
+        <button
+          onClick={() => setActiveTab('overview')}
+          className={`px-6 py-3 font-medium transition-colors ${
+            activeTab === 'overview'
+              ? 'text-blue-500 border-b-2 border-blue-500'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Overview
+        </button>
+        <button
+          onClick={() => setActiveTab('goals')}
+          className={`px-6 py-3 font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'goals'
+              ? 'text-blue-500 border-b-2 border-blue-500'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <Target className="w-4 h-4" />
+          Goals
+        </button>
+      </div>
+
+      {/* Content based on active tab */}
+      {activeTab === 'overview' ? (
+        <>
+          {/* Stats Grid */}
+          <div className="grid grid-cols-4 gap-6 mb-8">
         <StatCard
           label="Total Balance"
           value={`$${stats.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -294,6 +335,11 @@ export default function FinancePage() {
           </div>
         )}
       </div>
+        </>
+      ) : (
+        /* Goals Tab */
+        <GoalsDashboard />
+      )}
 
       {/* Modals */}
       {showAccountModal && (
