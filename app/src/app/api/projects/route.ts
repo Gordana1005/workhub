@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         .from('projects')
         .select(`
           *,
-          owner:profiles!owner_id(id, full_name, avatar_url),
+          owner:profiles!creator_id(id, full_name, avatar_url),
           tasks(id, title, status, priority, is_completed)
         `)
         .eq('id', projectId)
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       .from('projects')
       .select(`
         *,
-        owner:profiles!owner_id(id, full_name, avatar_url),
+        owner:profiles!creator_id(id, full_name, avatar_url),
         tasks(id, is_completed)
       `)
       .eq('workspace_id', workspaceId)
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
         budget,
         start_date,
         end_date,
-        owner_id: user.id
+        creator_id: user.id
       })
       .select()
       .single()

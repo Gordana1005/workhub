@@ -30,7 +30,7 @@ export async function createProject(
         workspace_id: workspaceId,
         name,
         description: description || '',
-        owner_id: user.id,
+        creator_id: user.id,
         status: 'active'
       })
       .select()
