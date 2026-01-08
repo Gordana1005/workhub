@@ -12,13 +12,20 @@ interface Tag {
   color: string
 }
 
+interface Project {
+  id: string
+  name: string
+}
+
 interface NoteEditorProps {
   initialTitle?: string
   initialContent?: string
   initialTags?: Tag[]
+  initialProjectId?: string
+  projects?: Project[]
   noteId?: string
   workspaceId: string
-  onSave: (title: string, content: string, tags: Tag[]) => Promise<void>
+  onSave: (title: string, content: string, tags: Tag[], projectId: string) => Promise<void>
   onCancel: () => void
   isEdit?: boolean
 }
@@ -27,6 +34,8 @@ export default function NoteEditor({
   initialTitle = '',
   initialContent = '',
   initialTags = [],
+  initialProjectId = '',
+  projects = [],
   noteId,
   workspaceId,
   onSave,
@@ -36,15 +45,20 @@ export default function NoteEditor({
   const [title, setTitle] = useState(initialTitle)
   const [content, setContent] = useState(initialContent)
   const [tags, setTags] = useState<Tag[]>(initialTags)
+  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId)
   const [isSaving, setIsSaving] = useState(false)
   const [showVersionHistory, setShowVersionHistory] = useState(false)
 
   const handleSave = async () => {
     if (!title.trim()) return
+    if (!selectedProjectId) {
+      alert('Please select a project')
+      return
+    }
 
     setIsSaving(true)
     try {
-      await onSave(title, content, tags)
+      await onSave(title, content, tags, selectedProjectId)
     } catch (error) {
       console.error('Failed to save note:', error)
     } finally {
@@ -84,6 +98,24 @@ export default function NoteEditor({
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2 text-gray-300">
+              Project *
+            </label>
+            <select
+              value={selectedProjectId}
+              onChange={(e) => setSelectedProjectId(e.target.value)}
+              className="input-field w-full"
+            >
+              <option value="" disabled>Select a project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-sm font-medium mb-2 text-gray-300">
               Title *

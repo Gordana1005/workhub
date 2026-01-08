@@ -21,27 +21,34 @@ interface Note {
   tags?: Tag[]
 }
 
+interface Project {
+  id: string
+  name: string
+}
+
 interface NotesListProps {
   notes: Note[]
   projectId?: string
   workspaceId: string
+  projects?: Project[]
   onRefresh: () => void
 }
 
-export default function NotesList({ notes, projectId, workspaceId, onRefresh }: NotesListProps) {
+export default function NotesList({ notes, projectId, workspaceId, projects = [], onRefresh }: NotesListProps) {
   const [showEditor, setShowEditor] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
   const [editingNote, setEditingNote] = useState<Note | null>(null)
   const [templateContent, setTemplateContent] = useState<string>('')
 
-  const handleCreate = async (title: string, content: string, tags: Tag[]) => {
-    if (!projectId) return
+  const handleCreate = async (title: string, content: string, tags: Tag[], targetProjectId: string) => {
+    const finalProjectId = targetProjectId || projectId
+    if (!finalProjectId) return
 
     try {
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId, title, content, tags }),
+        body: JSON.stringify({ project_id: finalProjectId, title, content, tags }),
       })
 
       if (res.ok) {
@@ -63,6 +70,7 @@ export default function NotesList({ notes, projectId, workspaceId, onRefresh }: 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: editingNote.id, title, content, tags }),
       })
+
 
       if (res.ok) {
         setEditingNote(null)
@@ -156,6 +164,8 @@ export default function NotesList({ notes, projectId, workspaceId, onRefresh }: 
         <NoteEditor
           workspaceId={workspaceId}
           initialContent={templateContent}
+          projects={projects}
+          initialProjectId={projectId}
           onSave={handleCreate}
           onCancel={() => {
             setShowEditor(false)
@@ -171,6 +181,8 @@ export default function NotesList({ notes, projectId, workspaceId, onRefresh }: 
           initialTitle={editingNote.title}
           initialContent={editingNote.content}
           initialTags={editingNote.tags || []}
+          initialProjectId={editingNote.project_id}
+          projects={projects}
           onSave={handleUpdate}
           onCancel={() => setEditingNote(null)}
           isEdit

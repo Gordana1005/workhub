@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -11,6 +12,16 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { fetchWorkspaces, workspaces } = useWorkspaceStore()
+
+  useEffect(() => {
+    // Determine if we need to fetch. 
+    // fetchWorkspaces inside the store likely handles checking if authenticated, etc.
+    // If workspaces are empty, let's fetch.
+    if (workspaces.length === 0) {
+      fetchWorkspaces()
+    }
+  }, [fetchWorkspaces, workspaces.length])
 
   return (
     <ErrorBoundary>

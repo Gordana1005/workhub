@@ -20,7 +20,8 @@ interface Project {
 }
 
 export default function NotesPage() {
-  const { currentWorkspace } = useWorkspaceStore()
+  const { currentWorkspace, workspaces } = useWorkspaceStore()
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>('')
   const [notes, setNotes] = useState<Note[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string>('')
@@ -28,11 +29,17 @@ export default function NotesPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (currentWorkspace) {
+    if (currentWorkspace && !activeWorkspaceId) {
+      setActiveWorkspaceId(currentWorkspace.id)
+    }
+  }, [currentWorkspace])
+
+  useEffect(() => {
+    if (activeWorkspaceId) {
       loadProjects()
       loadNotes()
     }
-  }, [currentWorkspace])
+  }, [activeWorkspaceId])
 
   useEffect(() => {
     if (selectedProjectId) {
@@ -41,17 +48,16 @@ export default function NotesPage() {
   }, [selectedProjectId])
 
   const loadProjects = async () => {
-    if (!currentWorkspace) return
+    const wsId = activeWorkspaceId || currentWorkspace?.id
+    if (!wsId) return
 
     try {
-      const response = await fetch(`/api/projects?workspace_id=${currentWorkspace.id}`)
+      const response = await fetch(`/api/projects?workspace_id=${wsId}`)
       const data = await response.json()
 
       if (response.ok && data.projects) {
         setProjects(data.projects)
-        if (data.projects.length > 0 && !selectedProjectId) {
-          setSelectedProjectId(data.projects[0].id)
-        }
+        // Auto-selection of first project removed to allow "All Projects" by default
       }
     } catch (error) {
       console.error('Error loading projects:', error)
@@ -59,12 +65,17 @@ export default function NotesPage() {
   }
 
   const loadNotes = async () => {
-    if (!currentWorkspace || !selectedProjectId) return
+    const wsId = activeWorkspaceId || currentWorkspace?.id
+    if (!wsId) return
 
     try {
       setLoading(true)
       
-      const response = await fetch(`/api/notes?projectId=${selectedProjectId}`)
+      const url = selectedProjectId 
+        ? `/api/notes?projectId=${selectedProjectId}` 
+        : `/api/notes?workspaceId=${wsId}`
+
+      const response = await fetch(url)
       const data = await response.json()
 
       if (response.ok) {
@@ -86,13 +97,33 @@ export default function NotesPage() {
 
   return (
     <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto animate-fadeIn">
-      <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold mb-2 gradient-text">
-          📝 Notes
-        </h1>
-        <p className="text-gray-400 text-base md:text-lg">
-          Capture ideas, documentation, and important information
-        </p>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl md:text-4xl font-bold mb-2 gradient-text">
+            📝 Notes
+          </h1>
+          <p className="text-gray-400 text-base md:text-lg">
+            Capture ideas, documentation, and important information
+          </p>
+        </div>
+
+        <div className="w-full md:w-64">
+          <label className="block text-sm font-medium text-gray-400 mb-1">
+            Workspace Context
+          </label>
+          <select
+            value={activeWorkspaceId}
+            onChange={(e) => {
+              setActiveWorkspaceId(e.target.value)
+              setSelectedProjectId('') 
+            }}
+            className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50"
+          >
+            {workspaces.map(ws => (
+              <option key={ws.id} value={ws.id}>{ws.name}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Filters */}
@@ -141,7 +172,8 @@ export default function NotesPage() {
         <NotesList
           notes={filteredNotes}
           projectId={selectedProjectId}
-          workspaceId={currentWorkspace?.id || ''}
+          workspaceId={activeWorkspaceId || currentWorkspace?.id || ''}
+          projects={projects}
           onRefresh={loadNotes}
         />
       )}
