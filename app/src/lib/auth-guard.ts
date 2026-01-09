@@ -1,7 +1,16 @@
 import { createServerClient } from '@supabase/ssr';
+import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { logger } from './logger';
+
+// Create a service role client to bypass RLS for membership checks
+// This is necessary because workspace_members RLS might be restrictive (infinite recursion issues)
+// security: We primarily rely on specific checks here, not RLS
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export interface AuthContext {
   user: {
@@ -60,7 +69,8 @@ export async function requireAuth(request: Request): Promise<AuthContext | NextR
   }
 
   // Check workspace membership
-  const { data: membership, error: memberError } = await supabase
+  // use supabaseAdmin to bypass RLS policies on workspace_members table
+  const { data: membership, error: memberError } = await supabaseAdmin
     .from('workspace_members')
     .select('role')
     .eq('workspace_id', workspaceId)

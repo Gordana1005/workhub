@@ -71,7 +71,19 @@ export async function POST(request: Request) {
       )
     }
 
-    return NextResponse.json({ invitation })
+    // Since we don't have an email provider configured yet (like Resend or SendGrid),
+    // we will return the join link so the admin can copy-paste it manually.
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const joinLink = `${baseUrl}/join?token=${invitation.id}`
+
+    // Log for debugging
+    console.log(`[INVITE] Created invite for ${email}: ${joinLink}`)
+
+    return NextResponse.json({ 
+      invitation,
+      message: 'Invitation created successfully',
+      joinLink // Return this to the UI to display
+    })
 
   } catch (error) {
     console.error('Error in invitation route:', error)

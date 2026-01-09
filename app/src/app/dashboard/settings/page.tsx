@@ -120,7 +120,6 @@ export default function SettingsPage() {
     { id: 'profile', label: 'Profile', icon: User },
     // { id: 'notifications', label: 'Notifications', icon: Bell }, // Placeholder for future
     // { id: 'security', label: 'Security', icon: Lock }, // Placeholder for future
-    // { id: 'appearance', label: 'Appearance', icon: Palette }, // Placeholder for future
     // { id: 'preferences', label: 'Preferences', icon: Globe } // Placeholder for future
   ]
 

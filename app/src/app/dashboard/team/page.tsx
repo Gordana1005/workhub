@@ -25,6 +25,12 @@ export default function TeamPage() {
   const [loading, setLoading] = useState(true)
   const [showInviteDialog, setShowInviteDialog] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const loadTeamMembers = useCallback(async () => {
     if (!currentWorkspace) return
@@ -64,18 +70,37 @@ export default function TeamPage() {
         })
       })
 
+      const data = await response.json()
+
       if (response.ok) {
-        alert('Invitation sent successfully!')
-        setInviteEmail('')
-        setShowInviteDialog(false)
+        if (data.joinLink) {
+             setInviteLink(data.joinLink)
+             // Don't close dialog yet, let user copy link
+        } else {
+             alert('Invitation sent successfully!')
+             setInviteEmail('')
+             setShowInviteDialog(false)
+        }
       } else {
-        const data = await response.json()
         alert(data.error || 'Failed to send invitation')
       }
     } catch (error) {
       console.error('Error sending invitation:', error)
       alert('Failed to send invitation')
     }
+  }
+
+  const handleCopyLink = () => {
+    if (inviteLink) {
+      navigator.clipboard.writeText(inviteLink)
+      alert('Link copied to clipboard!')
+    }
+  }
+
+  const handleCloseInvite = () => {
+    setShowInviteDialog(false)
+    setInviteEmail('')
+    setInviteLink(null)
   }
 
   const handleRemoveMember = async (userId: string) => {
@@ -275,34 +300,72 @@ export default function TeamPage() {
                     member.role === 'admin' 
                       ? 'bg-purple-500/20 text-purple-400' 
                       : 'bg-blue-500/20 text-blue-400'
-                  }`}>
-                    {member.role === 'admin' ? '👑 Admin' : '👤 Member'}
-                  </span>
+              
+              {!inviteLink ? (
+                <form onSubmit={handleInvite}>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
+                    <input
+                      type="email"
+                      requiredmounted ? new Date(member.joined_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '...'
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="colleague@example.com"
+                    />
+                    <p className="text-xs text-gray-400 mt-2">
+                       We'll generate a secure invitation link for you to share.
+                    </p>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={handleCloseInvite}
+                      className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+                    >
+                      Create Invite
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-4">
+                    <div className="bg-green-500/10 border border-green-500/20 text-green-400 p-4 rounded-xl text-sm">
+                        Invitation created successfully for <strong>{inviteEmail}</strong>!
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Invitation Link</label>
+                        <div className="flex gap-2">
+                            <input 
+                                readOnly 
+                                value={inviteLink}
+                                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-gray-300 select-all"
+                            />
+                            <button
+                                onClick={handleCopyLink}
+                                className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-xl transition-colors"
+                                title="Copy to clipboard"
+                            >
+                                <Users className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-2">
+                            Share this link with your team member. They can use it to join your workspace.
+                        </p>
+                    </div>
+                    <button
+                      onClick={handleCloseInvite}
+                      className="w-full px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
+                    >
+                      Done
+                    </button>
                 </div>
-
-                {/* Footer */}
-                <div className="pt-4 border-t border-white/10 text-sm text-gray-400">
-                  <span>Joined {new Date(member.joined_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Invite Dialog */}
-        {showInviteDialog && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
-              <h2 className="text-2xl font-bold text-white mb-4">Invite Team Member</h2>
-              <form onSubmit={handleInvite}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
-                  <input
-                    type="email"
-                    required
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              )}lassName="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="colleague@example.com"
                   />
                 </div>
