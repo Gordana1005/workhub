@@ -131,33 +131,33 @@ export default function FinancePage() {
   }
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 md:p-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white mb-2">Finance</h1>
           <p className="text-slate-400">Track income, expenses, and financial goals</p>
         </div>
         
-        <div className="flex gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           {activeTab === 'overview' && (
             <>
               <button
                 onClick={() => setShowImportModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"
               >
                 <Upload className="w-4 h-4" />
                 Import CSV
               </button>
               <button
                 onClick={() => setShowAccountModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 Add Account
               </button>
               <button
                 onClick={() => setShowTransactionModal(true)}
-                className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
               >
                 <Plus className="w-5 h-5" />
                 Add Transaction
@@ -196,7 +196,7 @@ export default function FinancePage() {
       {activeTab === 'overview' ? (
         <>
           {/* Stats Grid */}
-          <div className="grid grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
           label="Total Balance"
           value={`$${stats.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -225,7 +225,7 @@ export default function FinancePage() {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Spending by Category */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
           <h3 className="text-lg font-semibold text-white mb-4">Spending by Category</h3>
@@ -307,7 +307,7 @@ export default function FinancePage() {
           </button>
         </div>
         {accounts.length > 0 ? (
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {accounts.map(account => (
               <div key={account.id} className="bg-slate-800 rounded-xl p-4 hover:bg-slate-700 transition-colors cursor-pointer">
                 <div className="text-sm text-slate-400 mb-1">{account.name}</div>

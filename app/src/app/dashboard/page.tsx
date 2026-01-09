@@ -274,7 +274,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
         <div className="stat-card group cursor-pointer" onClick={() => router.push('/dashboard/tasks')}>
           <div className="stat-icon bg-gradient-to-br from-green-500 to-emerald-600 mb-4">
             <CheckCircle className="w-6 h-6 text-white" />
@@ -313,7 +313,7 @@ export default function Dashboard() {
       </div>
 
       {/* Upcoming Tasks Section */}
-      <div className="card p-6 mb-8">
+      <div className="card p-4 md:p-6 mb-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold flex items-center gap-3">
             <Calendar className="w-7 h-7 text-purple-400" />
@@ -383,7 +383,11 @@ export default function Dashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
+        <Zap className="w-5 h-5 text-yellow-400" />
+        Quick Actions
+      </h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         <button
           onClick={() => router.push('/dashboard/tasks')}
           className="card p-6 card-hover text-left group"
