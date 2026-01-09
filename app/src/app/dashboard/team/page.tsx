@@ -75,7 +75,6 @@ export default function TeamPage() {
       if (response.ok) {
         if (data.joinLink) {
              setInviteLink(data.joinLink)
-             // Don't close dialog yet, let user copy link
         } else {
              alert('Invitation sent successfully!')
              setInviteEmail('')
@@ -169,7 +168,6 @@ export default function TeamPage() {
       </div>
     )
   }
-
 
   return (
     <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto animate-fadeIn">
@@ -300,6 +298,25 @@ export default function TeamPage() {
                     member.role === 'admin' 
                       ? 'bg-purple-500/20 text-purple-400' 
                       : 'bg-blue-500/20 text-blue-400'
+                  }`}>
+                    {member.role === 'admin' ? '👑 Admin' : '👤 Member'}
+                  </span>
+                </div>
+
+                {/* Footer */}
+                <div className="pt-4 border-t border-white/10 text-sm text-gray-400">
+                  <span>Joined {mounted ? new Date(member.joined_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '...'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Invite Dialog */}
+        {showInviteDialog && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
+              <h2 className="text-2xl font-bold text-white mb-4">Invite Team Member</h2>
               
               {!inviteLink ? (
                 <form onSubmit={handleInvite}>
@@ -307,7 +324,7 @@ export default function TeamPage() {
                     <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
                     <input
                       type="email"
-                      requiredmounted ? new Date(member.joined_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : '...'
+                      required
                       value={inviteEmail}
                       onChange={(e) => setInviteEmail(e.target.value)}
                       className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -365,26 +382,7 @@ export default function TeamPage() {
                       Done
                     </button>
                 </div>
-              )}lassName="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="colleague@example.com"
-                  />
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowInviteDialog(false)}
-                    className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
-                  >
-                    Send Invite
-                  </button>
-                </div>
-              </form>
+              )}
             </div>
           </div>
         )}
