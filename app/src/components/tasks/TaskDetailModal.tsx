@@ -188,14 +188,14 @@ export default function TaskDetailModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 overflow-y-auto flex items-end sm:items-center justify-center p-0 sm:p-4"
     >
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="bg-slate-800 border border-slate-700 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-slate-800 border border-slate-700 rounded-t-2xl sm:rounded-2xl w-full max-w-4xl h-[85vh] sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-700">
@@ -290,7 +290,7 @@ export default function TaskDetailModal({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     <Flag className="w-4 h-4 inline mr-1" />

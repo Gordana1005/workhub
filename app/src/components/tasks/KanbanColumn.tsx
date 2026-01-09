@@ -31,7 +31,7 @@ export default function KanbanColumn({ id, title, color, tasks, onTaskClick }: K
         {/* Drop Zone */}
         <div
           ref={setNodeRef}
-          className={`min-h-[400px] space-y-3 transition-all ${
+          className={`min-h-[150px] md:min-h-[400px] space-y-3 transition-all ${
             isOver ? 'bg-purple-500/10 rounded-lg p-2' : ''
           }`}
         >
