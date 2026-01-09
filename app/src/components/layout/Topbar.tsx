@@ -21,7 +21,7 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
-    router.push('/login')
+    router.push('/')
   }
 
   useEffect(() => {
