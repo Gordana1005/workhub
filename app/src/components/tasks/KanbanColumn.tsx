@@ -17,7 +17,7 @@ export default function KanbanColumn({ id, title, color, tasks, onTaskClick }: K
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
-    <div className="flex-shrink-0 w-80">
+    <div className="flex-shrink-0 w-full md:w-80">
       <div className="card p-4">
         {/* Column Header */}
         <div className="flex items-center justify-between mb-4">

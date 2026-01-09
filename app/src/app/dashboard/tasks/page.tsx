@@ -31,6 +31,7 @@ interface Task {
   title: string
   description: string | null
   priority: 'low' | 'medium' | 'high' | 'urgent'
+  status: string
   due_date: string | null
   is_completed: boolean
   project_id: string | null
@@ -53,7 +54,7 @@ export default function TasksPage() {
   const [templateData, setTemplateData] = useState<any>(null)
   
   // New UI state
-  const [viewMode, setViewMode] = useState<'list' | 'board' | 'calendar'>('list')
+  const [viewMode, setViewMode] = useState<'list' | 'board' | 'calendar'>('board')
   const [selectedTasks, setSelectedTasks] = useState<string[]>([])
   const [showExportDialog, setShowExportDialog] = useState(false)
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(false)
@@ -439,25 +440,23 @@ export default function TasksPage() {
           </div>
         ) : viewMode === 'board' ? (
           <KanbanBoard 
-            tasks={filteredTasks.map(t => ({
-              ...t,
-              status: t.is_completed ? 'Done' : 'To Do'
-            }))} 
+            tasks={filteredTasks} 
             onTaskUpdate={async (taskId, updates) => {
+              const extraUpdates: any = {};
+              if (updates.status === 'Done') extraUpdates.is_completed = true;
+              else if (updates.status) extraUpdates.is_completed = false;
+
               await fetch('/api/tasks', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: taskId, ...updates })
+                body: JSON.stringify({ id: taskId, ...updates, ...extraUpdates })
               })
               loadTasks()
             }}
           />
         ) : viewMode === 'calendar' ? (
           <CalendarView 
-            tasks={filteredTasks.map(t => ({
-              ...t,
-              status: t.is_completed ? 'Done' : 'To Do'
-            }))} 
+            tasks={filteredTasks} 
             onTaskClick={(calendarTask) => {
               // Find the original task from filteredTasks
               const originalTask = filteredTasks.find(t => t.id === calendarTask.id)
