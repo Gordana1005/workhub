@@ -42,9 +42,7 @@ export default function NotesPage() {
   }, [activeWorkspaceId])
 
   useEffect(() => {
-    if (selectedProjectId) {
-      loadNotes()
-    }
+    loadNotes()
   }, [selectedProjectId])
 
   const loadProjects = async () => {

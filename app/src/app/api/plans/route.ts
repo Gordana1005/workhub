@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
         start_date,
         end_date,
         color,
-        created_by: user.id
+        creator_id: user.id
       })
       .select()
       .single()

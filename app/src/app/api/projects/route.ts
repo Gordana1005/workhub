@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
         .select(`
           *,
           owner:profiles!creator_id(id, full_name, avatar_url),
-          tasks(id, title, status, priority, is_completed)
+          tasks(id, title, priority, is_completed)
         `)
         .eq('id', projectId)
         .single()
