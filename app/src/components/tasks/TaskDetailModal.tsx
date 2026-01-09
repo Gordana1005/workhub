@@ -141,25 +141,25 @@ export default function TaskDetailModal({
         taskId = data.id
       }
 
-      // Update dependencies
-      if (taskId) {
-        // Delete existing dependencies
+      // Update dependencies if any
+      if (taskId && dependencies.length > 0) {
+        // Delete existing dependencies first (safe to trace if 404/error ignored or handled)
+        // Note: 404 is expected if table is empty or RLS blocks read, so we proceed to insert
         await supabase
           .from('task_dependencies')
           .delete()
           .eq('task_id', taskId)
+          .then(() => {}) // Ignore errors on delete for new rows or if not found
+          .catch(() => {})
 
-        // Insert new dependencies
-        if (dependencies.length > 0) {
-          await supabase
-            .from('task_dependencies')
-            .insert(
-              dependencies.map(depId => ({
-                task_id: taskId,
-                depends_on_task_id: depId
-              }))
-            )
-        }
+        await supabase
+          .from('task_dependencies')
+          .insert(
+            dependencies.map(depId => ({
+              task_id: taskId,
+              depends_on_task_id: depId
+            }))
+          )
       }
 
       onSave()
@@ -188,14 +188,14 @@ export default function TaskDetailModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 overflow-y-auto flex items-end sm:items-center justify-center p-0 sm:p-4"
+      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center sm:p-4"
     >
       <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="bg-slate-800 border border-slate-700 rounded-t-2xl sm:rounded-2xl w-full max-w-4xl h-[85vh] sm:h-auto sm:max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl w-full max-w-4xl h-[90vh] sm:h-auto sm:max-h-[90vh] flex flex-col shadow-2xl"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-700">

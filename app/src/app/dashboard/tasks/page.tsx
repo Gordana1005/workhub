@@ -271,8 +271,8 @@ export default function TasksPage() {
     )
 
   return (
-    <div className="flex flex-col h-full min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4 md:p-6 overflow-x-hidden">
-      <div className="max-w-7xl mx-auto w-full">
+    <div className="flex flex-col h-full min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-x-hidden">
+      <div className="max-w-7xl mx-auto w-full p-4 md:p-6 pb-20 md:pb-6">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Tasks</h1>
