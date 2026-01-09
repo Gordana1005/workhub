@@ -145,12 +145,14 @@ export default function TaskDetailModal({
       if (taskId && dependencies.length > 0) {
         // Delete existing dependencies first (safe to trace if 404/error ignored or handled)
         // Note: 404 is expected if table is empty or RLS blocks read, so we proceed to insert
-        await supabase
-          .from('task_dependencies')
-          .delete()
-          .eq('task_id', taskId)
-          .then(() => {}) // Ignore errors on delete for new rows or if not found
-          .catch(() => {})
+        try {
+          await supabase
+            .from('task_dependencies')
+            .delete()
+            .eq('task_id', taskId)
+        } catch (e) {
+          // Ignore errors on delete for new rows or if not found
+        }
 
         await supabase
           .from('task_dependencies')
