@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Menu, Bell } from 'lucide-react'
+import { Menu, Bell, LogOut } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
-import DarkModeToggle from './DarkModeToggle'
 import NotificationCenter from '../notifications/NotificationCenter'
 import WorkspaceSwitcher from './WorkspaceSwitcher'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
@@ -14,9 +14,15 @@ interface TopbarProps {
 }
 
 export default function Topbar({ onMenuClick }: TopbarProps) {
+  const router = useRouter()
   const { currentWorkspace } = useWorkspaceStore()
   const [showNotifications, setShowNotifications] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
 
   useEffect(() => {
     if (currentWorkspace) {
@@ -100,8 +106,15 @@ export default function Topbar({ onMenuClick }: TopbarProps) {
             </motion.button>
           </div>
 
-          <DarkModeToggle />
-          {/* TODO: Add user menu/profile dropdown */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleLogout}
+            className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+            title="Log out"
+          >
+            <LogOut className="w-5 h-5" />
+          </motion.button>
         </div>
       </header>
 
