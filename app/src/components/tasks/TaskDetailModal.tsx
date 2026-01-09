@@ -197,10 +197,10 @@ export default function TaskDetailModal({
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl w-full max-w-4xl h-[90vh] sm:h-auto sm:max-h-[90vh] flex flex-col shadow-2xl"
+        className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl w-full max-w-4xl h-[90vh] sm:h-auto sm:max-h-[85vh] flex flex-col shadow-2xl overflow-y-auto"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-700">
+        <div className="flex items-center justify-between p-6 border-b border-slate-700 shrink-0">
           <h2 className="text-2xl font-bold text-white">
             {task ? 'Edit Task' : 'Create New Task'}
           </h2>
@@ -324,7 +324,7 @@ export default function TaskDetailModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     <FolderOpen className="w-4 h-4 inline mr-1" />
@@ -360,7 +360,7 @@ export default function TaskDetailModal({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
                     Category

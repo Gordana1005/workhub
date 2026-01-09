@@ -13,34 +13,61 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 console.log('🔐 Creating admin account...\n')
 
 const email = 'admin@admin.com'
-const password = 'admin'
+const password = 'admin123'
 
-// Create user using admin API
-const { data, error } = await supabase.auth.admin.createUser({
-  email: email,
-  password: password,
-  email_confirm: true, // Auto-confirm email
-  user_metadata: {
-    full_name: 'Admin User'
-  }
-})
+// Check if user exists first
+const { data: { users }, error: listError } = await supabase.auth.admin.listUsers()
 
-if (error) {
-  console.log('❌ Error creating user:', error.message)
+if (listError) {
+  console.log('❌ Error listing users:', listError.message)
   process.exit(1)
 }
 
-console.log('✅ User created successfully!')
+const existingUser = users.find(u => u.email === email)
+let userId
+
+if (existingUser) {
+  console.log('🔄 User exists, updating password...')
+  userId = existingUser.id
+  
+  const { error: updateError } = await supabase.auth.admin.updateUserById(
+    userId,
+    { password: password, email_confirm: true }
+  )
+  
+  if (updateError) {
+    console.log('❌ Error updating user:', updateError.message)
+    process.exit(1)
+  }
+} else {
+  // Create user using admin API
+  const { data, error } = await supabase.auth.admin.createUser({
+    email: email,
+    password: password,
+    email_confirm: true, // Auto-confirm email
+    user_metadata: {
+      full_name: 'Admin User'
+    }
+  })
+
+  if (error) {
+    console.log('❌ Error creating user:', error.message)
+    process.exit(1)
+  }
+  userId = data.user.id
+}
+
+console.log('✅ User created/updated successfully!')
 console.log('\n📧 Login credentials:')
 console.log(`   Email: ${email}`)
 console.log(`   Password: ${password}`)
-console.log(`   User ID: ${data.user.id}`)
+console.log(`   User ID: ${userId}`)
 
 // Create profile entry
 const { error: profileError } = await supabase
   .from('profiles')
-  .insert({
-    id: data.user.id,
+  .upsert({
+    id: userId,
     email: email,
     full_name: 'Admin User',
     job_title: 'Administrator',

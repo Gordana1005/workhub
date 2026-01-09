@@ -1,9 +1,11 @@
-import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/auth-guard'
+import { logger } from '@/lib/logger'
+import { cookies } from 'next/headers'
+import { createServerClient } from '@supabase/ssr'
 
-// Force dynamic rendering (uses cookies)
+// Force dynamic rendering
 export const dynamic = 'force-dynamic'
 
 // Admin client for bypassing RLS
@@ -13,48 +15,23 @@ const supabaseAdmin = createClient(
 )
 
 export async function POST(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll() {}
-      }
-    }
-  )
-
-  const body = await request.json()
-  const { workspace_id, email } = body
-
-  if (!workspace_id || !email) {
-    return NextResponse.json(
-      { error: 'workspace_id and email are required' },
-      { status: 400 }
-    )
-  }
-
   try {
-    // Check if current user is admin
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Authenticate and verify admin status using the guard
+    const auth = await requireAdmin(request)
+    
+    // logic to handle unauthorized
+    if (auth instanceof NextResponse) {
+      return auth
     }
 
-    const { data: currentMember } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspace_id)
-      .eq('user_id', user.id)
-      .single()
+    const { user, workspaceId } = auth
+    const body = await request.json()
+    const { email } = body
 
-    if (currentMember?.role !== 'admin') {
+    if (!email) {
       return NextResponse.json(
-        { error: 'Only admins can send invitations' },
-        { status: 403 }
+        { error: 'Email is required' },
+        { status: 400 }
       )
     }
 
@@ -62,7 +39,7 @@ export async function POST(request: Request) {
     const { data: existing } = await supabaseAdmin
       .from('invitations')
       .select('id')
-      .eq('workspace_id', workspace_id)
+      .eq('workspace_id', workspaceId)
       .eq('email', email)
       .eq('status', 'pending')
       .single()
@@ -78,7 +55,7 @@ export async function POST(request: Request) {
     const { data: invitation, error } = await supabaseAdmin
       .from('invitations')
       .insert({
-        workspace_id,
+        workspace_id: workspaceId,
         email,
         invited_by: user.id,
         status: 'pending'
@@ -86,14 +63,18 @@ export async function POST(request: Request) {
       .select()
       .single()
 
-    if (error) throw error
-
-    // In production, you would send an email here
-    // For now, we'll just create the invitation record
+    if (error) {
+      console.error('Database Error:', error)
+      return NextResponse.json(
+        { error: error.message || 'Database error' },
+        { status: 500 }
+      )
+    }
 
     return NextResponse.json({ invitation })
+
   } catch (error) {
-    console.error('Error sending invitation:', error)
+    console.error('Error in invitation route:', error)
     return NextResponse.json(
       { error: 'Failed to send invitation' },
       { status: 500 }

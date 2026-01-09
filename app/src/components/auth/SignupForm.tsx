@@ -25,15 +25,20 @@ export default function SignupForm() {
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
-        password
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        }
       })
 
       if (error) {
         setError(error.message)
-      } else {
+      } else if (data.session) {
         router.push('/auth/onboarding')
+      } else {
+        setError('Please check your email to confirm your account.')
       }
     } catch (err) {
       setError('An unexpected error occurred')

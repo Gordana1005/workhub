@@ -86,7 +86,7 @@ export default function KanbanBoard({ tasks, onTaskUpdate, onTaskClick }: Kanban
          <span>Drag and drop tasks between columns to update their status</span>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-4 overflow-x-auto pb-4 md:overflow-visible scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+      <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
         {DEFAULT_COLUMNS.map((column) => (
           <KanbanColumn
             key={column.id}
