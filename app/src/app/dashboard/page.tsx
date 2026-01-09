@@ -341,41 +341,48 @@ export default function Dashboard() {
             {stats.dueToday.map((task) => (
               <div
                 key={task.id}
-                className={`card p-4 card-hover flex items-center gap-4 border ${getPriorityColor(task.priority)}`}
+                className={`card p-3 md:p-4 card-hover flex flex-col sm:flex-row sm:items-center gap-3 border ${getPriorityColor(task.priority)}`}
               >
-                <button
-                  onClick={() => toggleTaskComplete(task.id, task.is_completed)}
-                  className="flex-shrink-0"
-                >
-                  {task.is_completed ? (
-                    <CheckCircle className="w-6 h-6 text-green-400" />
-                  ) : (
-                    <div className="w-6 h-6 rounded-full border-2 border-gray-500 hover:border-purple-400 transition-colors" />
-                  )}
-                </button>
+                {/* Main Content: Checkbox + Title */}
+                <div className="flex items-start gap-3 w-full sm:w-auto flex-1 min-w-0">
+                  <button
+                    onClick={() => toggleTaskComplete(task.id, task.is_completed)}
+                    className="flex-shrink-0 mt-1 sm:mt-0"
+                  >
+                    {task.is_completed ? (
+                      <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-green-400" />
+                    ) : (
+                      <div className="w-5 h-5 md:w-6 md:h-6 rounded-full border-2 border-gray-500 hover:border-purple-400 transition-colors" />
+                    )}
+                  </button>
 
-                <div className="flex-1 min-w-0">
-                  <h4 className={`font-medium mb-1 ${task.is_completed ? 'line-through text-gray-500' : ''}`}>
-                    {task.title}
-                  </h4>
-                  {task.description && (
-                    <p className="text-sm text-gray-400 truncate">{task.description}</p>
-                  )}
+                  <div className="flex-1 min-w-0">
+                    <h4 className={`font-medium text-sm md:text-base mb-0.5 truncate ${task.is_completed ? 'line-through text-gray-500' : ''}`}>
+                      {task.title}
+                    </h4>
+                    {task.description && (
+                      <p className="text-xs md:text-sm text-gray-400 truncate">{task.description}</p>
+                    )}
+                  </div>
                 </div>
 
-                {task.estimated_hours && (
-                  <div className="flex-shrink-0 text-sm text-gray-400 flex items-center gap-1">
-                    <Clock className="w-4 h-4" />
-                    {task.estimated_hours}h
-                  </div>
-                )}
+                {/* Actions Row (Mobile: Bottom indented, Desktop: Right aligned) */}
+                <div className="flex items-center justify-between sm:justify-end gap-3 pl-8 sm:pl-0 w-full sm:w-auto">
+                    {task.estimated_hours && (
+                      <div className="text-xs text-gray-400 flex items-center gap-1 bg-white/5 px-2 py-1 rounded-md">
+                        <Clock className="w-3 h-3" />
+                        {task.estimated_hours}h
+                      </div>
+                    )}
 
-                <button
-                  onClick={() => handleStartTaskTimer(task.id)}
-                  className="flex-shrink-0 btn-primary px-3 py-2 text-sm"
-                >
-                  <Play className="w-4 h-4" />
-                </button>
+                    <button
+                      onClick={() => handleStartTaskTimer(task.id)}
+                      className="btn-primary p-2 md:px-3 md:py-2 text-xs md:text-sm flex items-center gap-2"
+                    >
+                      <Play className="w-3 h-3 md:w-4 md:h-4" />
+                      <span className="sm:hidden">Start</span>
+                    </button>
+                </div>
               </div>
             ))}
           </div>
@@ -387,49 +394,49 @@ export default function Dashboard() {
         <Zap className="w-5 h-5 text-yellow-400" />
         Quick Actions
       </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         <button
           onClick={() => router.push('/dashboard/tasks')}
-          className="card p-6 card-hover text-left group"
+          className="card p-4 card-hover flex flex-col items-center justify-center text-center group h-auto min-h-[120px]"
         >
-          <div className="stat-icon bg-gradient-blue-purple mb-4 group-hover:scale-110 transition-transform">
-            <CheckCircle className="w-6 h-6 text-white" />
+          <div className="stat-icon bg-gradient-blue-purple mb-3 group-hover:scale-110 transition-transform">
+            <CheckCircle className="w-5 h-5 md:w-6 md:h-6 text-white" />
           </div>
-          <h3 className="font-semibold mb-1">Tasks</h3>
-          <p className="text-sm text-gray-400">Manage tasks</p>
+          <h3 className="font-semibold text-sm md:text-base">Tasks</h3>
+          <p className="text-xs text-gray-400 mt-1 hidden sm:block">Manage tasks</p>
         </button>
 
         <button
           onClick={() => router.push('/dashboard/projects')}
-          className="card p-6 card-hover text-left group"
+          className="card p-4 card-hover flex flex-col items-center justify-center text-center group h-auto min-h-[120px]"
         >
-          <div className="stat-icon bg-gradient-to-br from-purple-500 to-pink-600 mb-4 group-hover:scale-110 transition-transform">
-            <Target className="w-6 h-6 text-white" />
+          <div className="stat-icon bg-gradient-to-br from-purple-500 to-pink-600 mb-3 group-hover:scale-110 transition-transform">
+            <Target className="w-5 h-5 md:w-6 md:h-6 text-white" />
           </div>
-          <h3 className="font-semibold mb-1">Projects</h3>
-          <p className="text-sm text-gray-400">View projects</p>
+          <h3 className="font-semibold text-sm md:text-base">Projects</h3>
+          <p className="text-xs text-gray-400 mt-1 hidden sm:block">View projects</p>
         </button>
 
         <button
           onClick={() => router.push('/dashboard/team')}
-          className="card p-6 card-hover text-left group"
+          className="card p-4 card-hover flex flex-col items-center justify-center text-center group h-auto min-h-[120px]"
         >
-          <div className="stat-icon bg-gradient-to-br from-blue-500 to-cyan-600 mb-4 group-hover:scale-110 transition-transform">
-            <Users className="w-6 h-6 text-white" />
+          <div className="stat-icon bg-gradient-to-br from-blue-500 to-cyan-600 mb-3 group-hover:scale-110 transition-transform">
+            <Users className="w-5 h-5 md:w-6 md:h-6 text-white" />
           </div>
-          <h3 className="font-semibold mb-1">Team</h3>
-          <p className="text-sm text-gray-400">Team members</p>
+          <h3 className="font-semibold text-sm md:text-base">Team</h3>
+          <p className="text-xs text-gray-400 mt-1 hidden sm:block">Team members</p>
         </button>
 
         <button
           onClick={() => router.push('/dashboard/reports')}
-          className="card p-6 card-hover text-left group"
+          className="card p-4 card-hover flex flex-col items-center justify-center text-center group h-auto min-h-[120px]"
         >
-          <div className="stat-icon bg-gradient-orange mb-4 group-hover:scale-110 transition-transform">
-            <Zap className="w-6 h-6 text-white" />
+          <div className="stat-icon bg-gradient-orange mb-3 group-hover:scale-110 transition-transform">
+            <Zap className="w-5 h-5 md:w-6 md:h-6 text-white" />
           </div>
-          <h3 className="font-semibold mb-1">Reports</h3>
-          <p className="text-sm text-gray-400">View insights</p>
+          <h3 className="font-semibold text-sm md:text-base">Reports</h3>
+          <p className="text-xs text-gray-400 mt-1 hidden sm:block">View insights</p>
         </button>
       </div>
 
