@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
-import { Eye, EyeOff, Mail, Github } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight } from 'lucide-react'
 
 function LoginForm() {
   const [email, setEmail] = useState('')
@@ -59,35 +60,31 @@ function LoginForm() {
     }
   }
 
-  const handleSocialLogin = async (provider: 'google' | 'github') => {
-    setLoading(true)
-    setErrors({})
-    
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      })
-      
-      if (error) {
-        setErrors({ general: error.message })
-        setLoading(false)
-      }
-      // If successful, user will be redirected
-    } catch (err) {
-      setErrors({ general: 'Failed to sign in with OAuth' })
-      setLoading(false)
-    }
-  }
-
   return (
-    <div className="w-full max-w-md">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl">
+    <div className="w-full max-w-5xl relative z-10">
+      <div className="grid gap-8 lg:grid-cols-[1.1fr_0.9fr] items-stretch bg-slate-900/70 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl">
+        <div className="hidden lg:flex flex-col justify-between rounded-2xl bg-gradient-to-br from-blue-600/20 via-blue-500/10 to-emerald-500/10 border border-white/10 p-6">
+          <div className="space-y-4 text-white">
+            <p className="inline-flex items-center gap-2 text-sm font-semibold px-3 py-1 rounded-full bg-white/10 text-white/90 border border-white/10 w-fit">Welcome to TrackWork</p>
+            <h2 className="text-3xl font-bold leading-tight">Plan, ship, and collaborate from idea to production.</h2>
+            <p className="text-slate-200/80 text-sm">Securely manage tasks, projects, time tracking, and team collaboration in one place.</p>
+          </div>
+          <div className="mt-6 space-y-3 text-sm text-slate-200/80">
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              Email sign-in is available now.
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="h-2 w-2 rounded-full bg-amber-400" />
+              Google / GitHub sign-in is temporarily disabled.
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-lg">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-white mb-2">Welcome back</h1>
-          <p className="text-slate-400">Sign in to your WorkHub account</p>
+          <p className="text-slate-400">Sign in with your email to continue</p>
         </div>
 
         {errors.general && (
@@ -96,26 +93,19 @@ function LoginForm() {
           </div>
         )}
 
-        {/* Social Login */}
-        <div className="space-y-3 mb-6">
-          <button
-            onClick={() => handleSocialLogin('google')}
-            disabled={loading}
-            type="button"
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white hover:bg-gray-100 text-gray-900 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Mail className="w-5 h-5" />
-            Continue with Google
-          </button>
-          <button
-            onClick={() => handleSocialLogin('github')}
-            disabled={loading}
-            type="button"
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Github className="w-5 h-5" />
-            Continue with GitHub
-          </button>
+        <div className="mb-6">
+          <Link href="/auth/signup" className="block">
+            <Button
+              type="button"
+              variant="primary"
+              className="w-full py-3 text-base font-semibold bg-blue-600 hover:bg-blue-700 flex items-center justify-center gap-2"
+            >
+              Create a TrackWork account <ArrowRight className="w-4 h-4" />
+            </Button>
+          </Link>
+          <p className="mt-3 text-xs text-slate-400 text-center">
+            Google and GitHub sign-in are temporarily unavailable. Use email instead.
+          </p>
         </div>
 
         <div className="relative mb-6">
@@ -123,7 +113,7 @@ function LoginForm() {
             <div className="w-full border-t border-slate-800"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-4 bg-slate-900 text-slate-500">Or continue with email</span>
+            <span className="px-4 bg-slate-900 text-slate-500">Or sign in with email</span>
           </div>
         </div>
 
@@ -197,11 +187,12 @@ function LoginForm() {
         <div className="mt-6 text-center">
           <p className="text-slate-400 text-sm">
             Don't have an account?{' '}
-            <a href="/auth/signup" className="text-blue-500 hover:text-blue-400 font-medium transition-colors">
+            <Link href="/auth/signup" className="text-blue-500 hover:text-blue-400 font-medium transition-colors">
               Sign up
-            </a>
+            </Link>
           </p>
         </div>
+      </div>
       </div>
     </div>
   )
