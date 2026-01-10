@@ -261,21 +261,24 @@ export default function Dashboard() {
   }
 
   const handleToggleTask = async (taskId: string, currentStatus: boolean) => {
-    // Optimistic update
-    setTasks(tasks.filter(t => t.id !== taskId)) 
-    
-    // Update DB
-    const { error } = await supabase
-        .from('tasks')
-        .update({ 
-            is_completed: !currentStatus,
-            status: !currentStatus ? 'Done' : 'To Do',
-            completed_at: !currentStatus ? new Date().toISOString() : null
-        })
-        .eq('id', taskId)
+    // Optimistic update (remove from quick list)
+    setTasks(prev => prev.filter(t => t.id !== taskId))
 
-    if (error) {
-        console.error('Error updating task:', error)
+    const response = await fetch('/api/tasks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: taskId,
+        is_completed: !currentStatus,
+        status: !currentStatus ? 'Done' : 'To Do',
+        completed_at: !currentStatus ? new Date().toISOString() : null
+      })
+    })
+
+    if (!response.ok) {
+      console.error('Error updating task:', await response.text())
+      // Revert if failure
+      setTasks(prev => prev)
     }
   }
 
