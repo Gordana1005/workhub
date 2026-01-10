@@ -39,10 +39,14 @@ export default function NotesList({ notes, projectId, workspaceId, projects = []
   const [showTemplates, setShowTemplates] = useState(false)
   const [editingNote, setEditingNote] = useState<Note | null>(null)
   const [templateContent, setTemplateContent] = useState<string>('')
+  const [formError, setFormError] = useState('')
 
   const handleCreate = async (title: string, content: string, tags: Tag[], targetProjectId: string) => {
     const finalProjectId = targetProjectId || projectId
-    if (!finalProjectId) return
+    if (!finalProjectId) {
+      setFormError('Please pick a project for this note.')
+      return
+    }
 
     try {
       const res = await fetch('/api/notes', {
@@ -54,6 +58,7 @@ export default function NotesList({ notes, projectId, workspaceId, projects = []
       if (res.ok) {
         setShowEditor(false)
         setTemplateContent('')
+        setFormError('')
         onRefresh()
       }
     } catch (error) {
@@ -108,24 +113,33 @@ export default function NotesList({ notes, projectId, workspaceId, projects = []
           <FileText className="w-6 h-6 text-purple-400" />
           Notes
         </h2>
-        {projectId && (
-          <div className="flex gap-2">
-            <button
-              onClick={() => setShowTemplates(true)}
-              className="btn-secondary flex items-center gap-2"
-            >
-              <Sparkles className="w-4 h-4" />
-              From Template
-            </button>
-            <button
-              onClick={() => setShowEditor(true)}
-              className="btn-primary flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              New Note
-            </button>
-          </div>
-        )}
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              setTemplateContent('')
+              setShowTemplates(true)
+              setFormError('')
+            }}
+            className="btn-secondary flex items-center gap-2"
+            disabled={projects.length === 0}
+            title={projects.length === 0 ? 'Create a project first' : 'Create from template'}
+          >
+            <Sparkles className="w-4 h-4" />
+            From Template
+          </button>
+          <button
+            onClick={() => {
+              setShowEditor(true)
+              setFormError('')
+            }}
+            className="btn-primary flex items-center gap-2"
+            disabled={projects.length === 0}
+            title={projects.length === 0 ? 'Create a project first' : 'New note'}
+          >
+            <Plus className="w-4 h-4" />
+            New Note
+          </button>
+        </div>
       </div>
 
       {notes.length === 0 ? (
@@ -137,14 +151,16 @@ export default function NotesList({ notes, projectId, workspaceId, projects = []
           <p className="text-gray-400 mb-6">
             Create your first note to capture important information
           </p>
-          {projectId && (
-            <button
-              onClick={() => setShowEditor(true)}
-              className="btn-primary inline-flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Create Note
-            </button>
+          <button
+            onClick={() => setShowEditor(true)}
+            className="btn-primary inline-flex items-center gap-2"
+            disabled={projects.length === 0}
+          >
+            <Plus className="w-4 h-4" />
+            Create Note
+          </button>
+          {projects.length === 0 && (
+            <p className="text-xs text-gray-500 mt-3">Add a project to start attaching notes.</p>
           )}
         </div>
       ) : (
@@ -171,6 +187,7 @@ export default function NotesList({ notes, projectId, workspaceId, projects = []
           onCancel={() => {
             setShowEditor(false)
             setTemplateContent('')
+            setFormError('')
           }}
         />
       )}
@@ -200,6 +217,12 @@ export default function NotesList({ notes, projectId, workspaceId, projects = []
           }}
           onClose={() => setShowTemplates(false)}
         />
+      )}
+
+      {formError && (
+        <div className="mt-4 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+          {formError}
+        </div>
       )}
     </div>
   )

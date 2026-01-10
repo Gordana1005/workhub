@@ -12,6 +12,11 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+async function notifyUsers(entries: Array<{ user_id: string; workspace_id: string; type: string; title: string; message: string; link?: string }>) {
+  if (!entries.length) return
+  await supabaseAdmin.from('notifications').insert(entries.map(e => ({ ...e, read: false })))
+}
+
 // Create auth client
 async function createAuthClient() {
   const cookieStore = await cookies()
@@ -276,6 +281,12 @@ export async function PATCH(request: NextRequest) {
       }
 
       case 'goal': {
+        const { data: existing } = await supabaseAdmin
+          .from('finance_goals')
+          .select('*')
+          .eq('id', id)
+          .single()
+
         const { data, error } = await supabaseAdmin
           .from('finance_goals')
           .update(updates)
@@ -284,6 +295,29 @@ export async function PATCH(request: NextRequest) {
           .single()
         
         if (error) throw error
+
+        const statusNow = (data as any)?.status
+        const statusBefore = (existing as any)?.status
+        const workspaceId = (data as any)?.workspace_id
+
+        if (workspaceId && statusBefore !== 'completed' && statusNow === 'completed') {
+          const { data: members } = await supabaseAdmin
+            .from('workspace_members')
+            .select('user_id')
+            .eq('workspace_id', workspaceId)
+
+          const notifications = (members || []).map((m: any) => ({
+            user_id: m.user_id,
+            workspace_id: workspaceId,
+            type: 'goal_completed',
+            title: 'Goal completed',
+            message: `${(data as any)?.name || (data as any)?.title || 'A goal'} was completed`,
+            link: '/dashboard/finance'
+          }))
+
+          await notifyUsers(notifications)
+        }
+
         return NextResponse.json({ goal: data })
       }
 

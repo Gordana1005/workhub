@@ -12,6 +12,11 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+async function notifyUsers(entries: Array<{ user_id: string; workspace_id: string; type: string; title: string; message: string; link?: string }>) {
+  if (!entries.length) return
+  await supabaseAdmin.from('notifications').insert(entries.map(e => ({ ...e, read: false })))
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const workspaceId = searchParams.get('workspace_id') || searchParams.get('workspaceId')
@@ -169,6 +174,13 @@ export async function PATCH(request: Request) {
     const body = await request.json()
     const { id, ...updates } = body
 
+    // Fetch current task for comparison
+    const { data: current } = await supabaseAdmin
+      .from('tasks')
+      .select('*')
+      .eq('id', id)
+      .single()
+
     const { data: task, error } = await supabaseAdmin
       .from('tasks')
       .update(updates)
@@ -180,6 +192,40 @@ export async function PATCH(request: Request) {
       .single()
 
     if (error) throw error
+
+    // Task completion / status change notification
+    const wasCompleted = current?.is_completed || current?.status === 'Done'
+    const nowCompleted = (task as any)?.is_completed || (task as any)?.status === 'Done'
+    const statusChanged = current?.status !== (task as any)?.status || current?.is_completed !== (task as any)?.is_completed
+
+    if (task && statusChanged) {
+      const workspaceId = (task as any).workspace_id
+      const title = (task as any).title || 'Task updated'
+
+      const { data: members } = await supabaseAdmin
+        .from('workspace_members')
+        .select('user_id')
+        .eq('workspace_id', workspaceId)
+
+      const baseMessage = wasCompleted
+        ? `${title} was reopened`
+        : nowCompleted
+          ? `${title} was completed`
+          : `${title} was updated`
+
+      const notifications = (members || [])
+        .filter((m: any) => m.user_id !== user.id)
+        .map((m: any) => ({
+          user_id: m.user_id,
+          workspace_id: workspaceId,
+          type: nowCompleted ? 'task_completed' : 'task_updated',
+          title: nowCompleted ? 'Task completed' : 'Task updated',
+          message: baseMessage,
+          link: '/dashboard/tasks'
+        }))
+
+      await notifyUsers(notifications)
+    }
 
     return NextResponse.json(task)
   } catch (error: any) {

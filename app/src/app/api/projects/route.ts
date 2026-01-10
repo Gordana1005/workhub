@@ -12,6 +12,11 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+async function notifyUsers(entries: Array<{ user_id: string; workspace_id: string; type: string; title: string; message: string; link?: string }>) {
+  if (!entries.length) return
+  await supabaseAdmin.from('notifications').insert(entries.map(e => ({ ...e, read: false })))
+}
+
 // Create auth client
 async function createAuthClient() {
   const cookieStore = await cookies()
@@ -146,6 +151,25 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) throw error
+
+    // Notify workspace members (except creator) about the new project
+    const { data: members } = await supabaseAdmin
+      .from('workspace_members')
+      .select('user_id')
+      .eq('workspace_id', workspace_id)
+
+    const notifications = (members || [])
+      .filter((m: any) => m.user_id !== user.id)
+      .map((m: any) => ({
+        user_id: m.user_id,
+        workspace_id,
+        type: 'project_created',
+        title: 'New project created',
+        message: `${project.name} was created`,
+        link: `/dashboard/projects/${project.id}`
+      }))
+
+    await notifyUsers(notifications)
 
     return NextResponse.json({ project }, { status: 201 })
   } catch (error: any) {

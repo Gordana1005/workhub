@@ -32,6 +32,7 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
+  const [userId, setUserId] = useState<string | null>(null)
   const router = useRouter()
 
   const loadNotifications = useCallback(async () => {
@@ -50,7 +51,8 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
   }, [filter])
 
   const subscribeToNotifications = useCallback(() => {
-    // Subscribe to real-time notifications
+    if (!userId) return null
+
     const channel = supabase
       .channel('notifications')
       .on(
@@ -58,7 +60,8 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'notifications'
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`
         },
         (payload) => {
           const newNotification = payload.new as Notification
@@ -77,19 +80,23 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
       .subscribe()
 
     return channel
-  }, [])
+  }, [userId])
 
   useEffect(() => {
-    if (isOpen) {
-      loadNotifications()
-      const channel = subscribeToNotifications()
+    if (!isOpen) return undefined
 
-      return () => {
-        channel?.unsubscribe()
-      }
+    const resolveUser = async () => {
+      const { data } = await supabase.auth.getUser()
+      setUserId(data.user?.id || null)
     }
 
-    return undefined
+    resolveUser()
+    loadNotifications()
+    const channel = subscribeToNotifications()
+
+    return () => {
+      channel?.unsubscribe()
+    }
   }, [isOpen, filter, loadNotifications, subscribeToNotifications])
 
   const handleNotificationClick = async (notification: Notification) => {

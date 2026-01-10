@@ -48,15 +48,19 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         throw new Error(data.error || 'Failed to fetch workspaces')
       }
 
+      const fetched = data.workspaces || []
+      const savedWorkspace = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('currentWorkspace') || 'null') : null
+      const savedStillValid = savedWorkspace && fetched.find((w: Workspace) => w.id === savedWorkspace.id)
+
       set({
-        workspaces: data.workspaces || [],
+        workspaces: fetched,
+        currentWorkspace: savedStillValid ? savedWorkspace : null,
         loading: false
       })
 
-      // Restore current workspace from localStorage if it exists
-      const savedWorkspace = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('currentWorkspace') || 'null') : null
-      if (savedWorkspace && data.workspaces?.find((w: Workspace) => w.id === savedWorkspace.id)) {
-        set({ currentWorkspace: savedWorkspace })
+      // Drop stale workspace selection from a previous account
+      if (!savedStillValid && typeof window !== 'undefined') {
+        localStorage.removeItem('currentWorkspace')
       }
     } catch (error) {
       set({

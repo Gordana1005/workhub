@@ -12,6 +12,13 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+async function createNotifications(entries: Array<{ user_id: string; workspace_id: string; type: string; title: string; message: string; link?: string }>) {
+  if (!entries.length) return
+  await supabaseAdmin.from('notifications').insert(
+    entries.map((n) => ({ ...n, read: false }))
+  )
+}
+
 export async function GET() {
   try {
     const cookieStore = await cookies()
@@ -155,6 +162,17 @@ export async function POST(request: Request) {
       await supabaseAdmin.from('workspaces').delete().eq('id', workspace.id)
       return NextResponse.json({ error: 'Failed to create workspace membership' }, { status: 500 })
     }
+
+    await createNotifications([
+      {
+        user_id: user.id,
+        workspace_id: workspace.id,
+        type: 'workspace_created',
+        title: 'Workspace created',
+        message: `You created ${workspace.name}. Invite your team to get started.`,
+        link: '/dashboard/workspaces'
+      }
+    ])
 
     return NextResponse.json({ workspace })
 

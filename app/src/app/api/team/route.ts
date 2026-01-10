@@ -12,6 +12,10 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+async function notifyUser(entry: { user_id: string; workspace_id: string; type: string; title: string; message: string; link?: string }) {
+  await supabaseAdmin.from('notifications').insert({ ...entry, read: false })
+}
+
 export async function GET(request: Request) {
   const cookieStore = await cookies()
   const supabase = createServerClient(
@@ -276,6 +280,21 @@ export async function POST(request: Request) {
       .insert({ workspace_id, user_id: target.id, role })
 
     if (insertError) throw insertError
+
+    const { data: workspace } = await supabaseAdmin
+      .from('workspaces')
+      .select('name')
+      .eq('id', workspace_id)
+      .single()
+
+    await notifyUser({
+      user_id: target.id,
+      workspace_id,
+      type: 'workspace_member_added',
+      title: 'Added to workspace',
+      message: `You were added to ${workspace?.name || 'a workspace'}.`,
+      link: '/dashboard'
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {
