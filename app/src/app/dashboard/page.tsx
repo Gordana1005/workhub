@@ -1,7 +1,6 @@
 ﻿'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { useTimerStore } from '@/stores/useTimerStore'
@@ -71,8 +70,7 @@ const safeDate = (dateString: string | null | undefined): string => {
 }
 
 export default function Dashboard() {
-  const router = useRouter()
-  const { workspaces, currentWorkspace, fetchWorkspaces, setCurrentWorkspace } = useWorkspaceStore()
+  const { workspaces, currentWorkspace, fetchWorkspaces, loading } = useWorkspaceStore()
   const { time, isRunning, start, stop, tick } = useTimerStore()
 
   const [userName, setUserName] = useState('there')
@@ -123,13 +121,6 @@ export default function Dashboard() {
     }
     init()
   }, [fetchWorkspaces, workspaces.length])
-
-  // Select first workspace
-  useEffect(() => {
-    if (!currentWorkspace && workspaces.length > 0) {
-      setCurrentWorkspace(workspaces[0])
-    }
-  }, [currentWorkspace, workspaces, setCurrentWorkspace])
 
   // Fetch Dashboard Data
   useEffect(() => {
@@ -289,6 +280,34 @@ export default function Dashboard() {
   }
 
   if (!mounted) return null // Prevent hydration mismatch
+
+  if (!loading && workspaces.length === 0 && !currentWorkspace) {
+    return (
+      <div className="max-w-3xl mx-auto py-16">
+        <div className="bg-surface/60 border border-white/5 rounded-2xl p-10 text-center space-y-5 shadow-xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-semibold">
+            <Zap className="w-4 h-4" /> Welcome to TrackWork
+          </div>
+          <h1 className="text-3xl font-bold text-white">Create your first workspace</h1>
+          <p className="text-text-secondary max-w-2xl mx-auto">
+            You are signed in and ready to go. Create a workspace to start projects, tasks, and notes. No workspace was created for you automatically.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <Link href="/dashboard/workspaces?create=true">
+              <Button className="bg-primary hover:bg-primary-hover text-white gap-2">
+                <Plus className="w-4 h-4" /> Create workspace
+              </Button>
+            </Link>
+            <Link href="/dashboard/workspaces">
+              <Button variant="outline" className="gap-2">
+                Browse workspaces
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (!currentWorkspace) return <div className="p-8 text-center text-text-muted">Loading workspace...</div>
 
