@@ -21,13 +21,7 @@ export default function ReportsPage() {
   const [priorityData, setPriorityData] = useState<any[]>([]);
   const [categoryData, setCategoryData] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (currentWorkspace) {
-      loadReportData();
-    }
-  }, [currentWorkspace]);
-
-  const loadReportData = async () => {
+  const loadReportData = useCallback(async () => {
     if (!currentWorkspace) return;
 
     setLoading(true);
@@ -106,7 +100,13 @@ export default function ReportsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentWorkspace]);
+
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadReportData();
+    }
+  }, [currentWorkspace, loadReportData]);
 
   if (loading) {
     return (

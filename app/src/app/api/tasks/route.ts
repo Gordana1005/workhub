@@ -15,6 +15,7 @@ const supabaseAdmin = createClient(
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const workspaceId = searchParams.get('workspace_id') || searchParams.get('workspaceId')
+  const projectId = searchParams.get('project_id') || searchParams.get('projectId')
 
   if (!workspaceId) {
     return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
@@ -51,16 +52,22 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { data: tasks, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('tasks')
       .select(`
         *,
-        projects(name, workspace_id),
-        assignee:profiles!tasks_assignee_id_fkey(id, full_name),
-        creator:profiles!tasks_creator_id_fkey(id, full_name)
+        projects(name, workspace_id, color),
+        assignee:profiles!tasks_assignee_id_fkey(id, username),
+        creator:profiles!tasks_creator_id_fkey(id, username)
       `)
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false })
+
+    if (projectId) {
+      query = query.eq('project_id', projectId)
+    }
+
+    const { data: tasks, error } = await query
 
     if (error) throw error
 
@@ -93,6 +100,10 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { workspace_id, title, description, priority, due_date, project_id, assignee_id, category } = body
+
+    if (!project_id) {
+      return NextResponse.json({ error: 'project_id is required' }, { status: 400 })
+    }
 
     // Verify workspace access
     const { data: membership } = await supabaseAdmin

@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       .from('task_notes')
       .select(`
         *,
-        user:profiles!user_id(id, full_name)
+        user:profiles!user_id(id, username)
       `)
       .eq('task_id', taskId)
       .order('created_at', { ascending: true })
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       })
       .select(`
         *,
-        user:profiles!user_id(id, full_name)
+        user:profiles!user_id(id, username)
       `)
       .single()
 

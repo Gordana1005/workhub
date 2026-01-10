@@ -39,11 +39,7 @@ export default function TemplateSelector({
   const [showEditor, setShowEditor] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<TaskTemplate | null>(null)
 
-  useEffect(() => {
-    loadTemplates()
-  }, [workspaceId])
-
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     try {
       const response = await fetch(`/api/templates?workspace_id=${workspaceId}`)
       if (!response.ok) throw new Error('Failed to load templates')
@@ -55,7 +51,11 @@ export default function TemplateSelector({
     } finally {
       setLoading(false)
     }
-  }
+  }, [workspaceId])
+
+  useEffect(() => {
+    loadTemplates()
+  }, [workspaceId, loadTemplates])
 
   const handleSelectTemplate = (template: TaskTemplate) => {
     onSelectTemplate(template.template_data)

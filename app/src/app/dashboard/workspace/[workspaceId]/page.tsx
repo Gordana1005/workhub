@@ -45,7 +45,7 @@ export default async function WorkspacePage({
     .select(`
       *,
       workspace_members(count),
-      profiles!workspaces_owner_id_fkey(full_name, avatar_url)
+      profiles!workspaces_owner_id_fkey(username, avatar_url)
     `)
     .eq('id', workspaceId)
     .single()
@@ -65,7 +65,7 @@ export default async function WorkspacePage({
           <span>•</span>
           <span>{workspace.workspace_members?.[0]?.count || 0} members</span>
           <span>•</span>
-          <span>Owner: {workspace.profiles?.full_name || 'Unknown'}</span>
+          <span>Owner: {workspace.profiles?.username || 'Unknown'}</span>
         </div>
       </div>
 

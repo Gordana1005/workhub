@@ -1,7 +1,6 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { supabase } from '@/lib/supabase'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { CheckCircle, Circle, Clock } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -13,8 +12,9 @@ interface Task {
   priority: 'low' | 'medium' | 'high' | 'urgent'
   due_date: string
   is_completed: boolean
-  projects?: {
+  project?: {
     name: string
+    color?: string
   } | null
 }
 
@@ -26,8 +26,14 @@ export default function MyTasks() {
   // Get user ID once on mount
   useEffect(() => {
     const getUserId = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUserId(user?.id || null);
+      try {
+        const res = await fetch('/api/auth/user')
+        if (!res.ok) return
+        const data = await res.json()
+        setUserId(data.user?.id || null)
+      } catch {
+        setUserId(null)
+      }
     };
     getUserId();
   }, []);
@@ -37,29 +43,14 @@ export default function MyTasks() {
     queryFn: async (): Promise<Task[]> => {
       if (!currentWorkspace || !userId) return [];
 
-      const { data, error } = await supabase
-        .from('tasks')
-        .select(`
-          id,
-          title,
-          description,
-          priority,
-          due_date,
-          is_completed,
-          projects!inner(name)
-        `)
-        .eq('assignee_id', userId)
-        .eq('is_completed', false)
-        .order('due_date', { ascending: true })
-        .limit(5);
+      const response = await fetch(`/api/tasks?workspace_id=${currentWorkspace.id}`)
+      if (!response.ok) throw new Error('Failed to load tasks')
+      const data = await response.json()
 
-      if (error) throw error;
-      return (data || []).map((item: any) => ({
-        ...item,
-        projects: Array.isArray(item.projects) && item.projects.length > 0
-          ? item.projects[0]
-          : null
-      }));
+      return (data || [])
+        .filter((task: any) => task.assignee_id === userId && !task.is_completed)
+        .sort((a: any, b: any) => (a.due_date || '').localeCompare(b.due_date || ''))
+        .slice(0, 5)
     },
     enabled: !!currentWorkspace && !!userId,
     staleTime: 30000,
@@ -96,15 +87,16 @@ export default function MyTasks() {
       {tasks && tasks.length > 0 ? (
         <div className="space-y-3">
           {tasks.map((task) => (
-            <div
-              key={task.id}
-              className="p-4 bg-surface shadow-neumorphic-inset dark:shadow-neumorphic-dark-inset rounded-md hover:shadow-neumorphic dark:hover:shadow-neumorphic-dark transition-all duration-200"
-            >
+              <div
+                key={task.id}
+                className="p-4 bg-surface shadow-neumorphic-inset dark:shadow-neumorphic-dark-inset rounded-md hover:shadow-neumorphic dark:hover:shadow-neumorphic-dark transition-all duration-200 border-l-4"
+                style={{ borderColor: task.project?.color || '#6366f1' }}
+              >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <h4 className="font-medium text-text-primary">{task.title}</h4>
                   <p className="text-sm text-text-secondary mt-1">
-                    {task.projects?.name}
+                    {task.project?.name}
                   </p>
                   {task.due_date && (
                     <div className="flex items-center mt-2 text-sm text-text-secondary">

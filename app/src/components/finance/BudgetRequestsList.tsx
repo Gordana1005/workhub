@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Check, X, Clock, CheckCircle, XCircle, DollarSign } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
@@ -18,10 +18,10 @@ interface BudgetRequest {
   approved_at: string | null;
   paid_at: string | null;
   requester: {
-    full_name: string;
+    username: string;
   } | null;
   approver: {
-    full_name: string;
+    username: string;
   } | null;
 }
 
@@ -36,25 +36,25 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
 
-  useEffect(() => {
-    loadRequests();
-  }, [projectId]);
-
-  const loadRequests = async () => {
+  const loadRequests = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('project_budget_requests')
       .select(`
         *,
-        requester:profiles!requester_id(full_name),
-        approver:profiles!approved_by(full_name)
+        requester:profiles!requester_id(username),
+        approver:profiles!approved_by(username)
       `)
       .eq('project_id', projectId)
       .order('created_at', { ascending: false });
 
     if (data) setRequests(data);
     setLoading(false);
-  };
+  }, [projectId]);
+
+  useEffect(() => {
+    loadRequests();
+  }, [projectId, loadRequests]);
 
   const handleApprove = async (requestId: string) => {
     try {
@@ -253,14 +253,14 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
                   )}
 
                   <div className="flex items-center gap-4 text-xs text-slate-500">
-                    <span>Requested by {request.requester?.full_name || 'Unknown'}</span>
+                    <span>Requested by {request.requester?.username || 'Unknown'}</span>
                     <span>•</span>
                     <span>{format(new Date(request.created_at), 'MMM d, yyyy')}</span>
                     {request.approved_at && (
                       <>
                         <span>•</span>
                         <span>
-                          {request.status === 'approved' ? 'Approved' : 'Rejected'} by {request.approver?.full_name || 'Unknown'}
+                          {request.status === 'approved' ? 'Approved' : 'Rejected'} by {request.approver?.username || 'Unknown'}
                         </span>
                       </>
                     )}

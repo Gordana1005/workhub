@@ -155,6 +155,7 @@ export default function NotesList({ notes, projectId, workspaceId, projects = []
               note={note}
               onEdit={handleEdit}
               onDelete={handleDelete}
+              onOpen={handleEdit}
             />
           ))}
         </div>

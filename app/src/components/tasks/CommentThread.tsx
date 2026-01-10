@@ -10,7 +10,7 @@ interface Comment {
   created_at: string;
   user: {
     id: string;
-    full_name: string;
+    username: string;
   };
   user_id: string;
 }
@@ -26,11 +26,7 @@ export default function CommentThread({ taskId, currentUserId }: CommentThreadPr
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    loadComments();
-  }, [taskId]);
-
-  const loadComments = async () => {
+  const loadComments = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch(`/api/comments?taskId=${taskId}`);
@@ -43,7 +39,11 @@ export default function CommentThread({ taskId, currentUserId }: CommentThreadPr
     } finally {
       setLoading(false);
     }
-  };
+  }, [taskId]);
+
+  useEffect(() => {
+    loadComments();
+  }, [taskId, loadComments]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,7 +110,7 @@ export default function CommentThread({ taskId, currentUserId }: CommentThreadPr
                     <User className="w-4 h-4 text-purple-400" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium">{comment.user.full_name}</p>
+                    <p className="text-sm font-medium">{comment.user.username}</p>
                     <p className="text-xs text-gray-400">
                       {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
                     </p>

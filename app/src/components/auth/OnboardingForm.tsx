@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
 
 export default function OnboardingForm() {
-  const [fullName, setFullName] = useState('')
+  const [username, setUsername] = useState('')
   const [jobTitle, setJobTitle] = useState('')
   const [department, setDepartment] = useState('')
   const [loading, setLoading] = useState(false)
@@ -31,7 +31,7 @@ export default function OnboardingForm() {
         .upsert({
           id: user.id,
           email: user.email,
-          full_name: fullName,
+          username,
           job_title: jobTitle,
           department
         })
@@ -63,16 +63,16 @@ export default function OnboardingForm() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="fullName" className="block text-sm font-medium mb-2">
-            Full Name
+          <label htmlFor="username" className="block text-sm font-medium mb-2">
+            Username
           </label>
           <input
-            id="fullName"
+            id="username"
             type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             className="w-full p-4 rounded-md shadow-neumorphic-inset dark:shadow-neumorphic-dark-inset bg-surface border-0 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Enter your full name"
+            placeholder="Pick a unique username"
             required
           />
         </div>

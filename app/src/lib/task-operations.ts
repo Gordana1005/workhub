@@ -38,18 +38,9 @@ export async function createTask(
 
 export async function getTasks(projectId: string) {
   try {
-    const { data, error } = await supabase
-      .from('tasks')
-      .select(`
-        *,
-        assignee:profiles!assignee_id(id, email, full_name),
-        creator:profiles!created_by(id, email, full_name)
-      `)
-      .eq('project_id', projectId)
-      .order('created_at', { ascending: false })
-
-    if (error) throw error
-    return data || []
+    const response = await fetch(`/api/tasks?project_id=${projectId}`)
+    if (!response.ok) throw new Error('Failed to load tasks')
+    return await response.json()
   } catch (error) {
     console.error('Error fetching tasks:', error)
     throw error

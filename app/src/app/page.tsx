@@ -25,11 +25,11 @@ export default async function Home() {
     // Check if user has completed onboarding
     const { data: profile } = await supabase
       .from('profiles')
-      .select('full_name')
+      .select('username')
       .eq('id', session.user.id)
       .single()
 
-    if (profile?.full_name) {
+    if (profile?.username) {
       redirect('/dashboard')
     } else {
       redirect('/auth/onboarding')

@@ -27,13 +27,7 @@ export default function DependencySelector({
   const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (isExpanded && projectId) {
-      loadAvailableTasks();
-    }
-  }, [isExpanded, projectId]);
-
-  const loadAvailableTasks = async () => {
+  const loadAvailableTasks = useCallback(async () => {
     setLoading(true);
     try {
       const response = await fetch(`/api/tasks?projectId=${projectId}`);
@@ -49,7 +43,13 @@ export default function DependencySelector({
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId, taskId]);
+
+  useEffect(() => {
+    if (isExpanded && projectId) {
+      loadAvailableTasks();
+    }
+  }, [isExpanded, projectId, loadAvailableTasks]);
 
   const selectedTasks = availableTasks.filter(t =>
     selectedDependencies.includes(t.id)

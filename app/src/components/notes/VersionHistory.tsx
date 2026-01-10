@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { History, RotateCcw, X, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -33,11 +33,7 @@ export default function VersionHistory({
   const [selectedVersion, setSelectedVersion] = useState<NoteVersion | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadVersions();
-  }, [noteId]);
-
-  const loadVersions = async () => {
+  const loadVersions = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('note_versions')
@@ -49,7 +45,11 @@ export default function VersionHistory({
       setVersions(data);
     }
     setLoading(false);
-  };
+  }, [noteId]);
+
+  useEffect(() => {
+    loadVersions();
+  }, [noteId, loadVersions]);
 
   const handleRestore = () => {
     if (selectedVersion) {

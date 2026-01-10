@@ -14,6 +14,14 @@ import BulkActions from '@/components/tasks/BulkActions'
 import ExportDialog from '@/components/ExportDialog'
 import TaskDetailModal from '@/components/tasks/TaskDetailModal'
 import TemplateSelector from '@/components/tasks/TemplateSelector'
+import { Task } from '@/components/tasks/types'
+
+type DashboardTask = Task & {
+  is_completed?: boolean
+  created_at?: string
+  project_id?: string
+  tags?: string[]
+}
 
 // Lazy load heavy components
 const KanbanBoard = dynamic(() => import('@/components/tasks/KanbanBoard'), {
@@ -26,32 +34,21 @@ const CalendarView = dynamic(() => import('@/components/tasks/CalendarView'), {
   ssr: false,
 })
 
-interface Task {
-  id: string
-  title: string
-  description: string | null
-  priority: 'low' | 'medium' | 'high' | 'urgent'
-  status: string
-  due_date: string | null
-  is_completed: boolean
-  project_id: string | null
-  project?: { name: string }
-  assignee?: { id: string; full_name: string }
-}
-
 export default function TasksPage() {
   const { currentWorkspace } = useWorkspaceStore()
-  const [tasks, setTasks] = useState<Task[]>([])
+  const [tasks, setTasks] = useState<DashboardTask[]>([])
   const [projects, setProjects] = useState<any[]>([])
   const [teamMembers, setTeamMembers] = useState<any[]>([])
   const [filter, setFilter] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
-  const [editingTask, setEditingTask] = useState<Task | null>(null)
+  const [editingTask, setEditingTask] = useState<DashboardTask | null>(null)
   const [loading, setLoading] = useState(true)
   const [showTemplateSelector, setShowTemplateSelector] = useState(false)
   const [templateData, setTemplateData] = useState<any>(null)
+  const [quickProjectId, setQuickProjectId] = useState<string>('')
+  const [quickAssigneeId, setQuickAssigneeId] = useState<string>('')
   
   // New UI state
   const [viewMode, setViewMode] = useState<'list' | 'board' | 'calendar'>('board')
@@ -129,7 +126,7 @@ export default function TasksPage() {
       
       const members = data.members?.map((m: any) => ({
         id: m.profiles?.id || m.user_id,
-        full_name: m.profiles?.full_name || 'Unknown',
+        username: m.profiles?.username || 'unknown',
         email: m.profiles?.email || ''
       })) || []
       
@@ -370,6 +367,39 @@ export default function TasksPage() {
             </button>
           </div>
 
+          {/* Quick assignment selectors */}
+          <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-gray-300">
+            <div className="flex items-center gap-2 bg-slate-800/40 border border-slate-700 rounded-lg px-3 py-2">
+              <span className="text-xs uppercase tracking-wide text-gray-400">Project</span>
+              <select
+                value={quickProjectId}
+                onChange={(e) => setQuickProjectId(e.target.value)}
+                className="bg-slate-900 text-white text-sm focus:outline-none border border-slate-700 rounded-md px-2 py-1 appearance-none"
+                style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}
+              >
+                <option value="" style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>Select</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id} style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>{p.name}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2 bg-slate-800/40 border border-slate-700 rounded-lg px-3 py-2">
+              <span className="text-xs uppercase tracking-wide text-gray-400">Assignee</span>
+              <select
+                value={quickAssigneeId}
+                onChange={(e) => setQuickAssigneeId(e.target.value)}
+                className="bg-slate-900 text-white text-sm focus:outline-none border border-slate-700 rounded-md px-2 py-1 appearance-none"
+                style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}
+              >
+                <option value="" style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>Select</option>
+                {teamMembers.map((m) => (
+                  <option key={m.id} value={m.id} style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>{m.username}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           {/* Filter Tabs */}
           <div className="flex gap-2">
             {['all', 'active', 'completed', 'overdue'].map((f) => (
@@ -494,6 +524,7 @@ export default function TasksPage() {
                 transition={{ duration: 0.2, delay: index * 0.02 }}
                 layout
                 className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-5 hover:bg-slate-800/70 transition-all group"
+                style={{ borderLeft: `4px solid ${task.project?.color || '#94a3b8'}` }}
               >
                 <div className="flex items-start gap-4">
                   {/* Checkbox for bulk selection */}
@@ -513,7 +544,7 @@ export default function TasksPage() {
                   <motion.button 
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => toggleTaskComplete(task.id, task.is_completed)}
+                    onClick={() => toggleTaskComplete(task.id, !!task.is_completed)}
                     className="mt-1 flex-shrink-0"
                   >
                     {task.is_completed ? (
@@ -553,12 +584,18 @@ export default function TasksPage() {
                       {task.assignee && (
                         <div className="flex items-center gap-1 text-gray-400 text-sm">
                           <User className="w-4 h-4" />
-                          {task.assignee.full_name}
+                          {task.assignee.username}
                         </div>
                       )}
 
                       {task.project && (
-                        <div className="px-2 py-1 bg-purple-500/20 text-purple-400 rounded text-xs">
+                        <div
+                          className="px-2 py-1 rounded text-xs border"
+                            style={{
+                            borderColor: task.project.color || '#94a3b8',
+                            color: task.project.color || '#94a3b8'
+                          }}
+                        >
                           {task.project.name}
                         </div>
                       )}
@@ -607,6 +644,8 @@ export default function TasksPage() {
             projects={projects}
             teamMembers={teamMembers}
             templateData={templateData}
+            initialProjectId={quickProjectId}
+            initialAssigneeId={quickAssigneeId}
             onClose={() => {
               setShowCreateDialog(false)
               setTemplateData(null)

@@ -22,7 +22,7 @@ export function exportTasks(tasks: any[], options: ExportOptions) {
     'Created At': format(new Date(task.created_at), 'yyyy-MM-dd HH:mm'),
     'Completed At': task.completed_at ? format(new Date(task.completed_at), 'yyyy-MM-dd HH:mm') : '',
     Project: task.projects?.name || '',
-    'Assigned To': task.assigned_to_user?.full_name || '',
+    'Assigned To': task.assigned_to_user?.username || '',
   }));
 
   switch (options.format) {

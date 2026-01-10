@@ -35,10 +35,12 @@ export default function KanbanCard({ task, isDragging = false, onClick }: Kanban
     low: 'bg-green-500',
   };
 
+  const projectColor = task.project?.color || '#94a3b8';
+
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{ ...style, borderLeft: `4px solid ${projectColor}` }}
       className={`card p-4 cursor-pointer hover:border-purple-500/50 transition-all ${
         isDragging ? 'rotate-3 opacity-50' : ''
       }`}
@@ -68,6 +70,12 @@ export default function KanbanCard({ task, isDragging = false, onClick }: Kanban
 
           {/* Metadata */}
           <div className="flex flex-wrap items-center gap-2 text-xs">
+            {/* Project */}
+            <div className="flex items-center gap-1 text-gray-400">
+              <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: projectColor }}></span>
+              <span className="truncate max-w-[120px]">{task.project?.name || 'No project'}</span>
+            </div>
+
             {/* Priority Badge */}
             <div className="flex items-center gap-1.5">
               <div className={`w-2 h-2 rounded-full ${priorityColors[task.priority]}`} />
@@ -94,7 +102,7 @@ export default function KanbanCard({ task, isDragging = false, onClick }: Kanban
           {task.assignee && (
             <div className="flex items-center gap-1.5 mt-2 text-xs text-gray-400">
               <User className="w-3 h-3" />
-              <span>{task.assignee.full_name}</span>
+              <span>{task.assignee.username}</span>
             </div>
           )}
         </div>

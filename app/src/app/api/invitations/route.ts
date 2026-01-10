@@ -5,6 +5,10 @@ import { logger } from '@/lib/logger'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 
+function generateToken() {
+  return crypto.randomUUID()
+}
+
 // Force dynamic rendering
 export const dynamic = 'force-dynamic'
 
@@ -52,13 +56,15 @@ export async function POST(request: Request) {
     }
 
     // Create invitation
+    const token = generateToken()
+
     const { data: invitation, error } = await supabaseAdmin
       .from('invitations')
       .insert({
         workspace_id: workspaceId,
         email,
-        invited_by: user.id,
-        status: 'pending'
+        token,
+        role: 'member'
       })
       .select()
       .single()
@@ -74,7 +80,7 @@ export async function POST(request: Request) {
     // Since we don't have an email provider configured yet (like Resend or SendGrid),
     // we will return the join link so the admin can copy-paste it manually.
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    const joinLink = `${baseUrl}/join?token=${invitation.id}`
+    const joinLink = `${baseUrl}/join?token=${invitation.token}`
 
     // Log for debugging
     console.log(`[INVITE] Created invite for ${email}: ${joinLink}`)

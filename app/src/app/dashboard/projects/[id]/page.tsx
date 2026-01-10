@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
@@ -18,7 +18,7 @@ interface Project {
   end_date: string | null
   created_at: string
   creator_id?: string
-  creator?: { full_name: string }
+  creator?: { username: string }
 }
 
 interface Task {
@@ -29,18 +29,18 @@ interface Task {
   due_date: string | null
   is_completed: boolean
   category: string | null
-  assignee?: { full_name: string }
+  assignee?: { username: string }
 }
 
 interface Member {
   id: string
-  full_name: string
+  username: string
   avatar_url: string | null
 }
 
 interface ProjectMember {
   id: string
-  full_name: string
+  username: string
   avatar_url: string | null
   role: string
 }
@@ -52,6 +52,7 @@ interface Category {
 }
 
 export default function ProjectDetailPage() {
+  const CATEGORY_COLORS = ['#f97316', '#22c55e', '#3b82f6', '#a855f7', '#e11d48', '#14b8a6', '#f59e0b']
   const params = useParams()
   const router = useRouter()
   const { currentWorkspace } = useWorkspaceStore()
@@ -100,11 +101,159 @@ export default function ProjectDetailPage() {
   // Team member assignment
   const [selectedMemberToAdd, setSelectedMemberToAdd] = useState('')
 
+  const loadProjectData = useCallback(async () => {
+    if (!params.id || !currentWorkspace) return
+
+    try {
+      setLoading(true)
+
+      // Load project details via API
+      const projectResponse = await fetch(`/api/projects?id=${params.id}`)
+      const projectResult = await projectResponse.json()
+
+      if (!projectResponse.ok) throw new Error(projectResult.error)
+      const projectData = projectResult.project
+
+      setProject(projectData)
+
+      // Initialize edit form data with properly formatted dates
+      setEditProjectData({
+        name: projectData.name || '',
+        description: projectData.description || '',
+        status: projectData.status || 'active',
+        start_date: projectData.start_date ? projectData.start_date.split('T')[0] : '',
+        end_date: projectData.end_date ? projectData.end_date.split('T')[0] : ''
+      })
+
+      // Load project tasks via API
+      const tasksResponse = await fetch(`/api/tasks?project_id=${params.id}&workspace_id=${currentWorkspace.id}`)
+      const tasksResult = await tasksResponse.json()
+
+      if (!tasksResponse.ok) {
+        console.error('Error loading tasks:', tasksResult.error)
+        setTasks([])
+      } else {
+        console.log('Loaded project tasks:', tasksResult?.length, tasksResult)
+        setTasks(tasksResult || [])
+      }
+
+      // Load workspace categories via API
+      const categoriesResponse = await fetch(`/api/task-categories?workspace_id=${currentWorkspace.id}`)
+      const categoriesResult = await categoriesResponse.json()
+      if (categoriesResponse.ok) {
+        setCategories(categoriesResult.categories || [])
+      }
+
+      // Load project members via team API
+      const membersResponse = await fetch(`/api/team?workspace_id=${currentWorkspace.id}`)
+      const membersResult = await membersResponse.json()
+      if (membersResponse.ok) {
+        setMembers(membersResult.members?.map((m: any) => m.profiles).filter(Boolean) || [])
+      }
+
+      // Project members - for now keep simple
+      setProjectMembers([])
+
+    } catch (error) {
+      console.error('Error loading project data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [currentWorkspace, params.id])
+
   useEffect(() => {
     if (params.id && currentWorkspace) {
       loadProjectData()
     }
-  }, [params.id, currentWorkspace])
+  }, [params.id, currentWorkspace, loadProjectData])
+
+  const getNextCategoryColor = () => {
+    const used = new Set(categories.map((c) => c.color?.toLowerCase()))
+    const found = CATEGORY_COLORS.find((c) => !used.has(c.toLowerCase()))
+    return found || CATEGORY_COLORS[0]
+  }
+
+  const categoryColorMap = useMemo(() => {
+    return categories.reduce<Record<string, string>>((acc, cat) => {
+      if (cat.name) acc[cat.name] = cat.color
+      return acc
+    }, {})
+  }, [categories])
+
+  const handleCreateTask = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!currentWorkspace || !project) return
+
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: taskFormData.title,
+          description: taskFormData.description || null,
+          priority: taskFormData.priority,
+          due_date: taskFormData.due_date || null,
+          assignee_id: taskFormData.assignee_id || null,
+          category: taskFormData.category || null,
+          workspace_id: currentWorkspace.id,
+          project_id: project.id,
+          is_completed: false
+        })
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to create task')
+      }
+
+      setShowCreateTaskDialog(false)
+      setTaskFormData({
+        title: '',
+        description: '',
+        priority: 'medium',
+        due_date: '',
+        assignee_id: '',
+        category: ''
+      })
+      loadProjectData()
+    } catch (error) {
+      console.error('Error creating task:', error)
+    }
+  }
+
+  const handleCreateCategory = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!currentWorkspace) return
+
+    try {
+      const colorToSave = newCategoryColor || getNextCategoryColor()
+
+      const response = await fetch('/api/task-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: currentWorkspace.id,
+          name: newCategoryName,
+          color: colorToSave
+        })
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'Failed to create category')
+      }
+
+      setCategories((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), name: newCategoryName, color: colorToSave }
+      ])
+      setShowCreateCategoryDialog(false)
+      setNewCategoryName('')
+      setNewCategoryColor(getNextCategoryColor())
+    } catch (error) {
+      console.error('Error creating category:', error)
+    }
+  }
 
   // Get current user
   useEffect(() => {
@@ -143,133 +292,6 @@ export default function ProjectDetailPage() {
 
     setFilteredTasks(result)
   }, [tasks, selectedCategory, selectedPriority, sortBy])
-
-  const loadProjectData = async () => {
-    if (!params.id || !currentWorkspace) return
-
-    try {
-      setLoading(true)
-
-      // Load project details via API
-      const projectResponse = await fetch(`/api/projects?id=${params.id}`)
-      const projectResult = await projectResponse.json()
-
-      if (!projectResponse.ok) throw new Error(projectResult.error)
-      const projectData = projectResult.project
-
-      setProject(projectData)
-
-      // Initialize edit form data with properly formatted dates
-      setEditProjectData({
-        name: projectData.name || '',
-        description: projectData.description || '',
-        status: projectData.status || 'active',
-        start_date: projectData.start_date ? projectData.start_date.split('T')[0] : '',
-        end_date: projectData.end_date ? projectData.end_date.split('T')[0] : ''
-      })
-
-      // Load project tasks via API
-      const tasksResponse = await fetch(`/api/tasks?project_id=${params.id}`)
-      const tasksResult = await tasksResponse.json()
-
-      if (!tasksResponse.ok) {
-        console.error('Error loading tasks:', tasksResult.error)
-        setTasks([])
-      } else {
-        console.log('Loaded project tasks:', tasksResult?.length, tasksResult)
-        setTasks(tasksResult || [])
-      }
-
-      // Load workspace categories via API
-      const categoriesResponse = await fetch(`/api/task-categories?workspace_id=${currentWorkspace.id}`)
-      const categoriesResult = await categoriesResponse.json()
-      if (categoriesResponse.ok) {
-        setCategories(categoriesResult.categories || [])
-      }
-
-      // Load project members via team API
-      const membersResponse = await fetch(`/api/team?workspace_id=${currentWorkspace.id}`)
-      const membersResult = await membersResponse.json()
-      if (membersResponse.ok) {
-        setMembers(membersResult.members?.map((m: any) => m.profiles).filter(Boolean) || [])
-      }
-
-      // Project members - for now keep simple
-      setProjectMembers([])
-
-    } catch (error) {
-      console.error('Error loading project data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleCreateTask = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!currentWorkspace || !project) return
-
-    try {
-      const response = await fetch('/api/tasks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspace_id: currentWorkspace.id,
-          project_id: project.id,
-          title: taskFormData.title,
-          description: taskFormData.description || null,
-          priority: taskFormData.priority,
-          due_date: taskFormData.due_date || null,
-          assignee_id: taskFormData.assignee_id || null,
-          category: taskFormData.category || null
-        })
-      })
-
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error)
-
-      // Reset form and reload
-      setTaskFormData({
-        title: '',
-        description: '',
-        priority: 'medium',
-        due_date: '',
-        assignee_id: '',
-        category: ''
-      })
-      setShowCreateTaskDialog(false)
-      loadProjectData()
-    } catch (error) {
-      console.error('Error creating task:', error)
-      alert(`Failed to create task: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-  }
-
-  const handleCreateCategory = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!currentWorkspace) return
-
-    try {
-      const { error } = await supabase
-        .from('task_categories')
-        .insert({
-          workspace_id: currentWorkspace.id,
-          name: newCategoryName,
-          color: newCategoryColor
-        })
-
-      if (error) throw error
-
-      setNewCategoryName('')
-      setNewCategoryColor('#667eea')
-      setShowCreateCategoryDialog(false)
-      loadProjectData()
-    } catch (error) {
-      console.error('Error creating category:', error)
-      alert(`Failed to create category: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-  }
 
   const handleAddMemberToProject = async () => {
     if (!selectedMemberToAdd || !project) return
@@ -736,7 +758,14 @@ export default function ProjectDetailPage() {
                             </span>
 
                             {task.category && (
-                              <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-lg text-xs font-medium border border-purple-500/30 flex items-center gap-1">
+                              <span
+                                className="px-3 py-1 rounded-lg text-xs font-medium border flex items-center gap-1"
+                                style={{
+                                  backgroundColor: `${categoryColorMap[task.category] || 'rgba(148, 163, 184, 0.15)'}`,
+                                  color: '#e2e8f0',
+                                  borderColor: 'rgba(255,255,255,0.16)'
+                                }}
+                              >
                                 <Tag className="w-3 h-3" />
                                 {task.category}
                               </span>
@@ -752,7 +781,7 @@ export default function ProjectDetailPage() {
                             {task.assignee && (
                               <div className="flex items-center gap-1 text-gray-400 text-sm">
                                 <Users className="w-4 h-4" />
-                                {task.assignee.full_name}
+                                {task.assignee.username}
                               </div>
                             )}
                           </div>
@@ -804,7 +833,7 @@ export default function ProjectDetailPage() {
                 {project.creator && (
                   <div>
                     <p className="text-gray-400 text-sm">Created by</p>
-                    <p className="text-white">{project.creator.full_name}</p>
+                    <p className="text-white">{project.creator.username}</p>
                   </div>
                 )}
 
@@ -858,10 +887,10 @@ export default function ProjectDetailPage() {
                     <div key={member.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700/50 hover:bg-slate-900/70 transition-all">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-medium">
-                          {member.full_name?.charAt(0).toUpperCase() || 'U'}
+                          {member.username?.charAt(0).toUpperCase() || 'U'}
                         </div>
                         <div>
-                          <p className="text-gray-300 font-medium">{member.full_name || 'Unknown User'}</p>
+                          <p className="text-gray-300 font-medium">{member.username || 'Unknown User'}</p>
                           <p className="text-xs text-gray-500 capitalize">{member.role}</p>
                         </div>
                       </div>
@@ -945,7 +974,7 @@ export default function ProjectDetailPage() {
                   >
                     <option value="">Unassigned</option>
                     {members.map((member) => (
-                      <option key={member.id} value={member.id}>{member.full_name || 'Unknown User'}</option>
+                      <option key={member.id} value={member.id}>{member.username || 'Unknown User'}</option>
                     ))}
                   </select>
                 </div>
@@ -955,7 +984,10 @@ export default function ProjectDetailPage() {
                     <label className="block text-sm font-medium text-gray-300">Category (Optional)</label>
                     <button
                       type="button"
-                      onClick={() => setShowCreateCategoryDialog(true)}
+                      onClick={() => {
+                        setNewCategoryColor(getNextCategoryColor())
+                        setShowCreateCategoryDialog(true)
+                      }}
                       className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
                     >
                       <Plus className="w-3 h-3" />
@@ -1012,7 +1044,7 @@ export default function ProjectDetailPage() {
                     {members
                       .filter(m => !projectMembers.find(pm => pm.id === m.id))
                       .map((member) => (
-                        <option key={member.id} value={member.id}>{member.full_name || 'Unknown User'}</option>
+                        <option key={member.id} value={member.id}>{member.username || 'Unknown User'}</option>
                       ))}
                   </select>
                 </div>
@@ -1062,6 +1094,18 @@ export default function ProjectDetailPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">Color</label>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {CATEGORY_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => setNewCategoryColor(color)}
+                        className={`w-8 h-8 rounded-full border ${newCategoryColor === color ? 'ring-2 ring-white' : 'border-white/20'}`}
+                        style={{ backgroundColor: color }}
+                        title={color}
+                      />
+                    ))}
+                  </div>
                   <div className="flex gap-3 items-center">
                     <input
                       type="color"
@@ -1085,7 +1129,7 @@ export default function ProjectDetailPage() {
                     onClick={() => {
                       setShowCreateCategoryDialog(false)
                       setNewCategoryName('')
-                      setNewCategoryColor('#667eea')
+                      setNewCategoryColor(getNextCategoryColor())
                     }}
                     className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600"
                   >

@@ -32,20 +32,9 @@ export default function NotesPage() {
     if (currentWorkspace && !activeWorkspaceId) {
       setActiveWorkspaceId(currentWorkspace.id)
     }
-  }, [currentWorkspace])
+  }, [currentWorkspace, activeWorkspaceId])
 
-  useEffect(() => {
-    if (activeWorkspaceId) {
-      loadProjects()
-      loadNotes()
-    }
-  }, [activeWorkspaceId])
-
-  useEffect(() => {
-    loadNotes()
-  }, [selectedProjectId])
-
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async () => {
     const wsId = activeWorkspaceId || currentWorkspace?.id
     if (!wsId) return
 
@@ -60,9 +49,9 @@ export default function NotesPage() {
     } catch (error) {
       console.error('Error loading projects:', error)
     }
-  }
+  }, [activeWorkspaceId, currentWorkspace?.id])
 
-  const loadNotes = async () => {
+  const loadNotes = useCallback(async () => {
     const wsId = activeWorkspaceId || currentWorkspace?.id
     if (!wsId) return
 
@@ -86,7 +75,18 @@ export default function NotesPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [activeWorkspaceId, currentWorkspace?.id, selectedProjectId])
+
+  useEffect(() => {
+    if (activeWorkspaceId) {
+      loadProjects()
+      loadNotes()
+    }
+  }, [activeWorkspaceId, loadNotes, loadProjects])
+
+  useEffect(() => {
+    loadNotes()
+  }, [selectedProjectId, loadNotes])
 
   const filteredNotes = notes.filter(note =>
     note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, Calendar, Target, TrendingUp, MoreVertical, Edit, Trash } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { format, differenceInDays } from 'date-fns';
@@ -34,13 +34,7 @@ export default function PlansPage() {
   const { currentWorkspace } = useWorkspaceStore();
   const router = useRouter();
 
-  useEffect(() => {
-    if (currentWorkspace?.id) {
-      loadPlans();
-    }
-  }, [currentWorkspace?.id]);
-
-  const loadPlans = async () => {
+  const loadPlans = useCallback(async () => {
     if (!currentWorkspace?.id) return;
     
     setLoading(true);
@@ -55,7 +49,13 @@ export default function PlansPage() {
 
     if (data) setPlans(data);
     setLoading(false);
-  };
+  }, [currentWorkspace?.id]);
+
+  useEffect(() => {
+    if (currentWorkspace?.id) {
+      loadPlans();
+    }
+  }, [currentWorkspace?.id, loadPlans]);
 
   const getOverallProgress = (plan: Plan) => {
     if (!plan.milestones || plan.milestones.length === 0) return 0;

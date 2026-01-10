@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         .from('projects')
         .select(`
           *,
-          owner:profiles!creator_id(id, full_name, avatar_url),
+          owner:profiles!creator_id(id, username, avatar_url),
           tasks(id, title, priority, is_completed)
         `)
         .eq('id', projectId)
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       .from('projects')
       .select(`
         *,
-        owner:profiles!creator_id(id, full_name, avatar_url),
+        owner:profiles!creator_id(id, username, avatar_url),
         tasks(id, is_completed)
       `)
       .eq('workspace_id', workspaceId)

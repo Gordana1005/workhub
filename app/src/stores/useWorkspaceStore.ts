@@ -12,7 +12,7 @@ interface Workspace {
   userRole?: 'admin' | 'member'
   memberCount?: number
   owner?: {
-    full_name: string
+    username: string
     avatar_url?: string
   }
 }

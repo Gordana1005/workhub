@@ -58,7 +58,7 @@ export async function GET(request: Request) {
         *,
         profiles:user_id (
           id,
-          full_name,
+          username,
           avatar_url,
           email
         )
@@ -207,5 +207,79 @@ export async function PATCH(request: Request) {
       { error: 'Failed to update member role' },
       { status: 500 }
     )
+  }
+}
+
+export async function POST(request: Request) {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll() {}
+      }
+    }
+  )
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const body = await request.json().catch(() => ({}))
+  const { workspace_id, username, role = 'member' } = body
+
+  if (!workspace_id || !username) {
+    return NextResponse.json({ error: 'workspace_id and username are required' }, { status: 400 })
+  }
+
+  try {
+    // Ensure requester is admin
+    const { data: currentMember } = await supabaseAdmin
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspace_id)
+      .eq('user_id', user.id)
+      .single()
+
+    if (currentMember?.role !== 'admin') {
+      return NextResponse.json({ error: 'Only admins can add members' }, { status: 403 })
+    }
+
+    const { data: target, error: targetError } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('username', username)
+      .single()
+
+    if (targetError || !target) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    const { data: existing } = await supabaseAdmin
+      .from('workspace_members')
+      .select('id')
+      .eq('workspace_id', workspace_id)
+      .eq('user_id', target.id)
+      .single()
+
+    if (existing) {
+      return NextResponse.json({ error: 'User already in workspace' }, { status: 400 })
+    }
+
+    const { error: insertError } = await supabaseAdmin
+      .from('workspace_members')
+      .insert({ workspace_id, user_id: target.id, role })
+
+    if (insertError) throw insertError
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error adding member by username:', error)
+    return NextResponse.json({ error: 'Failed to add member' }, { status: 500 })
   }
 }

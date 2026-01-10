@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ArrowLeft, Plus, Calendar, CheckCircle2, Circle, Edit, Trash } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -41,14 +41,7 @@ export default function PlanDetailPage() {
   const [editingMilestone, setEditingMilestone] = useState<Milestone | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (params.id) {
-      loadPlan();
-      loadMilestones();
-    }
-  }, [params.id]);
-
-  const loadPlan = async () => {
+  const loadPlan = useCallback(async () => {
     const { data } = await supabase
       .from('plans')
       .select('*')
@@ -57,9 +50,9 @@ export default function PlanDetailPage() {
 
     if (data) setPlan(data);
     setLoading(false);
-  };
+  }, [params.id]);
 
-  const loadMilestones = async () => {
+  const loadMilestones = useCallback(async () => {
     const { data } = await supabase
       .from('plan_milestones')
       .select(`
@@ -75,7 +68,14 @@ export default function PlanDetailPage() {
         task_count: m.task_count?.[0]?.count || 0
       })));
     }
-  };
+  }, [params.id]);
+
+  useEffect(() => {
+    if (params.id) {
+      loadPlan();
+      loadMilestones();
+    }
+  }, [params.id, loadPlan, loadMilestones]);
 
   const deleteMilestone = async (id: string) => {
     if (!confirm('Delete this milestone?')) return;

@@ -1,9 +1,9 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect } from 'react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
-import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
+import Sidebar from '@/components/layout/Sidebar'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 
 export default function DashboardLayout({
@@ -11,13 +11,10 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
   const { fetchWorkspaces, workspaces } = useWorkspaceStore()
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
   useEffect(() => {
-    // Determine if we need to fetch. 
-    // fetchWorkspaces inside the store likely handles checking if authenticated, etc.
-    // If workspaces are empty, let's fetch.
     if (workspaces.length === 0) {
       fetchWorkspaces()
     }
@@ -25,14 +22,12 @@ export default function DashboardLayout({
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen bg-background">
-        <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        <div className="flex-1 flex flex-col lg:ml-0">
-          <Topbar onMenuClick={() => setSidebarOpen(true)} />
-          <main className="flex-1 overflow-auto">
+      <div className="flex flex-col min-h-screen bg-bg-primary">
+        <Topbar onMenuToggle={() => setIsSidebarOpen(true)} />
+        <Sidebar isOpen={isSidebarOpen} onClose={() => setIsSidebarOpen(false)} />
+        <main className="flex-1 overflow-auto container mx-auto px-4 py-6 max-w-7xl">
             {children}
-          </main>
-        </div>
+        </main>
       </div>
     </ErrorBoundary>
   )

@@ -386,11 +386,14 @@ export default function ProjectsPage() {
               <div className="flex items-start justify-between mb-4">
                 <div className="flex items-center gap-3">
                   {project.logo_url ? (
-                    <img
-                      src={project.logo_url}
-                      alt={project.name}
-                      className="w-12 h-12 rounded-lg object-cover"
-                    />
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={project.logo_url}
+                        alt={project.name}
+                        className="w-12 h-12 rounded-lg object-cover"
+                      />
+                    </>
                   ) : (
                     <div
                       className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-xl"
@@ -493,6 +496,7 @@ export default function ProjectsPage() {
                 <div className="flex items-center gap-4">
                   {formData.logo_file && (
                     <div className="relative w-16 h-16 rounded-lg overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={URL.createObjectURL(formData.logo_file)}
                         alt="Preview"
@@ -502,6 +506,7 @@ export default function ProjectsPage() {
                   )}
                   {editingProject?.logo_url && !formData.logo_file && (
                     <div className="relative w-16 h-16 rounded-lg overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img
                         src={editingProject.logo_url}
                         alt="Current logo"

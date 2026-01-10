@@ -14,7 +14,7 @@ interface Notification {
   read: boolean
   created_at: string
   related_user?: {
-    full_name: string
+    username: string
     email: string
   }
   related_task?: {
@@ -34,19 +34,7 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const router = useRouter()
 
-  useEffect(() => {
-    if (isOpen) {
-      loadNotifications()
-      subscribeToNotifications()
-    }
-
-    return () => {
-      // Cleanup subscription
-      supabase.channel('notifications').unsubscribe()
-    }
-  }, [isOpen, filter])
-
-  const loadNotifications = async () => {
+  const loadNotifications = useCallback(async () => {
     try {
       const unreadOnly = filter === 'unread'
       const response = await fetch(`/api/notifications?unread_only=${unreadOnly}&limit=50`)
@@ -59,9 +47,9 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
     } finally {
       setLoading(false)
     }
-  }
+  }, [filter])
 
-  const subscribeToNotifications = () => {
+  const subscribeToNotifications = useCallback(() => {
     // Subscribe to real-time notifications
     const channel = supabase
       .channel('notifications')
@@ -89,7 +77,20 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
       .subscribe()
 
     return channel
-  }
+  }, [])
+
+  useEffect(() => {
+    if (isOpen) {
+      loadNotifications()
+      const channel = subscribeToNotifications()
+
+      return () => {
+        channel?.unsubscribe()
+      }
+    }
+
+    return undefined
+  }, [isOpen, filter, loadNotifications, subscribeToNotifications])
 
   const handleNotificationClick = async (notification: Notification) => {
     // Mark as read

@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
 
     const { data: templates, error } = await supabaseAdmin
       .from('task_templates')
-      .select('*, created_by_profile:profiles!task_templates_created_by_fkey(full_name, email)')
+      .select('*, created_by_profile:profiles!task_templates_created_by_fkey(username, email)')
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false })
 

@@ -13,9 +13,10 @@ interface NoteCardProps {
   note: Note
   onEdit: (note: Note) => void
   onDelete: (id: string) => void
+  onOpen?: (note: Note) => void
 }
 
-export default function NoteCard({ note, onEdit, onDelete }: NoteCardProps) {
+export default function NoteCard({ note, onEdit, onDelete, onOpen }: NoteCardProps) {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
@@ -36,7 +37,13 @@ export default function NoteCard({ note, onEdit, onDelete }: NoteCardProps) {
   }
 
   return (
-    <div className="card p-6 card-hover group">
+    <div
+      className="card p-6 card-hover group cursor-pointer"
+      onClick={() => {
+        onOpen?.(note)
+        onEdit(note)
+      }}
+    >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="w-10 h-10 rounded-lg bg-gradient-blue-purple flex items-center justify-center flex-shrink-0">
@@ -49,14 +56,20 @@ export default function NoteCard({ note, onEdit, onDelete }: NoteCardProps) {
 
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
-            onClick={() => onEdit(note)}
+            onClick={(e) => {
+              e.stopPropagation()
+              onEdit(note)
+            }}
             className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-500/20 text-blue-400 transition-colors"
             title="Edit note"
           >
             <Edit className="w-4 h-4" />
           </button>
           <button
-            onClick={() => onDelete(note.id)}
+            onClick={(e) => {
+              e.stopPropagation()
+              onDelete(note.id)
+            }}
             className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
             title="Delete note"
           >

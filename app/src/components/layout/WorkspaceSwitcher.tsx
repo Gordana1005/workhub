@@ -1,10 +1,13 @@
-'use client'
+﻿'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { ChevronDown, Plus, Check, Building2, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
+import { twMerge } from 'tailwind-merge'
+import { clsx } from 'clsx'
+import { Badge } from '@/components/ui/Badge'
 
 export default function WorkspaceSwitcher() {
   const {
@@ -46,7 +49,7 @@ export default function WorkspaceSwitcher() {
 
   if (!mounted) {
     return (
-      <div className="w-64 h-12 bg-slate-800/50 rounded-xl animate-pulse" />
+      <div className="w-64 h-12 bg-surface/50 rounded-xl animate-pulse" />
     )
   }
 
@@ -55,30 +58,30 @@ export default function WorkspaceSwitcher() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={loading}
-        className="w-full min-w-[240px] max-w-[280px] px-4 py-3 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/50 rounded-xl transition-all duration-200 flex items-center justify-between group disabled:opacity-50 disabled:cursor-not-allowed"
+        className="w-full min-w-[240px] max-w-[280px] px-4 py-2 bg-surface hover:bg-surface-hover border border-border rounded-lg transition-all duration-200 flex items-center justify-between group disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {loading ? (
-            <Loader2 className="w-5 h-5 text-slate-400 animate-spin flex-shrink-0" />
+            <Loader2 className="w-5 h-5 text-text-muted animate-spin flex-shrink-0" />
           ) : (
             <>
-              {currentWorkspace?.color ? (
+              {currentWorkspace ? (
                 <div
-                  className="w-3 h-3 rounded-full flex-shrink-0 ring-2 ring-slate-700"
-                  style={{ backgroundColor: currentWorkspace.color }}
+                  className="w-4 h-4 rounded-md flex-shrink-0 ring-1 ring-border"
+                  style={{ backgroundColor: currentWorkspace.color || 'var(--brand-blue)' }}
                 />
               ) : (
-                <Building2 className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                <Building2 className="w-5 h-5 text-text-muted flex-shrink-0" />
               )}
             </>
           )}
           
           <div className="flex-1 min-w-0 text-left">
-            <div className="font-medium text-white text-sm truncate">
+            <div className="font-medium text-text-primary text-sm truncate">
               {currentWorkspace?.name || 'Select Workspace'}
             </div>
             {currentWorkspace?.category && (
-              <div className="text-xs text-slate-400 truncate">
+              <div className="text-xs text-text-secondary truncate">
                 {currentWorkspace.category}
               </div>
             )}
@@ -86,38 +89,35 @@ export default function WorkspaceSwitcher() {
         </div>
 
         <ChevronDown 
-          className={`w-4 h-4 text-slate-400 transition-transform duration-200 flex-shrink-0 ${
-            isOpen ? 'rotate-180' : ''
-          }`}
+          className={clsx('w-4 h-4 text-text-muted transition-transform duration-200 flex-shrink-0', isOpen && 'rotate-180')}
         />
       </button>
 
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.15 }}
-            className="absolute top-full left-0 right-0 mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden"
+            exit={{ opacity: 0, y: -5 }}
+            transition={{ duration: 0.1 }}
+            className="absolute top-full left-0 right-0 mt-2 bg-surface border border-border rounded-xl shadow-xl z-50 overflow-hidden"
           >
             {/* Header */}
-            <div className="px-4 py-3 border-b border-slate-700">
-              <div className="text-xs font-medium text-slate-400 uppercase tracking-wider">
-                Your Workspaces
+            <div className="px-4 py-2 border-b border-border">
+              <div className="text-xs font-medium text-text-muted uppercase tracking-wider">
+                Workspaces
               </div>
             </div>
 
             {/* Workspaces List */}
-            <div className="max-h-[400px] overflow-y-auto">
+            <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
               {workspaces.length === 0 ? (
                 <div className="px-4 py-8 text-center">
-                  <Building2 className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                  <p className="text-slate-400 text-sm">No workspaces found</p>
-                  <p className="text-slate-500 text-xs mt-1">Create your first workspace</p>
+                  <Building2 className="w-10 h-10 text-text-muted mx-auto mb-2" />
+                  <p className="text-text-secondary text-sm">No workspaces</p>
                 </div>
               ) : (
-                <div className="py-2">
+                <div className="py-1">
                   {workspaces.map((workspace) => {
                     const isActive = currentWorkspace?.id === workspace.id
                     
@@ -125,18 +125,17 @@ export default function WorkspaceSwitcher() {
                       <button
                         key={workspace.id}
                         onClick={() => handleWorkspaceSwitch(workspace)}
-                        className={`w-full px-4 py-3 flex items-center gap-3 transition-colors ${
-                          isActive
-                            ? 'bg-blue-500/10 text-blue-400'
-                            : 'hover:bg-slate-700/50 text-white'
-                        }`}
+                        className={twMerge(clsx(
+                            'w-full px-4 py-3 flex items-center gap-3 transition-colors border-l-2',
+                            isActive
+                                ? 'bg-primary/5 text-primary border-primary'
+                                : 'hover:bg-surface-hover text-text-primary border-transparent'
+                        ))}
                       >
                         {/* Color Indicator */}
                         <div
-                          className={`w-3 h-3 rounded-full flex-shrink-0 ${
-                            isActive ? 'ring-2 ring-blue-400/50' : 'ring-1 ring-slate-600'
-                          }`}
-                          style={{ backgroundColor: workspace.color || '#667eea' }}
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: workspace.color || 'var(--brand-blue)' }}
                         />
 
                         {/* Workspace Info */}
@@ -146,18 +145,11 @@ export default function WorkspaceSwitcher() {
                               {workspace.name}
                             </span>
                             {workspace.userRole === 'admin' && (
-                              <span className="text-[10px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded-full">
-                                Admin
-                              </span>
+                              <Badge variant="blue" size="sm" className="px-1.5 py-0">Admin</Badge>
                             )}
                           </div>
-                          {workspace.category && (
-                            <div className="text-xs text-slate-400 truncate">
-                              {workspace.category}
-                            </div>
-                          )}
                           {workspace.memberCount && (
-                            <div className="text-xs text-slate-500 mt-0.5">
+                            <div className="text-xs text-text-muted mt-0.5">
                               {workspace.memberCount} member{workspace.memberCount !== 1 ? 's' : ''}
                             </div>
                           )}
@@ -165,7 +157,7 @@ export default function WorkspaceSwitcher() {
 
                         {/* Active Indicator */}
                         {isActive && (
-                          <Check className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                          <Check className="w-4 h-4 text-primary flex-shrink-0" />
                         )}
                       </button>
                     )
@@ -175,27 +167,27 @@ export default function WorkspaceSwitcher() {
             </div>
 
             {/* Footer Actions */}
-            <div className="border-t border-slate-700">
+            <div className="border-t border-border bg-background/50 p-2 space-y-1">
               <Link
                 href="/dashboard/workspaces"
-                className="w-full px-4 py-3 flex items-center gap-3 text-blue-400 hover:bg-slate-700/50 transition-colors"
+                className="w-full px-3 py-2 flex items-center gap-2 text-text-secondary hover:text-white hover:bg-surface-hover rounded-md transition-colors"
                 onClick={() => setIsOpen(false)}
               >
-                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                  <Building2 className="w-4 h-4" />
+                <div className="w-6 h-6 rounded flex items-center justify-center bg-surface border border-border">
+                  <Building2 className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-sm font-medium">Manage Workspaces</span>
+                <span className="text-xs font-medium">Manage all</span>
               </Link>
               
               <Link
                 href="/dashboard/workspaces?create=true"
-                className="w-full px-4 py-3 flex items-center gap-3 text-green-400 hover:bg-slate-700/50 transition-colors border-t border-slate-700/50"
+                className="w-full px-3 py-2 flex items-center gap-2 text-primary hover:bg-primary/10 rounded-md transition-colors"
                 onClick={() => setIsOpen(false)}
               >
-                <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
-                  <Plus className="w-4 h-4" />
+                <div className="w-6 h-6 rounded flex items-center justify-center border border-primary/20">
+                  <Plus className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-sm font-medium">Create Workspace</span>
+                <span className="text-xs font-medium">Add new workspace</span>
               </Link>
             </div>
           </motion.div>

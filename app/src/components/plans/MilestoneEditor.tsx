@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, Calendar, Link as LinkIcon, Plus, Trash } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
@@ -38,17 +38,7 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
   const [showTaskSelector, setShowTaskSelector] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (milestone) {
-      setName(milestone.name);
-      setDescription(milestone.description || '');
-      setTargetDate(milestone.target_date);
-      loadLinkedTasks();
-    }
-    loadAvailableTasks();
-  }, [milestone]);
-
-  const loadLinkedTasks = async () => {
+  const loadLinkedTasks = useCallback(async () => {
     if (!milestone) return;
 
     const { data } = await supabase
@@ -64,9 +54,9 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
         .filter((t: any): t is Task => t !== null && t !== undefined);
       setLinkedTasks(tasks);
     }
-  };
+  }, [milestone]);
 
-  const loadAvailableTasks = async () => {
+  const loadAvailableTasks = useCallback(async () => {
     const { data } = await supabase
       .from('tasks')
       .select('id, title, is_completed')
@@ -75,7 +65,17 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
     if (data) {
       setAvailableTasks(data);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (milestone) {
+      setName(milestone.name);
+      setDescription(milestone.description || '');
+      setTargetDate(milestone.target_date);
+      loadLinkedTasks();
+    }
+    loadAvailableTasks();
+  }, [milestone, loadLinkedTasks, loadAvailableTasks]);
 
   const handleSave = async () => {
     if (!name || !targetDate) return;

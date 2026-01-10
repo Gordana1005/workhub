@@ -12,7 +12,7 @@ interface TeamMember {
   joined_at: string
   profiles: {
     id: string
-    full_name: string | null
+    username: string | null
     avatar_url: string | null
     email: string
   }
@@ -26,7 +26,9 @@ export default function TeamPage() {
   const [showInviteDialog, setShowInviteDialog] = useState(false)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteLink, setInviteLink] = useState<string | null>(null)
+  const [inviteMode, setInviteMode] = useState<'email' | 'username'>('email')
   const [mounted, setMounted] = useState(false)
+  const [addUsername, setAddUsername] = useState('')
 
   useEffect(() => {
     setMounted(true)
@@ -100,6 +102,8 @@ export default function TeamPage() {
     setShowInviteDialog(false)
     setInviteEmail('')
     setInviteLink(null)
+    setAddUsername('')
+    setInviteMode('email')
   }
 
   const handleRemoveMember = async (userId: string) => {
@@ -149,13 +153,40 @@ export default function TeamPage() {
     }
   }
 
+  const handleAddByUsername = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentWorkspace || !addUsername) return
+
+    try {
+      const response = await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: currentWorkspace.id,
+          username: addUsername
+        })
+      })
+
+      const data = await response.json()
+      if (response.ok) {
+        setAddUsername('')
+        loadTeamMembers()
+      } else {
+        alert(data.error || 'Failed to add member')
+      }
+    } catch (error) {
+      console.error('Error adding member:', error)
+      alert('Failed to add member')
+    }
+  }
+
   const getInitials = (name: string | null) => {
     if (!name) return '?'
-    return name.split(' ').map(n => n[0]).join('').toUpperCase()
+    return name.slice(0, 2).toUpperCase()
   }
 
   const filteredMembers = teamMembers.filter(member =>
-    member.profiles.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    member.profiles.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     member.profiles.email.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -260,7 +291,7 @@ export default function TeamPage() {
                 {/* Header */}
                 <div className="flex items-start justify-between mb-4">
                   <div className="w-16 h-16 rounded-xl bg-gradient-blue-purple flex items-center justify-center text-white text-xl font-bold">
-                    {getInitials(member.profiles.full_name)}
+                    {getInitials(member.profiles.username)}
                   </div>
                   <div className="relative group">
                     <button className="p-2 hover:bg-surface-light rounded-lg transition-colors">
@@ -288,7 +319,7 @@ export default function TeamPage() {
                 {/* Info */}
                 <div className="mb-4">
                   <h3 className="text-xl font-bold text-white mb-1">
-                    {member.profiles.full_name || 'Unnamed User'}
+                    {member.profiles.username || 'Unnamed User'}
                   </h3>
                   <div className="flex items-center text-sm text-gray-400 mb-2">
                     <Mail className="w-4 h-4 mr-1" />
@@ -317,39 +348,94 @@ export default function TeamPage() {
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
               <h2 className="text-2xl font-bold text-white mb-4">Invite Team Member</h2>
+              <div className="flex gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setInviteMode('email')}
+                  className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${inviteMode === 'email' ? 'border-blue-500 text-white bg-blue-500/10' : 'border-slate-700 text-slate-300 hover:border-slate-600'}`}
+                >
+                  Invite by Email
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInviteMode('username')}
+                  className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${inviteMode === 'username' ? 'border-blue-500 text-white bg-blue-500/10' : 'border-slate-700 text-slate-300 hover:border-slate-600'}`}
+                >
+                  Add by Username
+                </button>
+              </div>
               
               {!inviteLink ? (
-                <form onSubmit={handleInvite}>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      value={inviteEmail}
-                      onChange={(e) => setInviteEmail(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="colleague@example.com"
-                    />
-                    <p className="text-xs text-gray-400 mt-2">
-                       We'll generate a secure invitation link for you to share.
-                    </p>
-                  </div>
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={handleCloseInvite}
-                      className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
-                    >
-                      Create Invite
-                    </button>
-                  </div>
-                </form>
+                inviteMode === 'email' ? (
+                  <form onSubmit={handleInvite}>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
+                      <input
+                        type="email"
+                        required
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="colleague@example.com"
+                      />
+                      <p className="text-xs text-gray-400 mt-2">
+                         We'll generate a secure invitation link for you to share.
+                      </p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={handleCloseInvite}
+                        className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+                      >
+                        Create Invite
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <form onSubmit={async (e) => {
+                    e.preventDefault()
+                    if (!addUsername) return
+                    await handleAddByUsername(e)
+                    setShowInviteDialog(false)
+                    setAddUsername('')
+                  }}>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Workspace username</label>
+                      <input
+                        type="text"
+                        required
+                        value={addUsername}
+                        onChange={(e) => setAddUsername(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="e.g., alice"
+                      />
+                      <p className="text-xs text-gray-400 mt-2">Adds an existing user by username without sending email.</p>
+                    </div>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={handleCloseInvite}
+                        className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+                        disabled={!addUsername}
+                      >
+                        Add Member
+                      </button>
+                    </div>
+                  </form>
+                )
               ) : (
                 <div className="space-y-4">
                     <div className="bg-green-500/10 border border-green-500/20 text-green-400 p-4 rounded-xl text-sm">

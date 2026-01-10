@@ -34,13 +34,6 @@ export default function TimeTrackerPage() {
   const [weekStats, setWeekStats] = useState<{day: string, hours: number}[]>([])
 
   useEffect(() => {
-    if (currentWorkspace) {
-      loadTasks()
-      loadTimeEntries()
-    }
-  }, [currentWorkspace])
-
-  useEffect(() => {
     let interval: NodeJS.Timeout
     if (isTracking) {
       interval = setInterval(() => {
@@ -50,51 +43,7 @@ export default function TimeTrackerPage() {
     return () => clearInterval(interval)
   }, [isTracking])
 
-  const loadTasks = async () => {
-    if (!currentWorkspace) return
-
-    try {
-      const res = await fetch(`/api/tasks?workspace_id=${currentWorkspace.id}`)
-      const data = await res.json()
-      
-      if (Array.isArray(data)) {
-        const formattedData = data
-          .filter((task: any) => !task.is_completed)
-          .map((task: any) => ({
-            id: task.id,
-            title: task.title,
-            project: task.projects ? { name: task.projects.name } : undefined
-          }))
-        setTasks(formattedData)
-      }
-    } catch (error) {
-      console.error('Error loading tasks:', error)
-    }
-  }
-
-  const loadTimeEntries = async () => {
-    if (!currentWorkspace) return
-
-    try {
-      setLoading(true)
-      const today = new Date().toISOString().split('T')[0]
-      const res = await fetch(`/api/time-entries?workspace_id=${currentWorkspace.id}&date=${today}`)
-      const data = await res.json()
-      
-      if (data.timeEntries) {
-        setTimeEntries(data.timeEntries)
-      }
-
-      // Calculate weekly stats
-      await loadWeeklyStats()
-    } catch (error) {
-      console.error('Error loading time entries:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadWeeklyStats = async () => {
+  const loadWeeklyStats = useCallback(async () => {
     if (!currentWorkspace) return
 
     try {
@@ -137,7 +86,58 @@ export default function TimeTrackerPage() {
         { day: 'Sun', hours: 0 }
       ])
     }
-  }
+  }, [currentWorkspace])
+
+  const loadTasks = useCallback(async () => {
+    if (!currentWorkspace) return
+
+    try {
+      const res = await fetch(`/api/tasks?workspace_id=${currentWorkspace.id}`)
+      const data = await res.json()
+      
+      if (Array.isArray(data)) {
+        const formattedData = data
+          .filter((task: any) => !task.is_completed)
+          .map((task: any) => ({
+            id: task.id,
+            title: task.title,
+            project: task.projects ? { name: task.projects.name } : undefined
+          }))
+        setTasks(formattedData)
+      }
+    } catch (error) {
+      console.error('Error loading tasks:', error)
+    }
+  }, [currentWorkspace])
+
+  const loadTimeEntries = useCallback(async () => {
+    if (!currentWorkspace) return
+
+    try {
+      setLoading(true)
+      const today = new Date().toISOString().split('T')[0]
+      const res = await fetch(`/api/time-entries?workspace_id=${currentWorkspace.id}&date=${today}`)
+      const data = await res.json()
+      
+      if (data.timeEntries) {
+        setTimeEntries(data.timeEntries)
+      }
+
+      // Calculate weekly stats
+      await loadWeeklyStats()
+    } catch (error) {
+      console.error('Error loading time entries:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [currentWorkspace, loadWeeklyStats])
+
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadTasks()
+      loadTimeEntries()
+    }
+  }, [currentWorkspace, loadTasks, loadTimeEntries])
 
   const handleStart = () => {
     setIsTracking(true)

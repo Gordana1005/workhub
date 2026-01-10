@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useMemo } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -28,9 +29,8 @@ export default function RichTextEditor({
   placeholder = 'Start writing...',
   editable = true 
 }: RichTextEditorProps) {
-  
-  const lowlight = createLowlight(common);
-  
+  const lowlight = useMemo(() => createLowlight(common), [])
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -80,7 +80,14 @@ export default function RichTextEditor({
         class: 'prose prose-invert max-w-none focus:outline-none px-8 py-4 min-h-[300px]',
       },
     },
-  });
+    immediatelyRender: false,
+  }, [editable, lowlight]);
+
+  useEffect(() => {
+    if (editor && content !== editor.getHTML()) {
+      editor.commands.setContent(content || '', { emitUpdate: false })
+    }
+  }, [content, editor])
 
   if (!editor) return null;
 

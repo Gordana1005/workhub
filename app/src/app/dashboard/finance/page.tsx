@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { DollarSign, TrendingUp, TrendingDown, Wallet, Plus, Upload, Target } from 'lucide-react';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
@@ -52,13 +52,7 @@ export default function FinancePage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'goals'>('overview');
   const { currentWorkspace } = useWorkspaceStore();
 
-  useEffect(() => {
-    if (currentWorkspace?.id) {
-      loadFinanceData();
-    }
-  }, [currentWorkspace?.id]);
-
-  const loadFinanceData = async () => {
+  const loadFinanceData = useCallback(async () => {
     if (!currentWorkspace?.id) return;
     
     setLoading(true);
@@ -104,7 +98,13 @@ export default function FinancePage() {
     }
 
     setLoading(false);
-  };
+  }, [currentWorkspace?.id]);
+
+  useEffect(() => {
+    if (currentWorkspace?.id) {
+      loadFinanceData();
+    }
+  }, [currentWorkspace?.id, loadFinanceData]);
 
   // Chart data
   const categoryData = transactions

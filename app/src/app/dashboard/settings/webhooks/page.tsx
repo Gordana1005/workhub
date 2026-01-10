@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Plus, Webhook, Activity, AlertCircle } from 'lucide-react'
 import WebhookList from '@/components/webhooks/WebhookList'
 import WebhookForm from '@/components/webhooks/WebhookForm'
@@ -13,13 +13,7 @@ export default function WebhooksPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingWebhook, setEditingWebhook] = useState<any | null>(null)
 
-  useEffect(() => {
-    if (currentWorkspace) {
-      loadWebhooks()
-    }
-  }, [currentWorkspace])
-
-  const loadWebhooks = async () => {
+  const loadWebhooks = useCallback(async () => {
     if (!currentWorkspace) return
 
     try {
@@ -35,7 +29,13 @@ export default function WebhooksPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentWorkspace])
+
+  useEffect(() => {
+    if (currentWorkspace) {
+      loadWebhooks()
+    }
+  }, [currentWorkspace, loadWebhooks])
 
   const handleCreate = () => {
     setEditingWebhook(null)

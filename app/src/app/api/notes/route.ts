@@ -60,7 +60,7 @@ export async function GET(request: Request) {
       .select(`
         *,
         project:projects(name, workspace_id),
-        author:profiles(full_name, avatar_url)
+        author:profiles(username, avatar_url)
       `)
       .order('created_at', { ascending: false });
 

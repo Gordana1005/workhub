@@ -32,8 +32,8 @@ export default function GanttTimeline({ plan, milestones, onMilestoneClick }: Ga
   const [viewMode, setViewMode] = useState<'weeks' | 'months'>('weeks');
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const startDate = new Date(plan.start_date);
-  const endDate = new Date(plan.end_date);
+  const startDate = useMemo(() => new Date(plan.start_date), [plan.start_date]);
+  const endDate = useMemo(() => new Date(plan.end_date), [plan.end_date]);
 
   // Generate time periods
   const timePeriods = useMemo(() => {

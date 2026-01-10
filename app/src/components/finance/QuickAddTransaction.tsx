@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { parseNaturalLanguageTransaction } from '@/lib/finance-parser';
 import { Sparkles, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
@@ -29,14 +29,7 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { currentWorkspace } = useWorkspaceStore();
 
-  useEffect(() => {
-    if (currentWorkspace?.id) {
-      loadAccounts();
-      loadCategories();
-    }
-  }, [currentWorkspace?.id]);
-
-  const loadAccounts = async () => {
+  const loadAccounts = useCallback(async () => {
     if (!currentWorkspace?.id) return;
     
     const { data } = await supabase
@@ -52,9 +45,9 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
         setSelectedAccountId(data[0].id);
       }
     }
-  };
+  }, [currentWorkspace?.id, selectedAccountId]);
 
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
     if (!currentWorkspace?.id) return;
     
     const { data } = await supabase
@@ -64,7 +57,14 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
       .order('name');
     
     if (data) setCategories(data);
-  };
+  }, [currentWorkspace?.id]);
+
+  useEffect(() => {
+    if (currentWorkspace?.id) {
+      loadAccounts();
+      loadCategories();
+    }
+  }, [currentWorkspace?.id, loadAccounts, loadCategories]);
 
   const handleInputChange = (value: string) => {
     setInput(value);
@@ -82,7 +82,7 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
     if (preview) {
       setPreview({ ...preview, type: manualType });
     }
-  }, [manualType]);
+  }, [manualType, preview]);
 
   const handleSubmit = async () => {
     if (!preview || !currentWorkspace?.id || !selectedAccountId) return;

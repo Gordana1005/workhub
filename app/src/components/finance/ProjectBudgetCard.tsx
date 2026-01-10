@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { DollarSign, TrendingUp, TrendingDown, Clock, AlertTriangle, Edit2, Check, X, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import BudgetRequestForm from './BudgetRequestForm';
@@ -43,12 +43,7 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
   });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadFinancials();
-    checkIfOwner();
-  }, [projectId]);
-
-  const checkIfOwner = async () => {
+  const checkIfOwner = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -59,9 +54,9 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
       .single();
 
     setIsOwner(data?.creator_id === user.id);
-  };
+  }, [projectId]);
 
-  const loadFinancials = async () => {
+  const loadFinancials = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('project_financials')
@@ -82,7 +77,12 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
       setBudgetForm(newBudgetForm);
     }
     setLoading(false);
-  };
+  }, [projectId]);
+
+  useEffect(() => {
+    loadFinancials();
+    checkIfOwner();
+  }, [projectId, loadFinancials, checkIfOwner]);
 
   const handleSaveBudget = async () => {
     try {

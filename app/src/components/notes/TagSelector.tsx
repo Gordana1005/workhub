@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, Plus, Tag as TagIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -35,13 +35,7 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState(PRESET_COLORS[0]);
 
-  useEffect(() => {
-    if (workspaceId) {
-      loadTags();
-    }
-  }, [workspaceId]);
-
-  const loadTags = async () => {
+  const loadTags = useCallback(async () => {
     const { data, error } = await supabase
       .from('tags')
       .select('*')
@@ -51,7 +45,13 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
     if (!error && data) {
       setAllTags(data);
     }
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (workspaceId) {
+      loadTags();
+    }
+  }, [workspaceId, loadTags]);
 
   const createTag = async () => {
     if (!newTagName.trim()) return;

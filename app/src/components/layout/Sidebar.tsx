@@ -15,9 +15,11 @@ import {
   Webhook,
   Target,
   DollarSign,
-  Building2
+  Building2,
+  CreditCard
 } from 'lucide-react'
 import { clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: Home },
@@ -48,39 +50,53 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
           onClick={onClose}
         />
       )}
 
       <aside className={clsx(
-        'fixed lg:static inset-y-0 left-0 z-50 w-64 h-screen bg-[var(--bg-secondary)] border-r border-white/5 transform transition-transform duration-300 ease-in-out overflow-y-auto',
-        isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+        'fixed inset-y-0 left-0 z-50 w-64 h-screen bg-secondary border-r border-border transform transition-transform duration-300 ease-in-out lg:hidden',
+        isOpen ? 'translate-x-0' : '-translate-x-full'
       )}>
-        <nav className="p-4 space-y-1">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={onClose}
-                className={clsx(
-                  'flex items-center space-x-3 px-4 py-3 rounded-xl transition-all duration-200 group',
-                  isActive
-                    ? 'bg-gradient-blue-purple text-white shadow-glow'
-                    : 'text-gray-400 hover:bg-surface-light hover:text-white'
-                )}
-              >
-                <item.icon className={clsx(
-                  'w-5 h-5 transition-transform group-hover:scale-110',
-                  isActive && 'drop-shadow-lg'
-                )} />
-                <span className="font-medium">{item.name}</span>
-              </Link>
-            )
-          })}
-        </nav>
+        <div className="flex flex-col h-full">
+            {/* Logo Area */}
+            <div className="h-16 flex items-center px-6 border-b border-white/5">
+              <span className="text-xl font-bold text-white tracking-tight">TrackWork<span className="text-primary">.</span></span>
+            </div>
+
+            <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
+            {navigation.map((item) => {
+                const isActive = pathname === item.href
+                return (
+                <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={onClose}
+                    className={twMerge(clsx(
+                    'flex items-center space-x-3 px-3 py-2 rounded-lg transition-all duration-200 group text-sm font-medium',
+                    isActive
+                        ? 'bg-primary/10 text-primary'  // Deel Active State
+                        : 'text-text-secondary hover:bg-surface-hover hover:text-white'
+                    ))}
+                >
+                    <item.icon className={clsx(
+                    'w-4 h-4 transition-colors',
+                    isActive ? 'text-primary' : 'text-text-secondary group-hover:text-white'
+                    )} />
+                    <span>{item.name}</span>
+                </Link>
+                )
+            })}
+            </nav>
+            
+            {/* Bottom Section (Profile/Logout could go here) */}
+             <div className="p-4 border-t border-white/5">
+                <div className="flex items-center space-x-3 text-text-muted text-xs">
+                    <span>v2.0 Dark</span>
+                </div>
+            </div>
+        </div>
       </aside>
     </>
   )

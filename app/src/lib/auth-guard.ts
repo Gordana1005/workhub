@@ -51,15 +51,35 @@ export async function requireAuth(request: Request): Promise<AuthContext | NextR
 
   // Get workspace from request (query param or body)
   const url = new URL(request.url);
-  let workspaceId = url.searchParams.get('workspace_id') || url.searchParams.get('workspaceId');
-  
-  // Try to get from body if not in query
+  let workspaceId: string | null = url.searchParams.get('workspace_id') || url.searchParams.get('workspaceId');
+
+  // Check headers as override (useful for multipart uploads)
   if (!workspaceId) {
-    try {
-      const body = await request.clone().json();
-      workspaceId = body.workspace_id || body.workspaceId;
-    } catch {
-      // Body parsing failed or not JSON
+    workspaceId = request.headers.get('x-workspace-id') || request.headers.get('x-workspaceid') || null;
+  }
+  
+  // Try to get from body if not in query/headers
+  if (!workspaceId) {
+    const contentType = request.headers.get('content-type') || '';
+
+    // Multipart form-data (attachments upload) should pull workspace from form fields
+    if (contentType.includes('multipart/form-data')) {
+      try {
+        const form = await request.clone().formData();
+        workspaceId = (form.get('workspace_id') || form.get('workspaceId'))?.toString() || null;
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    // Fallback to JSON body if not multipart
+    if (!workspaceId) {
+      try {
+        const body = await request.clone().json();
+        workspaceId = body.workspace_id || body.workspaceId || null;
+      } catch {
+        // Body parsing failed or not JSON
+      }
     }
   }
 

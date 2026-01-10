@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -38,7 +39,7 @@ export default function SettingsPage() {
   
   // Profile State
   const [profile, setProfile] = useState({
-    full_name: '',
+    username: '',
     email: '',
     job_title: '',
     department: '',
@@ -68,7 +69,7 @@ export default function SettingsPage() {
 
         if (data) {
           setProfile({
-            full_name: data.full_name || '',
+            username: data.username || '',
             email: data.email || user.email || '',
             job_title: data.job_title || '',
             department: data.department || '',
@@ -92,15 +93,18 @@ export default function SettingsPage() {
     setMessage(null)
 
     try {
+      // Use upsert instead of update to handle missing profiles
       const { error } = await supabase
         .from('profiles')
-        .update({
-          full_name: profile.full_name,
+        .upsert({
+          id: userId, // Required for upsert
+          username: profile.username,
           job_title: profile.job_title,
           department: profile.department,
-          avatar_url: profile.avatar_url
+          avatar_url: profile.avatar_url,
+          email: profile.email // Ensure email is present
         })
-        .eq('id', userId)
+        // .eq('id', userId) // Not needed for upsert with id in body
 
       if (error) throw error
 
@@ -195,7 +199,7 @@ export default function SettingsPage() {
                 <div className="space-y-8">
                   <div>
                     <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-1">Profile Information</h2>
-                    <p className="text-sm text-gray-500 dark:text-gray-400">Update your photo and personal details.</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Update your username and personal details.</p>
                   </div>
                   
                   {/* Avatar Section */}
@@ -211,7 +215,7 @@ export default function SettingsPage() {
                             />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600 text-white text-3xl font-bold">
-                              {profile.full_name?.charAt(0) || 'U'}
+                              {profile.username?.charAt(0) || 'U'}
                             </div>
                           )}
                         </div>
@@ -277,14 +281,14 @@ export default function SettingsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        Full Name
+                        Username
                       </label>
                       <input
                         type="text"
-                        value={profile.full_name}
-                        onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
+                        value={profile.username}
+                        onChange={(e) => setProfile({ ...profile, username: e.target.value })}
                         className="w-full px-4 py-3 rounded-xl bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-blue-500 transition-all outline-none"
-                        placeholder="Enter your full name"
+                        placeholder="Enter your username"
                       />
                     </div>
                     <div>

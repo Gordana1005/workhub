@@ -9,6 +9,7 @@ create extension if not exists "uuid-ossp";
 create table if not exists profiles (
   id uuid references auth.users not null primary key,
   email text,
+  username text not null unique,
   full_name text,
   avatar_url text,
   job_title text,

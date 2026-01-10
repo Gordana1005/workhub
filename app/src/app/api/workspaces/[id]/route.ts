@@ -60,7 +60,7 @@ export async function GET(
       .select(`
         *,
         workspace_members(count),
-        profiles!workspaces_owner_id_fkey(full_name, avatar_url)
+        profiles!workspaces_owner_id_fkey(username, avatar_url)
       `)
       .eq('id', workspaceId)
       .single()

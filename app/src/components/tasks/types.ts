@@ -9,7 +9,8 @@ export interface Task {
   due_date?: string | null;
   category?: string | null;
   assignee_id?: string | null;
-  assignee?: { full_name: string } | null;
+  assignee?: { id?: string; username: string } | null;
+  project?: { name?: string; color?: string } | null;
   estimated_hours?: number | null;
 }
 

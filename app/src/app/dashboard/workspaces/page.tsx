@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { Building2, Plus, Settings, Users, FolderKanban, CheckSquare, Trash2, Edit, Loader2 } from 'lucide-react'
@@ -33,11 +33,7 @@ function WorkspacesContent() {
   const [workspacesWithStats, setWorkspacesWithStats] = useState<WorkspaceWithStats[]>([])
   const [loadingStats, setLoadingStats] = useState(true)
 
-  useEffect(() => {
-    loadWorkspaceStats()
-  }, [workspaces])
-
-  const loadWorkspaceStats = async () => {
+  const loadWorkspaceStats = useCallback(async () => {
     setLoadingStats(true)
     try {
       // Load stats for each workspace
@@ -70,7 +66,11 @@ function WorkspacesContent() {
     } finally {
       setLoadingStats(false)
     }
-  }
+  }, [workspaces])
+
+  useEffect(() => {
+    loadWorkspaceStats()
+  }, [workspaces, loadWorkspaceStats])
 
   const handleEdit = (workspace: WorkspaceWithStats) => {
     setEditingWorkspace(workspace)

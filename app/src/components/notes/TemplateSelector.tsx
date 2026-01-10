@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { FileText, Plus, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
@@ -34,13 +34,7 @@ export default function TemplateSelector({ workspaceId, onSelect, onClose }: Tem
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (workspaceId) {
-      loadTemplates();
-    }
-  }, [workspaceId]);
-
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('note_templates')
@@ -52,7 +46,13 @@ export default function TemplateSelector({ workspaceId, onSelect, onClose }: Tem
       setTemplates(data);
     }
     setLoading(false);
-  };
+  }, [workspaceId]);
+
+  useEffect(() => {
+    if (workspaceId) {
+      loadTemplates();
+    }
+  }, [workspaceId, loadTemplates]);
 
   const handleSelectTemplate = async (template: Template) => {
     // Increment usage count
