@@ -48,7 +48,13 @@ export async function GET(request: Request) {
       .eq('task_id', taskId)
       .order('created_at', { ascending: true })
 
-    if (error) throw error
+    // If table doesn't exist, return empty array instead of error
+    if (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('not find the table')) {
+        return NextResponse.json([])
+      }
+      throw error
+    }
 
     return NextResponse.json(comments || [])
   } catch (error: any) {

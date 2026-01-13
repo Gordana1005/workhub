@@ -17,6 +17,18 @@ BEGIN
         CREATE TYPE priority_level AS ENUM ('low', 'medium', 'high', 'urgent');
     END IF;
 
+    -- Add username column to profiles if missing
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'username'
+    ) THEN
+        ALTER TABLE profiles ADD COLUMN username text;
+        UPDATE profiles
+        SET username = lower(regexp_replace(coalesce(username, full_name, email, 'user'), '[^a-zA-Z0-9]+', '-', 'g'))
+               || '-' || substr(md5(random()::text), 1, 6)
+        WHERE username IS NULL;
+        ALTER TABLE profiles ALTER COLUMN username SET NOT NULL;
+    END IF;
+
     -- Create invitations table if it doesn't exist
     IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'invitations') THEN
         CREATE TABLE invitations (

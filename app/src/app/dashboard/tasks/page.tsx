@@ -1,17 +1,16 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, Filter, CheckCircle, Circle, Clock, User, Calendar, List, LayoutGrid, CalendarDays, Download, Trash2, FileText } from 'lucide-react'
+import { Plus, Search, CheckCircle, Circle, User, Calendar, List, LayoutGrid, CalendarDays, FileText } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 import { LoadingSkeleton } from '@/components/LoadingSkeleton'
 import { useDebounce } from '@/hooks/useDebounce'
-import AdvancedFilter from '@/components/tasks/AdvancedFilter'
 import BulkActions from '@/components/tasks/BulkActions'
-import ExportDialog from '@/components/ExportDialog'
 import TaskDetailModal from '@/components/tasks/TaskDetailModal'
 import TemplateSelector from '@/components/tasks/TemplateSelector'
 import { Task } from '@/components/tasks/types'
@@ -51,18 +50,9 @@ export default function TasksPage() {
   const [quickAssigneeId, setQuickAssigneeId] = useState<string>('')
   
   // New UI state
-  const [viewMode, setViewMode] = useState<'list' | 'board' | 'calendar'>('board')
+  const [viewMode, setViewMode] = useState<'list' | 'board' | 'calendar'>('list')
   const [selectedTasks, setSelectedTasks] = useState<string[]>([])
-  const [showExportDialog, setShowExportDialog] = useState(false)
-  const [showAdvancedFilter, setShowAdvancedFilter] = useState(false)
-  const [taskFilters, setTaskFilters] = useState({
-    status: 'all' as 'all' | 'completed' | 'active',
-    priority: 'all' as 'all' | 'low' | 'medium' | 'high' | 'urgent',
-    category: 'all' as 'all' | string,
-    assignee: 'all' as 'all' | string,
-    dateRange: 'all' as 'all' | 'today' | 'week' | 'month' | 'overdue',
-    search: ''
-  })
+  const [isMobile, setIsMobile] = useState(false)
 
   // Debounce search query for better performance
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -144,6 +134,19 @@ export default function TasksPage() {
       loadTeamMembers()
     }
   }, [currentWorkspace, loadTasks, loadProjects, loadTeamMembers])
+
+  // Track mobile viewport and disable board on small screens
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)')
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+      const mobile = e.matches
+      setIsMobile(mobile)
+      if (mobile && viewMode === 'board') setViewMode('list')
+    }
+    handler(media)
+    media.addEventListener('change', handler as EventListener)
+    return () => media.removeEventListener('change', handler as EventListener)
+  }, [viewMode])
 
   // Also load data on mount in case currentWorkspace is already set
   useEffect(() => {
@@ -268,223 +271,191 @@ export default function TasksPage() {
     )
 
   return (
-    <div className="flex flex-col h-full min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 overflow-x-hidden">
-      <div className="max-w-7xl mx-auto w-full p-4 md:p-6 pb-20 md:pb-6">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">Tasks</h1>
-          <p className="text-gray-400 text-lg">Manage and track all your tasks</p>
-        </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="space-y-2">
+        <h1 className="text-3xl md:text-4xl font-bold text-white">Tasks</h1>
+        <p className="text-text-secondary">Manage and track all your tasks</p>
+      </div>
 
-        {/* Actions Bar */}
-        <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6 mb-6">
-          <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-            <div className="flex-1 w-full md:w-auto">
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search tasks..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            </div>
-            
-            <div className="flex gap-3">
-              <button 
-                onClick={() => setShowAdvancedFilter(!showAdvancedFilter)}
-                className="px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-gray-300 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
-              >
-                <Filter className="w-5 h-5" />
-                Filter
-              </button>
-
-              <button 
-                onClick={() => setShowExportDialog(true)}
-                className="px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-gray-300 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
-              >
-                <Download className="w-5 h-5" />
-                Export
-              </button>
-
-              <button 
-                onClick={() => setShowTemplateSelector(true)}
-                className="px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-gray-300 hover:bg-slate-700/50 transition-colors flex items-center gap-2"
-              >
-                <FileText className="w-5 h-5" />
-                From Template
-              </button>
-              
-              <Button 
-                onClick={() => {
-                  setTemplateData(null)
-                  setShowCreateDialog(true)
-                }}
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg hover:shadow-blue-500/30 transition-all flex items-center gap-2"
-              >
-                <Plus className="w-5 h-5" />
-                New Task
-              </Button>
+      {/* Actions Bar */}
+      <Card className="bg-surface/70 border-white/5 backdrop-blur-md p-4 md:p-6 space-y-4">
+        <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:items-center md:justify-between">
+          <div className="flex-1 w-full md:w-auto">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
+              <input
+                type="text"
+                placeholder="Search tasks..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 bg-surface/80 border border-white/10 rounded-xl text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
+              />
             </div>
           </div>
-
-          {/* View Switcher */}
-          <div className="flex gap-2 mt-4 mb-4">
-            <button
-              onClick={() => setViewMode('list')}
-              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                viewMode === 'list'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-900/30 text-gray-400 hover:bg-slate-700/50'
-              }`}
+          
+          <div className="flex flex-wrap gap-2 sm:gap-3 justify-end w-full md:w-auto">
+            <button 
+              onClick={() => setShowTemplateSelector(true)}
+              className="px-4 py-3 bg-surface/80 border border-white/10 rounded-xl text-text-secondary hover:text-white hover:border-primary/40 transition-colors flex items-center gap-2"
             >
-              <List className="w-4 h-4" />
-              List
+              <FileText className="w-5 h-5" />
+              From Template
             </button>
+            
+            <Button 
+              onClick={() => {
+                setTemplateData(null)
+                setShowCreateDialog(true)
+              }}
+              className="px-6 py-3 bg-gradient-to-r from-primary to-primary/70 text-white rounded-xl hover:shadow-lg hover:shadow-primary/30 transition-all flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              New Task
+            </Button>
+          </div>
+        </div>
+
+        {/* View Switcher */}
+        <div className="flex flex-wrap gap-2 mt-2 md:mt-4">
+          <button
+            onClick={() => setViewMode('list')}
+            className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+              viewMode === 'list'
+                ? 'bg-primary text-white'
+                : 'bg-surface/60 text-text-secondary hover:bg-surface-hover'
+            }`}
+          >
+            <List className="w-4 h-4" />
+            List
+          </button>
+          {!isMobile && (
             <button
               onClick={() => setViewMode('board')}
               className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
                 viewMode === 'board'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-900/30 text-gray-400 hover:bg-slate-700/50'
+                  ? 'bg-primary text-white'
+                  : 'bg-surface/60 text-text-secondary hover:bg-surface-hover'
               }`}
             >
               <LayoutGrid className="w-4 h-4" />
               Board
             </button>
-            <button
-              onClick={() => setViewMode('calendar')}
-              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                viewMode === 'calendar'
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-900/30 text-gray-400 hover:bg-slate-700/50'
-              }`}
+          )}
+          <button
+            onClick={() => setViewMode('calendar')}
+            className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+              viewMode === 'calendar'
+                ? 'bg-primary text-white'
+                : 'bg-surface/60 text-text-secondary hover:bg-surface-hover'
+            }`}
+          >
+            <CalendarDays className="w-4 h-4" />
+            Calendar
+          </button>
+        </div>
+
+        {/* Quick assignment selectors */}
+        <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-text-secondary">
+          <div className="flex items-center gap-2 bg-surface/80 border border-white/10 rounded-lg px-3 py-2">
+            <span className="text-xs uppercase tracking-wide text-text-muted">Project</span>
+            <select
+              value={quickProjectId}
+              onChange={(e) => setQuickProjectId(e.target.value)}
+              className="bg-[var(--bg-secondary)] text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 border border-[var(--border)] rounded-md px-2 py-1 appearance-none"
             >
-              <CalendarDays className="w-4 h-4" />
-              Calendar
-            </button>
+              <option value="">Select</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
           </div>
 
-          {/* Quick assignment selectors */}
-          <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-gray-300">
-            <div className="flex items-center gap-2 bg-slate-800/40 border border-slate-700 rounded-lg px-3 py-2">
-              <span className="text-xs uppercase tracking-wide text-gray-400">Project</span>
-              <select
-                value={quickProjectId}
-                onChange={(e) => setQuickProjectId(e.target.value)}
-                className="bg-slate-900 text-white text-sm focus:outline-none border border-slate-700 rounded-md px-2 py-1 appearance-none"
-                style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}
-              >
-                <option value="" style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>Select</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id} style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2 bg-slate-800/40 border border-slate-700 rounded-lg px-3 py-2">
-              <span className="text-xs uppercase tracking-wide text-gray-400">Assignee</span>
-              <select
-                value={quickAssigneeId}
-                onChange={(e) => setQuickAssigneeId(e.target.value)}
-                className="bg-slate-900 text-white text-sm focus:outline-none border border-slate-700 rounded-md px-2 py-1 appearance-none"
-                style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}
-              >
-                <option value="" style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>Select</option>
-                {teamMembers.map((m) => (
-                  <option key={m.id} value={m.id} style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>{m.username}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* Filter Tabs */}
-          <div className="flex gap-2">
-            {['all', 'active', 'completed', 'overdue'].map((f) => (
-              <button
-                key={f}
-                onClick={() => setFilter(f)}
-                className={`px-4 py-2 rounded-lg capitalize transition-colors ${
-                  filter === f
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-900/30 text-gray-400 hover:bg-slate-700/50'
-                }`}
-              >
-                {f}
-              </button>
-            ))}
+          <div className="flex items-center gap-2 bg-surface/80 border border-white/10 rounded-lg px-3 py-2">
+            <span className="text-xs uppercase tracking-wide text-text-muted">Assignee</span>
+            <select
+              value={quickAssigneeId}
+              onChange={(e) => setQuickAssigneeId(e.target.value)}
+              className="bg-[var(--bg-secondary)] text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 border border-[var(--border)] rounded-md px-2 py-1 appearance-none"
+            >
+              <option value="">Select</option>
+              {teamMembers.map((m) => (
+                <option key={m.id} value={m.id}>{m.username}</option>
+              ))}
+            </select>
           </div>
         </div>
 
-        {/* Advanced Filter */}
-        {showAdvancedFilter && (
-          <div className="mb-6">
-            <AdvancedFilter
-              filters={taskFilters}
-              onFiltersChange={setTaskFilters}
-            />
-            <button 
-              onClick={() => setShowAdvancedFilter(false)}
-              className="mt-2 px-4 py-2 text-sm text-gray-400 hover:text-white transition-colors"
+        {/* Filter Tabs */}
+        <div className="flex flex-wrap gap-2">
+          {['all', 'active', 'completed', 'overdue'].map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`px-4 py-2 rounded-lg capitalize transition-colors ${
+                filter === f
+                  ? 'bg-primary text-white'
+                  : 'bg-surface/60 text-text-secondary hover:bg-surface-hover'
+              }`}
             >
-              Hide Filters
+              {f}
             </button>
-          </div>
-        )}
+          ))}
+        </div>
+      </Card>
 
-        {/* Bulk Actions */}
-        {selectedTasks.length > 0 && (
-          <BulkActions
-            selectedTasks={selectedTasks}
-            onClearSelection={() => setSelectedTasks([])}
-            onBulkComplete={handleBulkComplete}
-            onBulkDelete={handleBulkDelete}
-            onBulkChangePriority={handleBulkPriority}
-          />
-        )}
+      {/* Bulk Actions */}
+      {selectedTasks.length > 0 && (
+        <BulkActions
+          selectedTasks={selectedTasks}
+          onClearSelection={() => setSelectedTasks([])}
+          onBulkComplete={handleBulkComplete}
+          onBulkDelete={handleBulkDelete}
+          onBulkChangePriority={handleBulkPriority}
+        />
+      )}
 
-        {/* Tasks Content - View Mode Conditional */}
-        {loading ? (
-          <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-12 text-center">
-            <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <div className="animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full"></div>
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Loading tasks...</h3>
+      {/* Tasks Content - View Mode Conditional */}
+      {loading ? (
+        <div className="bg-surface/70 backdrop-blur-md border border-white/5 rounded-2xl p-12 text-center">
+          <div className="w-20 h-20 bg-surface/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <div className="animate-spin w-10 h-10 border-4 border-primary border-t-transparent rounded-full"></div>
           </div>
-        ) : tasks.length === 0 ? (
-          <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-12 text-center">
-            <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="w-10 h-10 text-gray-500" />
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-2">No tasks yet</h3>
-            <p className="text-gray-400 mb-6">Create your first task to get started</p>
-            <Button 
-              onClick={() => setShowCreateDialog(true)}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
-              Create Task
-            </Button>
+          <h3 className="text-xl font-semibold text-white mb-2">Loading tasks...</h3>
+        </div>
+      ) : tasks.length === 0 ? (
+        <div className="bg-surface/70 backdrop-blur-md border border-white/5 rounded-2xl p-12 text-center">
+          <div className="w-20 h-20 bg-surface/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="w-10 h-10 text-text-muted" />
           </div>
-        ) : viewMode === 'board' ? (
-          <KanbanBoard 
-            tasks={filteredTasks} 
-            onTaskUpdate={async (taskId, updates) => {
-              const extraUpdates: any = {};
-              if (updates.status === 'Done') extraUpdates.is_completed = true;
-              else if (updates.status) extraUpdates.is_completed = false;
+          <h3 className="text-xl font-semibold text-white mb-2">No tasks yet</h3>
+          <p className="text-text-secondary mb-6">Create your first task to get started</p>
+          <Button 
+            onClick={() => setShowCreateDialog(true)}
+            className="px-6 py-3 bg-gradient-to-r from-primary to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            Create Task
+          </Button>
+        </div>
+      ) : viewMode === 'board' ? (
+        <KanbanBoard 
+          tasks={filteredTasks} 
+          onTaskUpdate={async (taskId, updates) => {
+            const extraUpdates: any = {};
+            if (updates.status === 'Done') extraUpdates.is_completed = true;
+            else if (updates.status) extraUpdates.is_completed = false;
 
-              await fetch('/api/tasks', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: taskId, ...updates, ...extraUpdates })
-              })
-              loadTasks()
-            }}
-          />
-        ) : viewMode === 'calendar' ? (
+            await fetch('/api/tasks', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: taskId, ...updates, ...extraUpdates })
+            })
+            loadTasks()
+          }}
+        />
+      ) : viewMode === 'calendar' ? (
+        <Card className="bg-surface/70 border-white/5 backdrop-blur-md p-2 md:p-4">
           <CalendarView 
             tasks={filteredTasks} 
             onTaskClick={(calendarTask) => {
@@ -496,22 +467,23 @@ export default function TasksPage() {
               }
             }}
           />
-        ) : (
-          <div className="space-y-3">
-            {/* Select All Checkbox */}
-            {filteredTasks.length > 0 && (
-              <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={selectedTasks.length === filteredTasks.length}
-                  onChange={handleSelectAll}
-                  className="w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-2 focus:ring-blue-500"
-                />
-                <span className="text-gray-400 text-sm">
-                  {selectedTasks.length > 0 
-                    ? `${selectedTasks.length} of ${filteredTasks.length} selected` 
-                    : 'Select all'}
-                </span>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {/* Select All Checkbox */}
+          {filteredTasks.length > 0 && (
+            <div className="bg-surface/70 backdrop-blur-md border border-white/5 rounded-xl p-4 flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={selectedTasks.length === filteredTasks.length}
+                onChange={handleSelectAll}
+                className="w-5 h-5 rounded border-white/20 bg-surface text-primary focus:ring-2 focus:ring-primary/40"
+              />
+              <span className="text-text-secondary text-sm">
+                {selectedTasks.length > 0 
+                  ? `${selectedTasks.length} of ${filteredTasks.length} selected` 
+                  : 'Select all'}
+              </span>
               </div>
             )}
 
@@ -523,7 +495,11 @@ export default function TasksPage() {
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.2, delay: index * 0.02 }}
                 layout
-                className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-5 hover:bg-slate-800/70 transition-all group"
+                onClick={() => {
+                  setEditingTask(task)
+                  setShowEditDialog(true)
+                }}
+                className="bg-surface/70 backdrop-blur-md border border-white/5 hover:border-primary/40 rounded-xl p-5 transition-all group cursor-pointer"
                 style={{ borderLeft: `4px solid ${task.project?.color || '#94a3b8'}` }}
               >
                 <div className="flex items-start gap-4">
@@ -532,41 +508,40 @@ export default function TasksPage() {
                     type="checkbox"
                     checked={selectedTasks.includes(task.id)}
                     onChange={(e) => {
+                      e.stopPropagation()
                       if (e.target.checked) {
                         setSelectedTasks([...selectedTasks, task.id])
                       } else {
                         setSelectedTasks(selectedTasks.filter(id => id !== task.id))
                       }
                     }}
-                    className="mt-1 w-5 h-5 rounded border-slate-600 bg-slate-900 text-blue-600 focus:ring-2 focus:ring-blue-500"
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-1 w-5 h-5 rounded border-white/20 bg-surface text-primary focus:ring-2 focus:ring-primary/40"
                   />
 
                   <motion.button 
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => toggleTaskComplete(task.id, !!task.is_completed)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      toggleTaskComplete(task.id, !!task.is_completed)
+                    }}
                     className="mt-1 flex-shrink-0"
                   >
                     {task.is_completed ? (
                       <CheckCircle className="w-6 h-6 text-green-500 hover:text-green-400 transition-colors" />
                     ) : (
-                      <Circle className="w-6 h-6 text-gray-500 group-hover:text-blue-500 transition-colors" />
+                      <Circle className="w-6 h-6 text-gray-500 group-hover:text-primary transition-colors" />
                     )}
                   </motion.button>
 
                   <div className="flex-1">
-                    <h3 
-                      onClick={() => {
-                        setEditingTask(task)
-                        setShowEditDialog(true)
-                      }}
-                      className={`text-lg font-semibold mb-2 cursor-pointer hover:text-blue-400 transition-colors ${task.is_completed ? 'text-gray-500 line-through' : 'text-white'}`}
-                    >
+                    <h3 className={`text-lg font-semibold mb-2 ${task.is_completed ? 'text-text-muted line-through' : 'text-white'}`}>
                       {task.title}
                     </h3>
                     
                     {task.description && (
-                      <p className="text-gray-400 mb-3">{task.description}</p>
+                      <p className="text-text-secondary mb-3 line-clamp-2">{task.description}</p>
                     )}
 
                     <div className="flex flex-wrap gap-3 items-center">
@@ -591,7 +566,7 @@ export default function TasksPage() {
                       {task.project && (
                         <div
                           className="px-2 py-1 rounded text-xs border"
-                            style={{
+                          style={{
                             borderColor: task.project.color || '#94a3b8',
                             color: task.project.color || '#94a3b8'
                           }}
@@ -606,20 +581,6 @@ export default function TasksPage() {
             ))}
           </div>
         )}
-      </div>
-
-      {/* Export Dialog */}
-      <AnimatePresence>
-        {showExportDialog && (
-          <ExportDialog
-            isOpen={showExportDialog}
-            onClose={() => setShowExportDialog(false)}
-            data={filteredTasks}
-            dataType="tasks"
-            defaultFilename="tasks-export"
-          />
-        )}
-      </AnimatePresence>
 
       {/* Template Selector */}
       <AnimatePresence>

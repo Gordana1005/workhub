@@ -1,7 +1,7 @@
 ﻿'use client'
 
 import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { useTimerStore } from '@/stores/useTimerStore'
 import { supabase } from '@/lib/supabase'
@@ -18,6 +18,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Input } from '@/components/ui/Input'
 import Link from 'next/link'
 import { formatDistanceToNow, isValid } from 'date-fns'
+import TaskDetailModal from '@/components/tasks/TaskDetailModal'
 
 // Types
 interface Task {
@@ -62,6 +63,16 @@ const formatTime = (seconds: number) => {
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
 }
 
+const formatReadableDuration = (seconds: number) => {
+  if (seconds <= 0) return '0m'
+  const totalMinutes = Math.max(1, Math.floor(seconds / 60))
+  if (totalMinutes < 60) return `${totalMinutes}m`
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (minutes === 0) return `${hours}h`
+  return `${hours}h ${minutes}m`
+}
+
 const safeDate = (dateString: string | null | undefined): string => {
   if (!dateString) return ''
   const date = new Date(dateString)
@@ -92,6 +103,8 @@ export default function Dashboard() {
   const [quickProjectId, setQuickProjectId] = useState('')
   const [quickAssigneeId, setQuickAssigneeId] = useState('')
   const [mounted, setMounted] = useState(false)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [showTaskModal, setShowTaskModal] = useState(false)
 
   // Timer Interval
   useEffect(() => {
@@ -343,49 +356,49 @@ export default function Dashboard() {
       </div>
 
       {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card padding="md" className="bg-surface/50 border-white/5 backdrop-blur-sm">
-            <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-blue-500/10 text-blue-500">
-                    <CheckCircle2 className="w-6 h-6" />
-                </div>
-                <div>
-                    <p className="text-text-muted text-sm">Tasks Due</p>
-                    <p className="text-2xl font-bold text-white">{stats.tasksDue}</p>
-                </div>
-            </div>
-        </Card>
-        <Card padding="md" className="bg-surface/50 border-white/5 backdrop-blur-sm">
-             <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-orange-500/10 text-orange-500">
-                    <Clock className="w-6 h-6" />
-                </div>
-                <div>
-                    <p className="text-text-muted text-sm">Time Logged (Today)</p>
-                    <p className="text-2xl font-bold text-white">{formatTime(stats.timeLogged)}</p>
-                </div>
-            </div>
-        </Card>
-        <Card padding="md" className="bg-surface/50 border-white/5 backdrop-blur-sm">
-             <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-purple-500/10 text-purple-500">
-                    <Target className="w-6 h-6" />
-                </div>
-                <div>
-                    <p className="text-text-muted text-sm">Active Projects</p>
-                    <p className="text-2xl font-bold text-white">{stats.activeProjects}</p>
-                </div>
-            </div>
-        </Card>
-        <Card padding="md" className="bg-surface/50 border-white/5 backdrop-blur-sm">
-             <div className="flex items-center gap-4">
-            <div className="p-3 rounded-xl bg-green-500/10 text-green-500">
-              <Users className="w-6 h-6" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-white/8 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500/30 via-blue-500/15 to-blue-500/5 text-blue-100 shadow-inner ring-1 ring-blue-400/30">
+              <CheckCircle2 className="w-6 h-6" />
             </div>
             <div>
-              <p className="text-text-muted text-sm">Workspace Members</p>
-              <p className="text-2xl font-bold text-white">{teamMembers.length}</p>
+              <p className="text-text-muted text-sm">Tasks</p>
+              <p className="text-2xl font-bold text-white leading-tight">{stats.tasksDue}</p>
             </div>
+          </div>
+        </Card>
+        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-white/8 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
+           <div className="flex items-center gap-4">
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-orange-500/30 via-orange-500/15 to-orange-500/5 text-orange-100 shadow-inner ring-1 ring-orange-400/30">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-text-muted text-sm">Productive</p>
+              <p className="text-2xl font-bold text-white leading-tight">{formatReadableDuration(stats.timeLogged)}</p>
+            </div>
+          </div>
+        </Card>
+        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-white/8 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
+           <div className="flex items-center gap-4">
+            <div className="p-3 rounded-2xl bg-gradient-to-br from-purple-500/30 via-purple-500/15 to-purple-500/5 text-purple-100 shadow-inner ring-1 ring-purple-400/30">
+              <Target className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="text-text-muted text-sm">Projects</p>
+              <p className="text-2xl font-bold text-white leading-tight">{stats.activeProjects}</p>
+            </div>
+          </div>
+        </Card>
+        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-white/8 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
+           <div className="flex items-center gap-4">
+          <div className="p-3 rounded-2xl bg-gradient-to-br from-green-500/30 via-green-500/15 to-green-500/5 text-green-100 shadow-inner ring-1 ring-green-400/30">
+            <Users className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="text-text-muted text-sm">Team</p>
+            <p className="text-2xl font-bold text-white leading-tight">{teamMembers.length}</p>
+          </div>
           </div>
         </Card>
       </div>
@@ -398,54 +411,59 @@ export default function Dashboard() {
             
             {/* Quick Task Creator */}
             <Card className="border-primary/20 bg-surface/50">
-                <form onSubmit={handleCreateTask} className="flex flex-col gap-3 p-3">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 text-primary">
-                            <Plus className="w-6 h-6" />
+                <form onSubmit={handleCreateTask} className="space-y-4 p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex items-center gap-3 flex-1 rounded-2xl border border-white/5 bg-surface/60 px-3 py-2">
+                            <div className="p-2 rounded-xl bg-primary/15 text-primary">
+                                <Plus className="w-5 h-5" />
+                            </div>
+                            <input 
+                                type="text" 
+                                placeholder="What needs to be done?"
+                                className="flex-1 bg-transparent border-none text-base sm:text-lg text-white placeholder:text-text-muted focus:ring-0 focus:outline-none"
+                                value={newTaskTitle}
+                                onChange={(e) => setNewTaskTitle(e.target.value)}
+                            />
                         </div>
-                        <input 
-                            type="text" 
-                      placeholder="What needs to be done?"
-                            className="flex-1 bg-transparent border-none text-lg text-white placeholder:text-text-muted focus:ring-0 focus:outline-none"
-                            value={newTaskTitle}
-                            onChange={(e) => setNewTaskTitle(e.target.value)}
-                        />
-                    <Button type="submit" size="sm" disabled={!newTaskTitle} className="bg-primary hover:bg-primary-hover text-white transition-colors">
-                      Add
-                    </Button>
+                        <Button
+                          type="submit"
+                          size="sm"
+                          disabled={!newTaskTitle}
+                          className="w-full sm:w-auto bg-primary hover:bg-primary-hover text-white transition-colors"
+                        >
+                          Add Task
+                        </Button>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 pl-11 max-w-full">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {projects.length > 0 && (
-                          <div className="flex items-center gap-2 bg-surface/60 border border-white/5 rounded-lg px-3 py-2 text-sm">
-                            <span className="text-text-muted text-xs uppercase tracking-wide">Project</span>
+                          <label className="flex flex-col gap-1 rounded-2xl border border-white/5 bg-surface/60 px-3 py-2 text-sm text-white/80">
+                            <span className="text-[11px] uppercase tracking-wide text-text-muted">Project</span>
                             <select
                               value={quickProjectId}
                               onChange={(e) => setQuickProjectId(e.target.value)}
-                              className="bg-slate-900 text-white text-sm focus:outline-none border border-slate-700 rounded-md px-2 py-1 appearance-none"
-                              style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}
+                              className="w-full bg-[var(--bg-secondary)] text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 border border-[var(--border)] rounded-lg px-2 py-2 appearance-none"
                             >
-                              <option value="" style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>Select</option>
+                              <option value="">Select project</option>
                               {projects.map((p) => (
-                                <option key={p.id} value={p.id} style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>{p.name}</option>
+                                <option key={p.id} value={p.id}>{p.name}</option>
                               ))}
                             </select>
-                          </div>
+                          </label>
                         )}
                         {teamMembers.length > 0 && (
-                          <div className="flex items-center gap-2 bg-surface/60 border border-white/5 rounded-lg px-3 py-2 text-sm">
-                            <span className="text-text-muted text-xs uppercase tracking-wide">Assignee</span>
+                          <label className="flex flex-col gap-1 rounded-2xl border border-white/5 bg-surface/60 px-3 py-2 text-sm text-white/80">
+                            <span className="text-[11px] uppercase tracking-wide text-text-muted">Assignee</span>
                             <select
                               value={quickAssigneeId}
                               onChange={(e) => setQuickAssigneeId(e.target.value)}
-                              className="bg-slate-900 text-white text-sm focus:outline-none border border-slate-700 rounded-md px-2 py-1 appearance-none"
-                              style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}
+                              className="w-full bg-[var(--bg-secondary)] text-sm text-white focus:outline-none focus:ring-2 focus:ring-primary/40 border border-[var(--border)] rounded-lg px-2 py-2 appearance-none"
                             >
-                              <option value="" style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>Me</option>
+                              <option value="">Assign to me</option>
                               {teamMembers.map((m) => (
-                                <option key={m.id} value={m.id} style={{ backgroundColor: '#0f172a', color: '#e2e8f0' }}>{m.username}</option>
+                                <option key={m.id} value={m.id}>{m.username}</option>
                               ))}
                             </select>
-                          </div>
+                          </label>
                         )}
                     </div>
                 </form>
@@ -461,16 +479,23 @@ export default function Dashboard() {
                     {tasks.map(task => (
                     <div
                       key={task.id}
-                      className="group flex items-center gap-4 p-3 rounded-xl bg-surface/50 border border-white/5 hover:border-primary/30 transition-all"
+                      onClick={() => {
+                        setSelectedTask(task)
+                        setShowTaskModal(true)
+                      }}
+                      className="group flex items-center gap-4 p-3 rounded-xl bg-surface/50 border border-white/5 hover:border-primary/30 transition-all cursor-pointer"
                       style={{ borderLeft: `4px solid ${task.project?.color || '#94a3b8'}` }}
                     >
                             <button 
-                                onClick={() => handleToggleTask(task.id, task.is_completed)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleToggleTask(task.id, task.is_completed)
+                                }}
                                 className="w-5 h-5 flex items-center justify-center rounded-full border-2 border-text-muted hover:border-primary hover:bg-primary/20 transition-colors"
                             >
                                 {task.is_completed && <Check className="w-3 h-3 text-primary" />}
                             </button>
-                            <div className="flex-1 cursor-pointer">
+                            <div className="flex-1">
                                 <p className={`text-sm font-medium transition-colors ${task.is_completed ? 'line-through text-text-muted' : 'text-white'}`}>{task.title}</p>
                         <div className="flex items-center gap-2 text-xs text-text-muted mt-0.5">
                           {task.project && (
@@ -520,23 +545,50 @@ export default function Dashboard() {
                   <h2 className="text-xl font-bold text-white">Active Projects</h2>
                   <Link href="/dashboard/projects" className="text-sm text-primary hover:text-primary-hover">View All</Link>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:hidden -mx-4 px-4">
+                  <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 no-scrollbar">
+                    {projects.map(project => (
+                      <Link href={`/dashboard/projects/${project.id}`} key={project.id} className="snap-center shrink-0 min-w-[82vw]">
+                        <Card hover className="h-full group cursor-pointer border-white/5 hover:border-primary/50 transition-all">
+                          <div className="flex items-start justify-between mb-4">
+                              <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center text-xl text-white font-bold" style={{ backgroundColor: project.color || '' }}>
+                                {project.name.charAt(0)}
+                              </div>
+                              <div className="bg-green-500/10 text-green-500 text-xs px-2 py-1 rounded-full">Active</div>
+                          </div>
+                          <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">{project.name}</h3>
+                          <p className="text-sm text-text-muted mt-1 line-clamp-2">Tap to view project details</p>
+                          <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-sm text-text-secondary">
+                              <span>View Details</span>
+                              <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                        </Card>
+                      </Link>
+                    ))}
+                    <Link href="/dashboard/projects" className="snap-center shrink-0 min-w-[82vw]">
+                      <Card hover className="h-full group cursor-pointer border-dashed border-white/10 hover:border-primary/50 flex flex-col items-center justify-center gap-2 min-h-[160px] text-text-muted hover:text-primary transition-all">
+                        <Plus className="w-8 h-8" />
+                        <span className="font-medium">Create Project</span>
+                      </Card>
+                    </Link>
+                  </div>
+                </div>
+                <div className="hidden md:grid grid-cols-1 md:grid-cols-2 gap-4">
                   {projects.map(project => (
                     <Link href={`/dashboard/projects/${project.id}`} key={project.id}>
                       <Card hover className="h-full group cursor-pointer border-white/5 hover:border-primary/50 transition-all">
-                      <div className="flex items-start justify-between mb-4">
-                          <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center text-xl text-white font-bold" style={{ backgroundColor: project.color || '' }}>
-                            {project.name.charAt(0)}
-                          </div>
-                          <div className="bg-green-500/10 text-green-500 text-xs px-2 py-1 rounded-full">Active</div>
-                      </div>
-                      <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">{project.name}</h3>
-                      <p className="text-sm text-text-muted mt-1 line-clamp-2">Click to view project details</p>
-                            
-                      <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-sm text-text-secondary">
-                          <span>View Details</span>
-                          <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
+                        <div className="flex items-start justify-between mb-4">
+                            <div className="w-10 h-10 rounded-lg bg-surface flex items-center justify-center text-xl text-white font-bold" style={{ backgroundColor: project.color || '' }}>
+                              {project.name.charAt(0)}
+                            </div>
+                            <div className="bg-green-500/10 text-green-500 text-xs px-2 py-1 rounded-full">Active</div>
+                        </div>
+                        <h3 className="font-bold text-text-primary group-hover:text-primary transition-colors">{project.name}</h3>
+                        <p className="text-sm text-text-muted mt-1 line-clamp-2">Click to view project details</p>
+                        <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between text-sm text-text-secondary">
+                            <span>View Details</span>
+                            <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
                       </Card>
                     </Link>
                   ))}
@@ -623,6 +675,28 @@ export default function Dashboard() {
 
         </div>
       </div>
+
+      {/* Task Detail Modal */}
+      <AnimatePresence>
+        {showTaskModal && selectedTask && (
+          <TaskDetailModal
+            task={selectedTask}
+            workspaceId={currentWorkspace?.id || ''}
+            onClose={() => {
+              setShowTaskModal(false)
+              setSelectedTask(null)
+            }}
+            onUpdate={(updatedTask) => {
+              setTasks(prev => prev.map(t => t.id === updatedTask.id ? updatedTask : t))
+            }}
+            onDelete={(taskId) => {
+              setTasks(prev => prev.filter(t => t.id !== taskId))
+              setShowTaskModal(false)
+              setSelectedTask(null)
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -45,8 +45,8 @@ export default function CommentThread({ taskId, currentUserId }: CommentThreadPr
     loadComments();
   }, [taskId, loadComments]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent | React.KeyboardEvent) => {
+    e?.preventDefault();
     if (!newComment.trim()) return;
 
     setSubmitting(true);
@@ -132,25 +132,27 @@ export default function CommentThread({ taskId, currentUserId }: CommentThreadPr
         )}
       </div>
 
-      {/* New Comment Form */}
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      {/* New Comment Input */}
+      <div className="flex gap-2">
         <input
           type="text"
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
           placeholder="Add a comment..."
           className="flex-1 px-4 py-2 bg-surface-light rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none text-sm"
           disabled={submitting}
         />
         <button
-          type="submit"
+          type="button"
+          onClick={handleSubmit}
           disabled={!newComment.trim() || submitting}
           className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-2"
         >
           <Send className="w-4 h-4" />
           {submitting ? 'Sending...' : 'Send'}
         </button>
-      </form>
+      </div>
     </div>
   );
 }

@@ -1,3 +1,22 @@
+## Next Phases (Planned)
+
+### Phase 11: File Attachments & Storage (Planned)
+- Goal: Secure workspace-scoped file uploads with previews and linking to tasks/projects/notes.
+- Data: Supabase storage bucket + `file_attachments` metadata table with RLS; versioning fields; soft-delete/retention rules.
+- API: Upload endpoint with workspace auth, virus-scan hook (stub if service unavailable), and signed URL delivery.
+- UI: Drag/drop uploader with progress, image/doc preview, attach to task/project/note, inline chips with download/view; replace inline styles later with shared dark select.
+- Risks/Deps: Must finalize schema/RLS before UI; storage quotas; optional AV scanning service.
+
+### Phase 12: Notion-Inspired Databases (Planned)
+- Goal: Custom databases with multi-view (table/board/calendar/gallery) and flexible properties.
+- Data: `custom_databases`, `database_views`, `database_records` + property metadata (select, relation, rollup, formula); indexes for JSONB/property queries; RLS per workspace.
+- UI: Database builder, property editors, filters/sorts/groups; renderers for table/board/calendar/gallery; inline record CRUD; relation picker; rollup/formula evaluation.
+- Risks/Deps: Performance for flexible schemas; correct RLS; formula/rollup correctness; depends on Phase 11 patterns for attachments if referenced.
+
+### Immediate Tech-Debt Actions
+- DB: `fix-tasks-user-id.sql` already applied; no further DB hotfixes pending.
+- Build hygiene: Run lint/tsc/build after Phase 11 merge; QA notifications workspace scoping and avatar cache in prod.
+- Styling: Consolidate dark select styling into shared component post-Phase 11.
 # WorkHub Expansion & Hardening Plan
 **Version:** 2.0  
 **Created:** January 6, 2026  

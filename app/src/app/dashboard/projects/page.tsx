@@ -6,6 +6,7 @@ import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
 import { Plus, Search, Grid, List, Calendar, X, Edit2, Trash2, Upload, Image as ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { Card } from '@/components/ui/Card'
 
 interface Project {
   id: string
@@ -286,82 +287,84 @@ export default function ProjectsPage() {
   )
 
   return (
-    <div className="min-h-screen bg-slate-900 p-6">
+    <div className="space-y-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">Projects</h1>
-        <p className="text-gray-400">Manage and track all your projects</p>
+      <div className="space-y-2">
+        <h1 className="text-3xl md:text-4xl font-bold text-white">Projects</h1>
+        <p className="text-text-secondary">Manage and track all your projects</p>
       </div>
 
       {/* Actions Bar */}
-      <div className="flex flex-col md:flex-row gap-4 mb-8">
-        <div className="flex-1 relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-          <input
-            type="text"
-            placeholder="Search projects..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-12 pr-4 py-3 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+      <Card className="bg-surface/70 border-white/5 backdrop-blur-md p-4 md:p-6">
+        <div className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
+          <div className="flex-1 relative w-full md:w-auto">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted w-5 h-5" />
+            <input
+              type="text"
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-3 rounded-xl bg-surface/80 border border-white/10 text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 justify-end">
+            <button
+              onClick={() => setView('grid')}
+              className={`p-3 rounded-xl transition-all ${
+                view === 'grid'
+                  ? 'bg-primary text-white'
+                  : 'bg-surface/60 text-text-secondary border border-white/10 hover:bg-surface-hover'
+              }`}
+            >
+              <Grid className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setView('list')}
+              className={`p-3 rounded-xl transition-all ${
+                view === 'list'
+                  ? 'bg-primary text-white'
+                  : 'bg-surface/60 text-text-secondary border border-white/10 hover:bg-surface-hover'
+              }`}
+            >
+              <List className="w-5 h-5" />
+            </button>
+            <Button 
+              onClick={() => setShowCreateDialog(true)}
+              className="bg-primary text-white px-6 py-3 rounded-xl hover:bg-primary-hover transition-colors inline-flex items-center gap-2"
+            >
+              <Plus className="w-5 h-5" />
+              New Project
+            </Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setView('grid')}
-            className={`p-3 rounded-xl transition-all ${
-              view === 'grid'
-                ? 'bg-blue-500 text-white'
-                : 'bg-slate-800 text-gray-400 border border-slate-700 hover:bg-slate-700'
-            }`}
-          >
-            <Grid className="w-5 h-5" />
-          </button>
-          <button
-            onClick={() => setView('list')}
-            className={`p-3 rounded-xl transition-all ${
-              view === 'list'
-                ? 'bg-blue-500 text-white'
-                : 'bg-slate-800 text-gray-400 border border-slate-700 hover:bg-slate-700'
-            }`}
-          >
-            <List className="w-5 h-5" />
-          </button>
-          <Button 
-            onClick={() => setShowCreateDialog(true)}
-            className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition-colors inline-flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            New Project
-          </Button>
-        </div>
-      </div>
+      </Card>
 
       {/* Projects Grid/List */}
       {loading || userLoading ? (
         <div className="text-center py-12">
-          <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+          <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
         </div>
       ) : filteredProjects.length === 0 ? (
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-12 text-center">
-          <div className="w-20 h-20 bg-slate-700 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Plus className="w-10 h-10 text-gray-500" />
+        <Card className="bg-surface/70 border-white/5 rounded-xl p-12 text-center">
+          <div className="w-20 h-20 bg-surface/60 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <Plus className="w-10 h-10 text-text-muted" />
           </div>
           <h3 className="text-2xl font-bold text-white mb-2">No projects yet</h3>
-          <p className="text-gray-400 mb-6">Create your first project to get started</p>
+          <p className="text-text-secondary mb-6">Create your first project to get started</p>
           <Button
             onClick={() => setShowCreateDialog(true)}
-            className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 inline-flex items-center gap-2"
+            className="bg-primary text-white px-6 py-3 rounded-xl hover:bg-primary-hover inline-flex items-center gap-2"
           >
             <Plus className="w-5 h-5" />
             Create Project
           </Button>
-        </div>
+        </Card>
       ) : (
         <div className={view === 'grid' ? 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-4'}>
           {filteredProjects.map((project) => (
             <div
               key={project.id}
-              className="bg-slate-800 border border-slate-700 rounded-xl p-6 hover:border-blue-500 transition-all cursor-pointer group relative"
+              className="bg-surface/70 border border-white/5 rounded-xl p-6 hover:border-primary/40 transition-all cursor-pointer group relative"
               onClick={() => router.push(`/dashboard/projects/${project.id}`)}
             >
               {/* Action buttons - fixed z-index and positioning */}
@@ -369,7 +372,7 @@ export default function ProjectsPage() {
                 {/* Show edit/delete for all projects in user's workspace */}
                 <button
                   onClick={(e) => handleEditProject(project, e)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg text-blue-400 hover:text-blue-300"
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-primary/10 hover:bg-primary/20 rounded-lg text-primary hover:text-primary/80"
                   title="Edit project"
                 >
                   <Edit2 className="w-4 h-4" />
@@ -416,10 +419,10 @@ export default function ProjectsPage() {
               
               <h3 className="text-xl font-bold text-white mb-2">{project.name}</h3>
               {project.description && (
-                <p className="text-gray-400 mb-4 line-clamp-2">{project.description}</p>
+                <p className="text-text-secondary mb-4 line-clamp-2">{project.description}</p>
               )}
 
-              <div className="flex items-center gap-4 text-sm text-gray-400">
+              <div className="flex items-center gap-4 text-sm text-text-secondary">
                 {project.start_date && (
                   <div className="flex items-center gap-1">
                     <Calendar className="w-4 h-4" />
@@ -440,7 +443,7 @@ export default function ProjectsPage() {
       {/* Create/Edit Project Dialog */}
       {(showCreateDialog || editingProject) && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-surface/90 border border-white/10 rounded-2xl p-6 md:p-8 max-w-2xl w-full max-h-[80vh] mt-20 sm:mt-0 overflow-y-auto">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-white">
                 {editingProject ? 'Edit Project' : 'Create New Project'}
@@ -459,7 +462,7 @@ export default function ProjectsPage() {
                     logo_file: null
                   })
                 }}
-                className="text-gray-400 hover:text-white transition-colors"
+                className="text-text-secondary hover:text-white transition-colors"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -467,30 +470,30 @@ export default function ProjectsPage() {
             
             <form onSubmit={editingProject ? handleUpdateProject : handleCreateProject} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Project Name *</label>
+                <label className="block text-sm font-medium text-text-secondary mb-2">Project Name *</label>
                 <input
                   type="text"
                   required
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   placeholder="Enter project name..."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
+                <label className="block text-sm font-medium text-text-secondary mb-2">Description</label>
                 <textarea
                   rows={4}
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   placeholder="Enter project description..."
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-text-secondary mb-2">
                   Project Logo (Max 3MB)
                 </label>
                 <div className="flex items-center gap-4">
@@ -515,7 +518,7 @@ export default function ProjectsPage() {
                     </div>
                   )}
                   <label className="flex-1 cursor-pointer">
-                    <div className="flex items-center gap-2 px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-gray-400 hover:text-white hover:border-blue-500 transition-all">
+                    <div className="flex items-center gap-2 px-4 py-3 bg-surface border border-white/10 rounded-xl text-text-secondary hover:text-white hover:border-primary/40 transition-all">
                       <Upload className="w-5 h-5" />
                       <span>{formData.logo_file ? formData.logo_file.name : 'Choose logo image...'}</span>
                     </div>
@@ -527,14 +530,14 @@ export default function ProjectsPage() {
                     />
                   </label>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-text-muted mt-1">
                   Recommended: Square image, PNG or JPG, max 3MB
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Color</label>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">Color</label>
                   <div className="flex gap-2 flex-wrap">
                     {['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#feca57', '#ff6b6b', '#4ecdc4'].map((color) => (
                       <button
@@ -542,7 +545,7 @@ export default function ProjectsPage() {
                         type="button"
                         onClick={() => setFormData({ ...formData, color })}
                         className={`w-10 h-10 rounded-lg transition-all ${
-                          formData.color === color ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 scale-110' : 'hover:scale-110'
+                          formData.color === color ? 'ring-2 ring-white ring-offset-2 ring-offset-surface scale-110' : 'hover:scale-110'
                         }`}
                         style={{ backgroundColor: color }}
                       />
@@ -551,11 +554,11 @@ export default function ProjectsPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Status</label>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">Status</label>
                   <select
                     value={formData.status}
                     onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   >
                     <option value="planning">Planning</option>
                     <option value="active">Active</option>
@@ -568,22 +571,22 @@ export default function ProjectsPage() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Start Date</label>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">Start Date</label>
                   <input
                     type="date"
                     value={formData.start_date}
                     onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">End Date</label>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">End Date</label>
                   <input
                     type="date"
                     value={formData.end_date}
                     onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                 </div>
               </div>
@@ -604,14 +607,14 @@ export default function ProjectsPage() {
                       logo_file: null
                     })
                   }}
-                  className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
+                  className="flex-1 px-6 py-3 bg-surface text-white rounded-xl border border-white/10 hover:bg-surface-hover transition-colors"
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
                   disabled={uploadingLogo}
-                  className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50"
+                  className="flex-1 px-6 py-3 bg-primary text-white rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50"
                 >
                   {uploadingLogo ? 'Uploading...' : editingProject ? 'Update Project' : 'Create Project'}
                 </Button>

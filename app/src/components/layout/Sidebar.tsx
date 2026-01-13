@@ -3,7 +3,6 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Home,
   FolderKanban,
   Users,
   BarChart3,
@@ -15,24 +14,22 @@ import {
   Webhook,
   Target,
   DollarSign,
-  Building2,
-  CreditCard
+  Building2
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
 const navigation = [
-  { name: 'Dashboard', href: '/dashboard', icon: Home },
-  { name: 'Workspaces', href: '/dashboard/workspaces', icon: Building2 },
-  { name: 'Tasks', href: '/dashboard/tasks', icon: CheckSquare },
   { name: 'Projects', href: '/dashboard/projects', icon: FolderKanban },
-  { name: 'Plans', href: '/dashboard/plans', icon: Target },
-  { name: 'Finance', href: '/dashboard/finance', icon: DollarSign },
   { name: 'Notes', href: '/dashboard/notes', icon: FileText },
-  { name: 'Time Tracker', href: '/dashboard/time-tracker', icon: Timer },
-  { name: 'Focus Mode', href: '/dashboard/focus', icon: Zap },
+  { name: 'Tasks', href: '/dashboard/tasks', icon: CheckSquare },
   { name: 'Team', href: '/dashboard/team', icon: Users },
   { name: 'Reports', href: '/dashboard/reports', icon: BarChart3 },
+  { name: 'Plans', href: '/dashboard/plans', icon: Target },
+  { name: 'Workspaces', href: '/dashboard/workspaces', icon: Building2 },
+  { name: 'Time Tracker', href: '/dashboard/time-tracker', icon: Timer },
+  { name: 'Finance', href: '/dashboard/finance', icon: DollarSign },
+  { name: 'Focus Mode', href: '/dashboard/focus', icon: Zap },
   { name: 'Webhooks', href: '/dashboard/settings/webhooks', icon: Webhook },
   { name: 'Settings', href: '/dashboard/settings', icon: Settings },
 ]

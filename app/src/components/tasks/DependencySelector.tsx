@@ -12,6 +12,7 @@ interface Task {
 interface DependencySelectorProps {
   taskId: string;
   projectId?: string;
+  workspaceId?: string;
   selectedDependencies: string[];
   onChange: (dependencies: string[]) => void;
 }
@@ -19,6 +20,7 @@ interface DependencySelectorProps {
 export default function DependencySelector({
   taskId,
   projectId,
+  workspaceId,
   selectedDependencies,
   onChange,
 }: DependencySelectorProps) {
@@ -28,9 +30,14 @@ export default function DependencySelector({
   const [loading, setLoading] = useState(false);
 
   const loadAvailableTasks = useCallback(async () => {
+    if (!workspaceId) return;
     setLoading(true);
     try {
-      const response = await fetch(`/api/tasks?projectId=${projectId}`);
+      let url = `/api/tasks?workspace_id=${workspaceId}`;
+      if (projectId) {
+        url += `&project_id=${projectId}`;
+      }
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
         // Filter out current task and already selected dependencies
@@ -43,13 +50,13 @@ export default function DependencySelector({
     } finally {
       setLoading(false);
     }
-  }, [projectId, taskId]);
+  }, [workspaceId, projectId, taskId]);
 
   useEffect(() => {
-    if (isExpanded && projectId) {
+    if (isExpanded && workspaceId) {
       loadAvailableTasks();
     }
-  }, [isExpanded, projectId, loadAvailableTasks]);
+  }, [isExpanded, workspaceId, loadAvailableTasks]);
 
   const selectedTasks = availableTasks.filter(t =>
     selectedDependencies.includes(t.id)

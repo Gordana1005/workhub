@@ -20,26 +20,32 @@ interface RecurrencePattern {
 interface TaskDetailModalProps {
   task?: any
   workspaceId: string
-  projects: any[]
-  teamMembers: any[]
+  projects?: any[]
+  teamMembers?: any[]
   templateData?: any
   initialProjectId?: string
   initialAssigneeId?: string
   onClose: () => void
-  onSave: () => void
+  onSave?: () => void
+  onUpdate?: (task: any) => void
+  onDelete?: (taskId: string) => void
 }
 
 export default function TaskDetailModal({ 
   task, 
   workspaceId, 
-  projects, 
-  teamMembers,
+  projects: externalProjects, 
+  teamMembers: externalTeamMembers,
   templateData,
   initialProjectId,
   initialAssigneeId,
   onClose, 
-  onSave 
+  onSave,
+  onUpdate,
+  onDelete
 }: TaskDetailModalProps) {
+  const [projects, setProjects] = useState<any[]>(externalProjects || [])
+  const [teamMembers, setTeamMembers] = useState<any[]>(externalTeamMembers || [])
   const [formData, setFormData] = useState({
     title: task?.title || templateData?.title || '',
     description: task?.description || templateData?.description || '',
@@ -71,11 +77,12 @@ export default function TaskDetailModal({
         .select('depends_on_task_id')
         .eq('task_id', task.id)
 
+      // Silently handle missing table or errors - dependencies are optional
       if (!error && data) {
         setDependencies(data.map(d => d.depends_on_task_id))
       }
-    } catch (error) {
-      console.error('Error loading dependencies:', error)
+    } catch {
+      // Silently fail - table may not exist
     }
   }, [task?.id])
 
@@ -95,6 +102,44 @@ export default function TaskDetailModal({
       console.error('Error loading attachments:', error)
     }
   }, [task?.id, workspaceId])
+
+  // Load projects and team members if not provided externally
+  useEffect(() => {
+    const loadProjectsAndMembers = async () => {
+      if (!workspaceId) return
+
+      // Load projects if not provided
+      if (!externalProjects || externalProjects.length === 0) {
+        const { data: projectsData } = await supabase
+          .from('projects')
+          .select('id, name, color')
+          .eq('workspace_id', workspaceId)
+          .order('name')
+        if (projectsData) {
+          setProjects(projectsData)
+        }
+      }
+
+      // Load team members if not provided
+      if (!externalTeamMembers || externalTeamMembers.length === 0) {
+        const { data: membersData } = await supabase
+          .from('workspace_members')
+          .select('user_id, profiles:profiles!workspace_members_user_id_fkey(id, username, avatar_url)')
+          .eq('workspace_id', workspaceId)
+        if (membersData) {
+          const members = membersData
+            .filter(m => m.profiles)
+            .map(m => ({
+              id: (m.profiles as any).id,
+              username: (m.profiles as any).username,
+              avatar_url: (m.profiles as any).avatar_url
+            }))
+          setTeamMembers(members)
+        }
+      }
+    }
+    loadProjectsAndMembers()
+  }, [workspaceId, externalProjects, externalTeamMembers])
 
   useEffect(() => {
     // Load current user
@@ -231,6 +276,7 @@ export default function TaskDetailModal({
       }
 
       let taskId = task?.id
+      let savedTask = null
 
       if (task?.id) {
         const res = await fetch('/api/tasks', {
@@ -242,6 +288,8 @@ export default function TaskDetailModal({
           const payload = await res.json()
           throw new Error(payload.error || 'Failed to update task')
         }
+        const payload = await res.json()
+        savedTask = payload.task || { ...task, ...taskData }
         taskId = task.id
       } else {
         const res = await fetch('/api/tasks', {
@@ -280,13 +328,40 @@ export default function TaskDetailModal({
           )
       }
 
-      onSave()
+      // Call the appropriate callback
+      if (savedTask && onUpdate) {
+        onUpdate(savedTask)
+      }
+      if (onSave) {
+        onSave()
+      }
       onClose()
     } catch (error) {
       console.error('Error saving task:', error)
       setError(error instanceof Error ? error.message : 'Failed to save task')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDeleteTask = async () => {
+    if (!task?.id) return
+    if (!confirm('Are you sure you want to delete this task?')) return
+
+    try {
+      const res = await fetch(`/api/tasks?id=${task.id}`, {
+        method: 'DELETE'
+      })
+      if (!res.ok) {
+        throw new Error('Failed to delete task')
+      }
+      if (onDelete) {
+        onDelete(task.id)
+      }
+      onClose()
+    } catch (error) {
+      console.error('Error deleting task:', error)
+      setError('Failed to delete task')
     }
   }
 
@@ -306,46 +381,59 @@ export default function TaskDetailModal({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center sm:p-4"
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center sm:p-4"
+      onClick={onClose}
     >
       <motion.div 
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="bg-slate-800 border-t sm:border border-slate-700 rounded-t-2xl sm:rounded-2xl w-full max-w-4xl h-[90vh] sm:h-auto sm:max-h-[85vh] flex flex-col shadow-2xl overflow-y-auto"
+        className="bg-surface/90 border border-white/10 rounded-t-2xl sm:rounded-2xl w-full max-w-4xl h-[80vh] sm:h-auto sm:max-h-[85vh] mt-20 sm:mt-0 flex flex-col shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-700 shrink-0">
+        <div className="flex items-center justify-between p-6 border-b border-white/10 shrink-0">
           <h2 className="text-2xl font-bold text-white">
             {task ? 'Edit Task' : 'Create New Task'}
           </h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5 text-gray-400" />
-          </button>
+          <div className="flex items-center gap-2">
+            {task?.id && onDelete && (
+              <button
+                onClick={handleDeleteTask}
+                className="p-2 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
+                title="Delete Task"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-surface-hover rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5 text-text-secondary" />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 px-6 pt-4 border-b border-slate-700">
+        <div className="flex gap-1 px-6 pt-4 border-b border-white/10 overflow-x-auto scrollbar-hide">
           <button
             onClick={() => setActiveTab('details')}
-            className={`px-4 py-2 rounded-t-lg transition-colors ${
+            className={`px-4 py-2 rounded-t-lg transition-colors whitespace-nowrap ${
               activeTab === 'details'
-                ? 'bg-slate-700 text-white'
-                : 'text-gray-400 hover:bg-slate-700/50'
+                ? 'bg-surface text-white'
+                : 'text-text-secondary hover:bg-surface/50'
             }`}
           >
             Details
           </button>
           <button
             onClick={() => setActiveTab('recurrence')}
-            className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'recurrence'
-                ? 'bg-slate-700 text-white'
-                : 'text-gray-400 hover:bg-slate-700/50'
+                ? 'bg-surface text-white'
+                : 'text-text-secondary hover:bg-surface/50'
             }`}
           >
             <Repeat className="w-4 h-4" />
@@ -353,10 +441,10 @@ export default function TaskDetailModal({
           </button>
           <button
             onClick={() => setActiveTab('dependencies')}
-            className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 ${
+            className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 whitespace-nowrap ${
               activeTab === 'dependencies'
-                ? 'bg-slate-700 text-white'
-                : 'text-gray-400 hover:bg-slate-700/50'
+                ? 'bg-surface text-white'
+                : 'text-text-secondary hover:bg-surface/50'
             }`}
           >
             <Link2 className="w-4 h-4" />
@@ -365,10 +453,10 @@ export default function TaskDetailModal({
           {task?.id && (
             <button
               onClick={() => setActiveTab('attachments')}
-              className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'attachments'
-                  ? 'bg-slate-700 text-white'
-                  : 'text-gray-400 hover:bg-slate-700/50'
+                  ? 'bg-surface text-white'
+                  : 'text-text-secondary hover:bg-surface/50'
               }`}
             >
               <Paperclip className="w-4 h-4" />
@@ -378,10 +466,10 @@ export default function TaskDetailModal({
           {task?.id && (
             <button
               onClick={() => setActiveTab('comments')}
-              className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 ${
+              className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 whitespace-nowrap ${
                 activeTab === 'comments'
-                  ? 'bg-slate-700 text-white'
-                  : 'text-gray-400 hover:bg-slate-700/50'
+                  ? 'bg-surface text-white'
+                  : 'text-text-secondary hover:bg-surface/50'
               }`}
             >
               <MessageSquare className="w-4 h-4" />
@@ -395,42 +483,42 @@ export default function TaskDetailModal({
           {activeTab === 'details' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-text-secondary mb-2">
                   Task Title *
                 </label>
                 <input
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({...formData, title: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   placeholder="Enter task title..."
                   required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-text-secondary mb-2">
                   Description
                 </label>
                 <textarea
                   rows={4}
                   value={formData.description}
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   placeholder="Enter task description..."
                 />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
                     <Flag className="w-4 h-4 inline mr-1" />
                     Priority
                   </label>
                   <select 
                     value={formData.priority}
                     onChange={(e) => setFormData({...formData, priority: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -440,7 +528,7 @@ export default function TaskDetailModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
                     <Calendar className="w-4 h-4 inline mr-1" />
                     Due Date
                   </label>
@@ -448,14 +536,14 @@ export default function TaskDetailModal({
                     type="date"
                     value={formData.due_date}
                     onChange={(e) => setFormData({...formData, due_date: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
                     <FolderOpen className="w-4 h-4 inline mr-1" />
                     Project
                   </label>
@@ -463,7 +551,7 @@ export default function TaskDetailModal({
                     required
                     value={formData.project_id}
                     onChange={(e) => setFormData({...formData, project_id: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   >
                     <option value="" disabled>Select a project</option>
                     {projects.map((project) => (
@@ -473,7 +561,7 @@ export default function TaskDetailModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
                     <User className="w-4 h-4 inline mr-1" />
                     Assignee
                   </label>
@@ -481,7 +569,7 @@ export default function TaskDetailModal({
                     required
                     value={formData.assignee_id}
                     onChange={(e) => setFormData({...formData, assignee_id: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   >
                     <option value="" disabled>Select assignee</option>
                     {teamMembers.map((member) => (
@@ -493,20 +581,20 @@ export default function TaskDetailModal({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
                     Category
                   </label>
                   <input
                     type="text"
                     value={formData.category}
                     onChange={(e) => setFormData({...formData, category: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                     placeholder="e.g., Development, Design..."
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
                     Estimated Hours
                   </label>
                   <input
@@ -514,21 +602,21 @@ export default function TaskDetailModal({
                     step="0.5"
                     value={formData.estimated_hours}
                     onChange={(e) => setFormData({...formData, estimated_hours: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                     placeholder="0.0"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-text-secondary mb-2">
                   Tags (comma-separated)
                 </label>
                 <input
                   type="text"
                   value={formData.tags}
                   onChange={(e) => setFormData({...formData, tags: e.target.value})}
-                  className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                   placeholder="e.g., urgent, frontend, bug-fix"
                 />
               </div>
@@ -549,6 +637,7 @@ export default function TaskDetailModal({
               <DependencySelector
                 taskId={task?.id}
                 projectId={formData.project_id}
+                workspaceId={workspaceId}
                 selectedDependencies={dependencies}
                 onChange={setDependencies}
               />
@@ -629,7 +718,7 @@ export default function TaskDetailModal({
         </form>
 
         {/* Footer */}
-        <div className="flex flex-col gap-3 p-6 border-t border-slate-700">
+        <div className="flex flex-col gap-3 p-6 border-t border-white/10">
           {error && (
             <div className="px-4 py-3 bg-red-500/10 text-red-300 border border-red-500/30 rounded-lg text-sm">
               {error}
@@ -640,7 +729,7 @@ export default function TaskDetailModal({
           <Button
             type="button"
             onClick={onClose}
-            className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600"
+            className="flex-1 px-6 py-3 bg-surface text-white rounded-xl border border-white/10 hover:bg-surface-hover transition-colors"
           >
             Cancel
           </Button>
@@ -648,7 +737,7 @@ export default function TaskDetailModal({
             type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg disabled:opacity-50 flex items-center justify-center gap-2"
+            className="flex-1 px-6 py-3 bg-primary text-white rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {saving ? (
               <>

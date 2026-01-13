@@ -12,7 +12,6 @@ import {
   Zap, 
   Settings, 
   LogOut,
-  Menu,
   Webhook,
   Users,
   Timer,
@@ -30,11 +29,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { clsx } from 'clsx'
 import NotificationCenter from '@/components/notifications/NotificationCenter'
 
-interface TopbarProps {
-  onMenuToggle?: () => void
-}
-
-export default function Topbar({ onMenuToggle }: TopbarProps) {
+export default function Topbar() {
   const router = useRouter()
   const pathname = usePathname()
   const { currentWorkspace } = useWorkspaceStore()
@@ -144,34 +139,22 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
   }
 
   const navItems = [
-    { href: '/dashboard', label: 'Dashboard', icon: Home },
     { href: '/dashboard/projects', label: 'Projects', icon: FolderKanban },
-    { href: '/dashboard/tasks', label: 'Tasks', icon: CheckSquare },
-    { href: '/dashboard/plans', label: 'Plans', icon: Target },
     { href: '/dashboard/notes', label: 'Notes', icon: FileText },
+    { href: '/dashboard/tasks', label: 'Tasks', icon: CheckSquare },
+    { href: '/dashboard/team', label: 'Team', icon: Users },
+    { href: '/dashboard/reports', label: 'Reports', icon: BarChart3 },
+    { href: '/dashboard/plans', label: 'Plans', icon: Target },
     { href: '/dashboard/workspaces', label: 'Workspaces', icon: Building2 },
     { href: '/dashboard/time-tracker', label: 'Time', icon: Timer },
-    { href: '/dashboard/team', label: 'Team', icon: Users },
     { href: '/dashboard/finance', label: 'Finance', icon: DollarSign },
-    { href: '/dashboard/reports', label: 'Reports', icon: BarChart3 },
     { href: '/dashboard/settings/webhooks', label: 'Webhooks', icon: Webhook },
   ]
 
   return (
     <>
-    <header className="h-16 px-6 border-b border-border bg-secondary/50 backdrop-blur-md flex items-center justify-between z-50 sticky top-0">
+    <header className="z-20 h-16 px-6 border-b border-white/10 bg-transparent backdrop-blur-xl flex items-center justify-between sticky top-0 text-white">
         <div className="flex items-center gap-6">
-          {/* Mobile menu button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="md:hidden text-text-secondary hover:text-white"
-            onClick={onMenuToggle}
-            aria-label="Open navigation menu"
-          >
-            <Menu className="w-5 h-5" />
-          </Button>
-
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2 group">
              <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
@@ -181,7 +164,21 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
           </Link>
 
           {/* Separator */}
-          <div className="h-6 w-px bg-border hidden md:block" />
+          <div className="h-6 w-px bg-white/10 hidden md:block" />
+
+          {/* Home crumb */}
+          <Link href="/dashboard" className="hidden md:block">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white/80 hover:text-white hover:bg-white/5 gap-2"
+            >
+              <Home className="w-4 h-4" />
+              Home
+            </Button>
+          </Link>
+
+          <div className="h-6 w-px bg-white/10 hidden md:block" />
 
           {/* Main Navigation */}
           <nav className="hidden md:flex items-center gap-1">
@@ -191,8 +188,8 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
                   variant="ghost"
                   size="sm"
                   className={clsx(
-                    'text-sm gap-2',
-                    isActive(href) ? 'bg-white/5 text-white' : 'text-text-secondary'
+                    'text-sm gap-2 hover:bg-white/5',
+                    isActive(href) ? 'bg-white/10 text-white shadow-sm shadow-primary/30' : 'text-white/80'
                   )}
                 >
                   <Icon className="w-4 h-4" />
@@ -204,12 +201,12 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
         </div>
 
         <div className="flex items-center gap-4">
-          <Link href="/dashboard/focus">
-             <Button size="sm" className="hidden md:flex bg-primary/10 text-primary hover:bg-primary hover:text-white border-transparent gap-2">
-                <Zap className="w-4 h-4" />
-                Focus Mode
+           <Link href="/dashboard/focus">
+             <Button size="sm" className="hidden md:flex bg-primary/15 text-primary hover:bg-primary hover:text-white border-transparent gap-2">
+               <Zap className="w-4 h-4" />
+               Focus Mode
              </Button>
-          </Link>
+           </Link>
 
           <div className="hidden md:block">
             <WorkspaceSwitcher />
@@ -267,6 +264,37 @@ export default function Topbar({ onMenuToggle }: TopbarProps) {
           </div>
         </div>
     </header>
+
+    {/* Mobile horizontal nav under the topbar */}
+    <div className="md:hidden sticky top-16 z-30 bg-transparent border-b border-white/10 backdrop-blur-xl">
+      <div className="flex items-center gap-2 overflow-x-auto px-4 py-3 no-scrollbar">
+        <Link href="/dashboard" className="shrink-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs gap-2 rounded-full bg-white/5 text-white/90 hover:bg-white/10"
+          >
+            <Home className="w-4 h-4" />
+            Home
+          </Button>
+        </Link>
+        {navItems.map(({ href, label, icon: Icon }) => (
+          <Link key={href} href={href} className="shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              className={clsx(
+                'text-xs gap-2 rounded-full px-3 bg-white/0 text-white/80 hover:bg-white/10',
+                isActive(href) && 'bg-white/15 text-white shadow-sm shadow-primary/40'
+              )}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </Button>
+          </Link>
+        ))}
+      </div>
+    </div>
     <NotificationCenter
       isOpen={showNotifications}
       onClose={() => setShowNotifications(false)}

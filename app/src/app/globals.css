@@ -64,6 +64,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Dark selects (global) */
+select,
+select option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+select {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+}
+
 /* Custom Utility Classes - Remapped for Deel Style */
 @layer components {
   /* Cards: Flat, Subtle Border, No Glow */
@@ -117,5 +129,14 @@ body {
   
   .badge-blue {
     @apply bg-[var(--brand-blue)]/10 text-[var(--brand-blue)];
+  }
+
+  /* Scrollbar hide utility */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }

@@ -68,6 +68,10 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     if (error) {
+      // If table doesn't exist, return empty array
+      if (error.code === 'PGRST205' || error.message?.includes('not find the table')) {
+        return NextResponse.json({ templates: [] })
+      }
       console.error('Error fetching templates:', error)
       return NextResponse.json(
         { error: 'Failed to fetch templates' },
