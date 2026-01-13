@@ -138,11 +138,11 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm text-slate-400 mb-2">Account</label>
+        <label className="block text-sm text-text-secondary mb-2">Account</label>
         <select
           value={selectedAccountId}
           onChange={(e) => setSelectedAccountId(e.target.value)}
-          className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+          className="w-full px-4 py-2 bg-surface border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
         >
           {accounts.map(account => (
             <option key={account.id} value={account.id}>
@@ -153,7 +153,7 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm text-slate-400 mb-2">Transaction Type</label>
+        <label className="block text-sm text-text-secondary mb-2">Transaction Type</label>
         <div className="flex gap-2">
           <button
             type="button"
@@ -161,7 +161,7 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
             className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
               manualType === 'expense'
                 ? 'bg-red-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                : 'bg-surface text-text-secondary hover:bg-surface-hover'
             }`}
           >
             Expense
@@ -172,7 +172,7 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
             className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
               manualType === 'income'
                 ? 'bg-green-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                : 'bg-surface text-text-secondary hover:bg-surface-hover'
             }`}
           >
             Income
@@ -181,29 +181,29 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm text-slate-400 mb-2">Describe your transaction</label>
+        <label className="block text-sm text-text-secondary mb-2">Describe your transaction</label>
         <input
           type="text"
           value={input}
           onChange={(e) => handleInputChange(e.target.value)}
           placeholder="e.g., 'Spent $50 on groceries yesterday'"
-          className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+          className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
-        <p className="text-xs text-slate-500 mt-2">
+        <p className="text-xs text-text-muted mt-2">
           Try: "Spent $50 on groceries", "Earned $500 from freelance", "Coffee $5"
         </p>
       </div>
 
       {preview && (
-        <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 mb-4">
+        <div className="bg-surface border border-white/10 rounded-xl p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-slate-300">Preview</span>
+            <span className="text-sm font-medium text-text-secondary">Preview</span>
             <button
               onClick={() => {
                 setInput('');
                 setPreview(null);
               }}
-              className="text-slate-500 hover:text-slate-300"
+              className="text-text-muted hover:text-text-secondary"
             >
               <X className="w-4 h-4" />
             </button>
@@ -239,7 +239,7 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
       <button
         onClick={handleSubmit}
         disabled={!preview || isSubmitting || !selectedAccountId}
-        className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors"
+        className="w-full py-3 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors"
       >
         {isSubmitting ? 'Adding...' : 'Add Transaction'}
       </button>

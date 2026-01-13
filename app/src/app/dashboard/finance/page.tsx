@@ -348,8 +348,8 @@ export default function FinancePage() {
       )}
 
       {showTransactionModal && accounts.length > 0 && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 p-4">
+          <div className="bg-surface/90 border border-white/10 rounded-2xl max-w-2xl w-full p-6 mt-20 sm:mt-0 shadow-2xl">
             <QuickAddTransaction
               accountId={accounts[0].id}
               onAdd={() => {
@@ -359,7 +359,7 @@ export default function FinancePage() {
             />
             <button
               onClick={() => setShowTransactionModal(false)}
-              className="mt-4 w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+              className="mt-4 w-full py-2 bg-surface hover:bg-surface-hover text-white rounded-lg border border-white/10 transition-colors"
             >
               Cancel
             </button>

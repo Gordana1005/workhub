@@ -172,13 +172,13 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-slate-800">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-surface/90 border border-white/10 rounded-2xl max-w-4xl w-full max-h-[80vh] mt-20 sm:mt-0 overflow-hidden flex flex-col shadow-2xl">
+        <div className="flex items-center justify-between p-6 border-b border-white/10">
           <h2 className="text-xl font-bold text-white">Import Transactions from CSV</h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors"
+            className="text-text-secondary hover:text-white transition-colors"
           >
             <X className="w-6 h-6" />
           </button>
@@ -186,8 +186,8 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
 
         <div className="p-6 overflow-auto">
           {!file && (
-            <div className="border-2 border-dashed border-slate-700 rounded-xl p-12 text-center">
-              <Upload className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+            <div className="border-2 border-dashed border-white/10 rounded-xl p-12 text-center">
+              <Upload className="w-16 h-16 text-text-muted mx-auto mb-4" />
               <input
                 type="file"
                 accept=".csv"
@@ -197,11 +197,11 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
               />
               <label
                 htmlFor="csv-upload"
-                className="cursor-pointer px-6 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl inline-block transition-colors"
+                className="cursor-pointer px-6 py-3 bg-surface hover:bg-surface-hover text-white rounded-xl inline-block transition-colors border border-white/10"
               >
                 Choose CSV File
               </label>
-              <p className="text-sm text-slate-500 mt-4">
+              <p className="text-sm text-text-muted mt-4">
                 Upload a CSV file with columns for date, description, amount, and category
               </p>
             </div>

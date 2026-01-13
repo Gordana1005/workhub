@@ -73,7 +73,7 @@ export default function NoteEditor({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-      <div className="card w-full max-w-3xl max-h-[90vh] flex flex-col">
+      <div className="bg-surface/90 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[80vh] mt-20 sm:mt-0 flex flex-col shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-white/10">
           <h2 className="text-2xl font-bold">
             {isEdit ? 'Edit Note' : 'New Note'}

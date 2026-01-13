@@ -85,15 +85,15 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full">
-        <div className="flex items-center justify-between p-6 border-b border-slate-800">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-surface/90 border border-white/10 rounded-2xl max-w-md w-full mt-20 sm:mt-0 shadow-2xl">
+        <div className="flex items-center justify-between p-6 border-b border-white/10">
           <h2 className="text-xl font-bold text-white">
             {account ? 'Edit Account' : 'Create Account'}
           </h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors"
+            className="text-text-secondary hover:text-white transition-colors"
           >
             <X className="w-6 h-6" />
           </button>
@@ -101,7 +101,7 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-sm text-slate-400 mb-2">
+            <label className="block text-sm text-text-secondary mb-2">
               Account Name *
             </label>
             <input
@@ -109,19 +109,19 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               placeholder="e.g., Main Checking, Savings, Cash Wallet"
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+              className="w-full px-4 py-2 bg-surface border border-white/10 rounded-lg text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm text-slate-400 mb-2">
+            <label className="block text-sm text-text-secondary mb-2">
               Account Type *
             </label>
             <select
               value={formData.type}
               onChange={(e) => setFormData({ ...formData, type: e.target.value as Account['type'] })}
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+              className="w-full px-4 py-2 bg-surface border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
               required
             >
               <option value="bank">Bank Account</option>
@@ -135,13 +135,13 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
           {!account && (
             <>
               <div>
-                <label className="block text-sm text-slate-400 mb-2">
+                <label className="block text-sm text-text-secondary mb-2">
                   Currency
                 </label>
                 <select
                   value={formData.currency}
                   onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  className="w-full px-4 py-2 bg-surface border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
                 >
                   <option value="USD">USD - US Dollar</option>
                   <option value="EUR">EUR - Euro</option>
@@ -175,7 +175,7 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
               </div>
 
               <div>
-                <label className="block text-sm text-slate-400 mb-2">
+                <label className="block text-sm text-text-secondary mb-2">
                   Initial Balance
                 </label>
                 <input
@@ -184,9 +184,9 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
                   value={formData.initial_balance}
                   onChange={(e) => setFormData({ ...formData, initial_balance: parseFloat(e.target.value) || 0 })}
                   placeholder="0.00"
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500"
+                  className="w-full px-4 py-2 bg-surface border border-white/10 rounded-lg text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
                 />
-                <p className="text-xs text-slate-500 mt-1">
+                <p className="text-xs text-text-muted mt-1">
                   The current balance when you start tracking
                 </p>
               </div>
@@ -199,9 +199,9 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
               id="is_active"
               checked={formData.is_active}
               onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-              className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-blue-600 focus:ring-blue-500"
+              className="w-4 h-4 rounded border-white/10 bg-surface text-primary focus:ring-primary/40"
             />
-            <label htmlFor="is_active" className="text-sm text-slate-300">
+            <label htmlFor="is_active" className="text-sm text-text-secondary">
               Active account
             </label>
           </div>
@@ -210,14 +210,14 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+              className="flex-1 py-2 px-4 bg-surface hover:bg-surface-hover text-white rounded-lg border border-white/10 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={isSaving}
-              className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+              className="flex-1 py-2 px-4 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
             >
               {isSaving ? 'Saving...' : account ? 'Update' : 'Create'}
             </button>
