@@ -154,15 +154,17 @@ export default function Dashboard() {
       if (tasksError) console.error('Error fetching tasks:', tasksError)
 
       // 2. Projects
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('workspace_id', currentWorkspace.id)
-        .eq('status', 'active')
-        .limit(4)
-      
-      if (projectsData) setProjects(projectsData)
-      if (projectsError) console.error('Error fetching projects:', projectsError)
+      const projectsResponse = await fetch(`/api/projects?workspace_id=${currentWorkspace.id}`)
+      let projectsData: any[] = []
+      if (projectsResponse.ok) {
+        const projectsJson = await projectsResponse.json()
+        projectsData = projectsJson.projects || []
+        const activeProjects = projectsData.filter((p: any) => p.status === 'active').slice(0, 4)
+        setProjects(activeProjects)
+      } else {
+        console.error('Error fetching projects:', await projectsResponse.text())
+        setProjects([])
+      }
 
       // Team members for quick assignment
       const teamResponse = await fetch(`/api/team?workspace_id=${currentWorkspace.id}`)
@@ -209,11 +211,7 @@ export default function Dashboard() {
         .eq('is_completed', true)
 
       // Active Projects
-      const { count: activeProjectsCount } = await supabase
-        .from('projects')
-        .select('*', { count: 'exact', head: true })
-        .eq('workspace_id', currentWorkspace.id)
-        .eq('status', 'active')
+      const activeProjectsCount = projectsData.filter((p: any) => p.status === 'active').length
       
       // Time Logged - Fetch today's entries
       const today = new Date().toISOString().split('T')[0]
