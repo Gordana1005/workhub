@@ -49,6 +49,10 @@ export default function TasksPage() {
   const [quickProjectId, setQuickProjectId] = useState<string>('')
   const [quickAssigneeId, setQuickAssigneeId] = useState<string>('')
   
+  // Filter states
+  const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('')
+  const [selectedAssigneeFilter, setSelectedAssigneeFilter] = useState<string>('')
+  
   // New UI state
   const [viewMode, setViewMode] = useState<'list' | 'board' | 'calendar'>('list')
   const [selectedTasks, setSelectedTasks] = useState<string[]>([])
@@ -183,7 +187,7 @@ export default function TasksPage() {
   const getPriorityColor = (priority: string) => {
     const colors = {
       urgent: 'bg-red-500/20 text-red-400 border-red-500/30',
-      high: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      high: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
       medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
       low: 'bg-green-500/20 text-green-400 border-green-500/30'
     }
@@ -269,6 +273,8 @@ export default function TasksPage() {
       task.title.toLowerCase().includes(debouncedSearchQuery.toLowerCase()) ||
       (task.description && task.description.toLowerCase().includes(debouncedSearchQuery.toLowerCase()))
     )
+    .filter((task) => !selectedProjectFilter || task.project_id === selectedProjectFilter)
+    .filter((task) => !selectedAssigneeFilter || task.assignee_id === selectedAssigneeFilter)
 
   return (
     <div className="space-y-6">
@@ -358,13 +364,13 @@ export default function TasksPage() {
         {/* Quick assignment selectors */}
         <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-text-secondary">
           <div className="flex items-center gap-2 bg-surface/80 border border-white/10 rounded-lg px-3 py-2">
-            <span className="text-xs uppercase tracking-wide text-text-muted">Project</span>
+            <span className="text-xs uppercase tracking-wide text-text-muted">Filter Project</span>
             <select
-              value={quickProjectId}
-              onChange={(e) => setQuickProjectId(e.target.value)}
+              value={selectedProjectFilter}
+              onChange={(e) => setSelectedProjectFilter(e.target.value)}
               className="bg-[var(--bg-secondary)] text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 border border-[var(--border)] rounded-md px-2 py-1 appearance-none"
             >
-              <option value="">Select</option>
+              <option value="">All</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -372,13 +378,13 @@ export default function TasksPage() {
           </div>
 
           <div className="flex items-center gap-2 bg-surface/80 border border-white/10 rounded-lg px-3 py-2">
-            <span className="text-xs uppercase tracking-wide text-text-muted">Assignee</span>
+            <span className="text-xs uppercase tracking-wide text-text-muted">Filter Assignee</span>
             <select
-              value={quickAssigneeId}
-              onChange={(e) => setQuickAssigneeId(e.target.value)}
+              value={selectedAssigneeFilter}
+              onChange={(e) => setSelectedAssigneeFilter(e.target.value)}
               className="bg-[var(--bg-secondary)] text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 border border-[var(--border)] rounded-md px-2 py-1 appearance-none"
             >
-              <option value="">Select</option>
+              <option value="">All</option>
               {teamMembers.map((m) => (
                 <option key={m.id} value={m.id}>{m.username}</option>
               ))}

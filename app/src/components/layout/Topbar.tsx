@@ -16,7 +16,8 @@ import {
   Users,
   Timer,
   FileText,
-  Building2
+  Building2,
+  Plus
 } from 'lucide-react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -32,7 +33,7 @@ import NotificationCenter from '@/components/notifications/NotificationCenter'
 export default function Topbar() {
   const router = useRouter()
   const pathname = usePathname()
-  const { currentWorkspace } = useWorkspaceStore()
+  const { currentWorkspace, workspaces, setCurrentWorkspace } = useWorkspaceStore()
   const [unreadCount, setUnreadCount] = useState(0)
   const [showNotifications, setShowNotifications] = useState(false)
   const [profile, setProfile] = useState<{ username: string; avatar_url?: string | null }>({ username: '', avatar_url: null })
@@ -40,6 +41,8 @@ export default function Topbar() {
   
   // Profile dropdown state
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [showDesktopMenu, setShowDesktopMenu] = useState(false)
+  const [showMobileWorkspaceMenu, setShowMobileWorkspaceMenu] = useState(false)
   const profileRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -47,10 +50,16 @@ export default function Topbar() {
       if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
         setShowProfileMenu(false)
       }
+      if (showDesktopMenu && !document.querySelector('.desktop-menu')?.contains(event.target as Node)) {
+        setShowDesktopMenu(false)
+      }
+      if (showMobileWorkspaceMenu && !document.querySelector('.mobile-workspace-menu')?.contains(event.target as Node)) {
+        setShowMobileWorkspaceMenu(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
+  }, [showDesktopMenu, showMobileWorkspaceMenu])
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -153,21 +162,21 @@ export default function Topbar() {
 
   return (
     <>
-    <header className="z-20 h-16 px-6 border-b border-white/10 bg-transparent backdrop-blur-xl flex items-center justify-between sticky top-0 text-white">
-        <div className="flex items-center gap-6">
+    <header className="z-20 h-16 px-3 sm:px-4 lg:px-6 border-b border-white/10 bg-transparent backdrop-blur-xl flex items-center justify-between sticky top-0 text-white">
+        <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 min-w-0 flex-1">
           {/* Logo */}
-          <Link href="/dashboard" className="flex items-center gap-2 group">
-             <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
-                 <Zap className="w-5 h-5 fill-current" />
+          <Link href="/dashboard" className="flex items-center gap-1.5 sm:gap-2 group flex-shrink-0">
+             <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                 <Zap className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
              </div>
-             <span className="font-bold text-lg text-white hidden md:block tracking-tight">TrackWork<span className="text-primary">.</span></span>
+             <span className="font-bold text-sm sm:text-lg text-white tracking-tight">TrackWork<span className="text-primary">.</span></span>
           </Link>
 
           {/* Separator */}
-          <div className="h-6 w-px bg-white/10 hidden md:block" />
+          <div className="h-6 w-px bg-white/10 hidden lg:block" />
 
           {/* Home crumb */}
-          <Link href="/dashboard" className="hidden md:block">
+          <Link href="/dashboard" className="hidden lg:block flex-shrink-0">
             <Button
               variant="ghost"
               size="sm"
@@ -178,41 +187,137 @@ export default function Topbar() {
             </Button>
           </Link>
 
-          <div className="h-6 w-px bg-white/10 hidden md:block" />
+          <div className="h-6 w-px bg-white/10 hidden lg:block" />
 
           {/* Main Navigation */}
-          <nav className="hidden md:flex items-center gap-1">
-            {navItems.map(({ href, label, icon: Icon }) => (
+          <nav className="hidden md:flex items-center gap-1 min-w-0 flex-1 overflow-hidden">
+            {navItems.slice(0, 7).map(({ href, label, icon: Icon }) => (
               <Link key={href} href={href}>
                 <Button
                   variant="ghost"
                   size="sm"
                   className={clsx(
-                    'text-sm gap-2 hover:bg-white/5',
+                    'text-sm gap-2 hover:bg-white/5 flex-shrink-0',
                     isActive(href) ? 'bg-white/10 text-white shadow-sm shadow-primary/30' : 'text-white/80'
                   )}
                 >
                   <Icon className="w-4 h-4" />
-                  {label}
+                  <span className="hidden lg:inline">{label}</span>
                 </Button>
               </Link>
             ))}
+            {/* Desktop More menu */}
+            {navItems.length > 7 && (
+              <div className="relative flex-shrink-0 desktop-menu">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-sm gap-2 hover:bg-white/5 text-white/80"
+                  onClick={() => setShowDesktopMenu(!showDesktopMenu)}
+                >
+                  <Settings className="w-4 h-4" />
+                  <span className="hidden lg:inline">More</span>
+                </Button>
+                <AnimatePresence>
+                  {showDesktopMenu && (
+                    <>
+                      <div className="fixed inset-0 z-[99]" onClick={() => setShowDesktopMenu(false)} />
+                      <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="fixed top-16 left-4 mt-14 w-48 p-1 rounded-xl bg-surface border border-border shadow-2xl overflow-hidden z-[100]"
+                    >
+                      {navItems.slice(7).map(({ href, label, icon: Icon }) => (
+                        <Link key={href} href={href} onClick={() => setShowDesktopMenu(false)}>
+                          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-text-secondary hover:text-white transition-colors">
+                            <Icon className="w-4 h-4" />
+                            <span className="text-sm">{label}</span>
+                          </div>
+                        </Link>
+                      ))}
+                    </motion.div>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
           </nav>
         </div>
 
-        <div className="flex items-center gap-4">
-           <Link href="/dashboard/focus">
-             <Button size="sm" className="hidden md:flex bg-primary/15 text-primary hover:bg-primary hover:text-white border-transparent gap-2">
-               <Zap className="w-4 h-4" />
-               Focus Mode
-             </Button>
-           </Link>
-
-          <div className="hidden md:block">
+        <div className="flex items-center gap-2 sm:gap-3 lg:gap-4 flex-shrink-0">
+          <div className="hidden lg:block">
             <WorkspaceSwitcher />
           </div>
 
-          <div className="h-6 w-px bg-border hidden md:block" />
+          <div className="h-6 w-px bg-border hidden lg:block" />
+
+          {/* Mobile Workspace Switcher */}
+          <div className="relative lg:hidden mobile-workspace-menu">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="relative text-text-secondary hover:text-white p-2"
+              onClick={() => setShowMobileWorkspaceMenu(!showMobileWorkspaceMenu)}
+            >
+              <Building2 className="w-5 h-5" />
+            </Button>
+            <AnimatePresence>
+              {showMobileWorkspaceMenu && (
+                <>
+                  <div className="fixed inset-0 z-[99]" onClick={() => setShowMobileWorkspaceMenu(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    className="fixed top-16 right-4 mt-14 w-64 p-1 rounded-xl bg-surface border border-border shadow-2xl overflow-hidden z-[100]"
+                  >
+                  <div className="p-3 border-b border-border/50 mb-1">
+                    <p className="text-sm font-medium text-white">Switch Workspace</p>
+                    <p className="text-xs text-text-muted">Select a workspace to work in</p>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    {workspaces.map((workspace) => (
+                      <button
+                        key={workspace.id}
+                        onClick={() => {
+                          setCurrentWorkspace(workspace)
+                          setShowMobileWorkspaceMenu(false)
+                        }}
+                        className={clsx(
+                          'w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-white/5 transition-colors',
+                          currentWorkspace?.id === workspace.id
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-text-secondary hover:text-white'
+                        )}
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
+                          <Building2 className="w-4 h-4 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">{workspace.name}</p>
+                          {currentWorkspace?.id === workspace.id && (
+                            <p className="text-xs text-primary">Current workspace</p>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="border-t border-border/50 mt-1 pt-1">
+                    <Link href="/dashboard/workspaces" onClick={() => setShowMobileWorkspaceMenu(false)}>
+                      <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-text-secondary hover:text-white transition-colors">
+                        <div className="w-8 h-8 rounded-lg bg-surface-hover flex items-center justify-center flex-shrink-0">
+                          <Plus className="w-4 h-4" />
+                        </div>
+                        <span className="text-sm">Manage Workspaces</span>
+                      </div>
+                    </Link>
+                  </div>
+                </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Notifications */}
           <Button
@@ -240,12 +345,14 @@ export default function Topbar() {
 
              <AnimatePresence>
                 {showProfileMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    className="absolute top-full right-0 mt-2 w-56 p-1 rounded-xl bg-surface border border-border shadow-2xl overflow-hidden z-50"
-                  >
+                  <>
+                    <div className="fixed inset-0 z-[99]" onClick={() => setShowProfileMenu(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      className="fixed top-16 right-2 mt-14 w-56 p-1 rounded-xl bg-surface border border-border shadow-2xl overflow-hidden z-[100]"
+                    >
                      <div className="p-2 border-b border-border/50 mb-1">
                         <p className="text-sm font-medium text-white">My Account</p>
                         <p className="text-xs text-text-muted">Manage your profile</p>
@@ -259,6 +366,7 @@ export default function Topbar() {
                         <span className="text-sm">Sign Out</span>
                      </button>
                   </motion.div>
+                  </>
                 )}
              </AnimatePresence>
           </div>
@@ -266,7 +374,7 @@ export default function Topbar() {
     </header>
 
     {/* Mobile horizontal nav under the topbar */}
-    <div className="md:hidden sticky top-16 z-30 bg-transparent border-b border-white/10 backdrop-blur-xl">
+    <div className="md:hidden sticky top-16 z-[90] bg-transparent border-b border-white/10 backdrop-blur-xl">
       <div className="flex items-center gap-2 overflow-x-auto px-4 py-3 no-scrollbar">
         <Link href="/dashboard" className="shrink-0">
           <Button

@@ -522,8 +522,8 @@ export default function Dashboard() {
                           )}
                         </div>
                             </div>
-                            <Badge variant={task.priority === 'urgent' || task.priority === 'high' ? 'danger' : task.priority === 'medium' ? 'blue' : 'neutral'} className="capitalize">{task.priority}</Badge>
-                            <span className="text-xs text-text-muted whitespace-nowrap">
+                            <Badge variant={task.priority === 'urgent' ? 'danger' : task.priority === 'high' ? 'blue' : task.priority === 'medium' ? 'warning' : 'success'} className="capitalize">{task.priority}</Badge>
+                            <span className="hidden md:inline text-xs text-text-muted whitespace-nowrap">
                                 {safeDate(task.due_date) || 'No due date'}
                             </span>
                         </div>
