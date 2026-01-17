@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Users, Mail, UserPlus, Shield, Crown, Search, MoreVertical, Trash2, Edit } from 'lucide-react'
+import { Users, UserPlus, Shield, Crown, Search, MoreVertical, Trash2, Edit, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { Avatar } from '@/components/ui/Avatar'
 import useWorkspaceStore from '@/stores/useWorkspaceStore'
 
 interface TeamMember {
@@ -23,12 +24,9 @@ export default function TeamPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
-  const [showInviteDialog, setShowInviteDialog] = useState(false)
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteLink, setInviteLink] = useState<string | null>(null)
-  const [inviteMode, setInviteMode] = useState<'email' | 'username'>('email')
-  const [mounted, setMounted] = useState(false)
+  const [showAddDialog, setShowAddDialog] = useState(false)
   const [addUsername, setAddUsername] = useState('')
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -58,52 +56,37 @@ export default function TeamPage() {
     }
   }, [currentWorkspace, loadTeamMembers])
 
-  const handleInvite = async (e: React.FormEvent) => {
+  const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!currentWorkspace || !inviteEmail) return
+    if (!currentWorkspace || !addUsername) return
 
     try {
-      const response = await fetch('/api/invitations', {
+      const response = await fetch('/api/team', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           workspace_id: currentWorkspace.id,
-          email: inviteEmail
+          username: addUsername
         })
       })
 
       const data = await response.json()
-
       if (response.ok) {
-        if (data.joinLink) {
-             setInviteLink(data.joinLink)
-        } else {
-             alert('Invitation sent successfully!')
-             setInviteEmail('')
-             setShowInviteDialog(false)
-        }
+        setAddUsername('')
+        setShowAddDialog(false)
+        loadTeamMembers()
       } else {
-        alert(data.error || 'Failed to send invitation')
+        alert(data.error || 'Failed to add member')
       }
     } catch (error) {
-      console.error('Error sending invitation:', error)
-      alert('Failed to send invitation')
+      console.error('Error adding member:', error)
+      alert('Failed to add member')
     }
   }
 
-  const handleCopyLink = () => {
-    if (inviteLink) {
-      navigator.clipboard.writeText(inviteLink)
-      alert('Link copied to clipboard!')
-    }
-  }
-
-  const handleCloseInvite = () => {
-    setShowInviteDialog(false)
-    setInviteEmail('')
-    setInviteLink(null)
+  const handleCloseAddDialog = () => {
+    setShowAddDialog(false)
     setAddUsername('')
-    setInviteMode('email')
   }
 
   const handleRemoveMember = async (userId: string) => {
@@ -153,32 +136,7 @@ export default function TeamPage() {
     }
   }
 
-  const handleAddByUsername = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!currentWorkspace || !addUsername) return
 
-    try {
-      const response = await fetch('/api/team', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workspace_id: currentWorkspace.id,
-          username: addUsername
-        })
-      })
-
-      const data = await response.json()
-      if (response.ok) {
-        setAddUsername('')
-        loadTeamMembers()
-      } else {
-        alert(data.error || 'Failed to add member')
-      }
-    } catch (error) {
-      console.error('Error adding member:', error)
-      alert('Failed to add member')
-    }
-  }
 
   const getInitials = (name: string | null) => {
     if (!name) return '?'
@@ -189,6 +147,25 @@ export default function TeamPage() {
     member.profiles.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     member.profiles.email.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  if (!mounted) {
+    return (
+      <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto animate-fadeIn">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-bold mb-2 gradient-text">
+            👥 Team Members
+          </h1>
+          <p className="text-gray-400 text-base md:text-lg">Manage your workspace team</p>
+        </div>
+        
+        {/* Loading state */}
+        <div className="text-center py-12">
+          <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
+        </div>
+      </div>
+    )
+  }
 
   if (!currentWorkspace) {
     return (
@@ -217,7 +194,7 @@ export default function TeamPage() {
               <div>
                 <p className="text-gray-400 text-sm mb-1">Total Members</p>
                 <p className="text-4xl font-bold text-white">
-                  {teamMembers.length}
+                  {mounted ? teamMembers.length : '...'}
                 </p>
               </div>
               <div className="stat-icon bg-gradient-blue-purple">
@@ -231,7 +208,7 @@ export default function TeamPage() {
               <div>
                 <p className="text-gray-400 text-sm mb-1">Admins</p>
                 <p className="text-4xl font-bold text-white">
-                  {teamMembers.filter(m => m.role === 'admin').length}
+                  {mounted ? teamMembers.filter(m => m.role === 'admin').length : '...'}
                 </p>
               </div>
               <div className="stat-icon bg-gradient-to-br from-purple-500 to-pink-600">
@@ -245,7 +222,7 @@ export default function TeamPage() {
               <div>
                 <p className="text-gray-400 text-sm mb-1">Members</p>
                 <p className="text-4xl font-bold text-white">
-                  {teamMembers.filter(m => m.role === 'member').length}
+                  {mounted ? teamMembers.filter(m => m.role === 'member').length : '...'}
                 </p>
               </div>
               <div className="stat-icon bg-gradient-green">
@@ -268,16 +245,16 @@ export default function TeamPage() {
             />
           </div>
           <button 
-            onClick={() => setShowInviteDialog(true)}
+            onClick={() => setShowAddDialog(true)}
             className="btn-primary flex items-center gap-2"
           >
             <UserPlus className="w-5 h-5" />
-            Invite Member
+            Add Member
           </button>
         </div>
 
         {/* Team Members Grid */}
-        {loading ? (
+        {loading || !mounted ? (
           <div className="text-center py-12">
             <div className="animate-spin w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full mx-auto"></div>
           </div>
@@ -290,9 +267,13 @@ export default function TeamPage() {
               >
                 {/* Header */}
                 <div className="flex items-start justify-between mb-4">
-                  <div className="w-16 h-16 rounded-xl bg-gradient-blue-purple flex items-center justify-center text-white text-xl font-bold">
-                    {getInitials(member.profiles.username)}
-                  </div>
+                  <Avatar 
+                    src={member.profiles.avatar_url}
+                    alt={member.profiles.username || 'User'}
+                    fallback={getInitials(member.profiles.username)}
+                    size="xl"
+                    className="w-16 h-16 rounded-xl"
+                  />
                   <div className="relative group">
                     <button className="p-2 hover:bg-surface-light rounded-lg transition-colors">
                       <MoreVertical className="w-5 h-5 text-gray-400" />
@@ -343,132 +324,42 @@ export default function TeamPage() {
           </div>
         )}
 
-        {/* Invite Dialog */}
-        {showInviteDialog && (
+        {/* Add Member Dialog */}
+        {showAddDialog && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
-              <h2 className="text-2xl font-bold text-white mb-4">Invite Team Member</h2>
-              <div className="flex gap-2 mb-4">
-                <button
-                  type="button"
-                  onClick={() => setInviteMode('email')}
-                  className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${inviteMode === 'email' ? 'border-blue-500 text-white bg-blue-500/10' : 'border-slate-700 text-slate-300 hover:border-slate-600'}`}
-                >
-                  Invite by Email
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setInviteMode('username')}
-                  className={`flex-1 px-4 py-2 rounded-lg border transition-colors ${inviteMode === 'username' ? 'border-blue-500 text-white bg-blue-500/10' : 'border-slate-700 text-slate-300 hover:border-slate-600'}`}
-                >
-                  Add by Username
-                </button>
-              </div>
+              <h2 className="text-2xl font-bold text-white mb-4">Add Team Member</h2>
               
-              {!inviteLink ? (
-                inviteMode === 'email' ? (
-                  <form onSubmit={handleInvite}>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Email Address</label>
-                      <input
-                        type="email"
-                        required
-                        value={inviteEmail}
-                        onChange={(e) => setInviteEmail(e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="colleague@example.com"
-                      />
-                      <p className="text-xs text-gray-400 mt-2">
-                         We'll generate a secure invitation link for you to share.
-                      </p>
-                    </div>
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={handleCloseInvite}
-                        className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
-                      >
-                        Create Invite
-                      </button>
-                    </div>
-                  </form>
-                ) : (
-                  <form onSubmit={async (e) => {
-                    e.preventDefault()
-                    if (!addUsername) return
-                    await handleAddByUsername(e)
-                    setShowInviteDialog(false)
-                    setAddUsername('')
-                  }}>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Workspace username</label>
-                      <input
-                        type="text"
-                        required
-                        value={addUsername}
-                        onChange={(e) => setAddUsername(e.target.value)}
-                        className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        placeholder="e.g., alice"
-                      />
-                      <p className="text-xs text-gray-400 mt-2">Adds an existing user by username without sending email.</p>
-                    </div>
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={handleCloseInvite}
-                        className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
-                        disabled={!addUsername}
-                      >
-                        Add Member
-                      </button>
-                    </div>
-                  </form>
-                )
-              ) : (
-                <div className="space-y-4">
-                    <div className="bg-green-500/10 border border-green-500/20 text-green-400 p-4 rounded-xl text-sm">
-                        Invitation created successfully for <strong>{inviteEmail}</strong>!
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">Invitation Link</label>
-                        <div className="flex gap-2">
-                            <input 
-                                readOnly 
-                                value={inviteLink}
-                                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-gray-300 select-all"
-                            />
-                            <button
-                                onClick={handleCopyLink}
-                                className="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-xl transition-colors"
-                                title="Copy to clipboard"
-                            >
-                                <Users className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <p className="text-xs text-gray-400 mt-2">
-                            Share this link with your team member. They can use it to join your workspace.
-                        </p>
-                    </div>
-                    <button
-                      onClick={handleCloseInvite}
-                      className="w-full px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
-                    >
-                      Done
-                    </button>
+              <form onSubmit={handleAddMember}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                  <input
+                    type="text"
+                    required
+                    value={addUsername}
+                    onChange={(e) => setAddUsername(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., alice"
+                  />
+                  <p className="text-xs text-gray-400 mt-2">Enter the username of an existing user to add them to this workspace.</p>
                 </div>
-              )}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={handleCloseAddDialog}
+                    className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors"
+                    disabled={!addUsername}
+                  >
+                    Add Member
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

@@ -9,23 +9,25 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import Image from 'next/image'
 
-// Predefined avatar list using DiceBear
+// Predefined avatar list using DiceBear with premium NFT-style lorelei avatars
+// To use local images instead: replace URLs with '/avatars/avatar1.png', '/avatars/avatar2.png', etc.
+// Upload your avatar images to app/public/avatars/ folder
 const AVATAR_OPTIONS = [
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Felix',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Aneka',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Milo',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Bella',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Sora',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Leo',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Zoe',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Kai',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Nora',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Axel',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Luna',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Omar',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Iris',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Jaden',
-  'https://api.dicebear.com/7.x/notionists/svg?seed=Ruby'
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Felix&backgroundColor=1e3a8a,7c3aed,581c87',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Aneka&backgroundColor=dc2626,ea580c,b91c1c',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Milo&backgroundColor=059669,0d9488,047857',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Bella&backgroundColor=7c2d12,c2410c,9a3412',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Sora&backgroundColor=6b21a8,9333ea,7c3aed',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Leo&backgroundColor=0f766e,0d9488,134e4a',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Zoe&backgroundColor=be123c,dc2626,e11d48',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Kai&backgroundColor=365314,16a34a,14532d',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Nora&backgroundColor=92400e,c2410c,a16207',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Axel&backgroundColor=1e1b4b,312e81,1e3a8a',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Luna&backgroundColor=7c2d12,9a3412,92400e',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Omar&backgroundColor=064e3b,065f46,047857',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Iris&backgroundColor=581c87,7c3aed,6b21a8',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Jaden&backgroundColor=7f1d1d,b91c1c,991b1b',
+  'https://api.dicebear.com/7.x/lorelei/svg?seed=Ruby&backgroundColor=0c4a6e,0369a1,0284c7'
 ]
 
 export default function SettingsPage() {
