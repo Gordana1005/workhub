@@ -162,7 +162,7 @@ export default function Topbar() {
 
   return (
     <>
-    <header className="z-20 h-16 px-3 sm:px-4 lg:px-6 border-b border-white/10 bg-transparent backdrop-blur-xl flex items-center justify-between sticky top-0 text-white">
+    <header className="z-20 h-16 px-3 sm:px-4 lg:px-6 border-b border-cyan-500/20 bg-transparent backdrop-blur-xl flex items-center justify-between sticky top-0 text-white">
         <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 min-w-0 flex-1">
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-1.5 sm:gap-2 group flex-shrink-0">
@@ -339,7 +339,7 @@ export default function Topbar() {
                 src={profile.avatar_url || undefined}
                 fallback={profile.username ? profile.username.substring(0,2).toUpperCase() : 'ME'}
                 alt={profile.username || 'User Profile'}
-                  className="cursor-pointer hover:ring-2 ring-primary/50 transition-all border border-white/10"
+                  className="cursor-pointer hover:ring-2 ring-primary/50 transition-all border border-cyan-500/20"
                 />
              </div>
 
@@ -374,7 +374,7 @@ export default function Topbar() {
     </header>
 
     {/* Mobile horizontal nav under the topbar */}
-    <div className="md:hidden sticky top-16 z-[90] bg-transparent border-b border-white/10 backdrop-blur-xl">
+    <div className="md:hidden sticky top-16 z-[90] bg-transparent border-b border-cyan-500/20 backdrop-blur-xl">
       <div className="flex items-center gap-2 overflow-x-auto px-4 py-3 no-scrollbar">
         <Link href="/dashboard" className="shrink-0">
           <Button

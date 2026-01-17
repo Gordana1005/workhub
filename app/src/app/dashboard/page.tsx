@@ -298,7 +298,7 @@ export default function Dashboard() {
   if (!loading && workspaces.length === 0 && !currentWorkspace) {
     return (
       <div className="max-w-3xl mx-auto py-16">
-        <div className="bg-surface/60 border border-white/5 rounded-2xl p-10 text-center space-y-5 shadow-xl">
+        <div className="bg-surface/60 border border-cyan-500/20 rounded-2xl p-10 text-center space-y-5 shadow-xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-semibold">
             <Zap className="w-4 h-4" /> Welcome to TrackWork
           </div>
@@ -355,7 +355,7 @@ export default function Dashboard() {
 
       {/* Stats Overview */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-white/8 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
+        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-cyan-500/20 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
           <div className="flex items-center gap-4">
             <div className="p-3 rounded-2xl bg-gradient-to-br from-blue-500/30 via-blue-500/15 to-blue-500/5 text-blue-100 shadow-inner ring-1 ring-blue-400/30">
               <CheckCircle2 className="w-6 h-6" />
@@ -366,7 +366,7 @@ export default function Dashboard() {
             </div>
           </div>
         </Card>
-        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-white/8 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
+        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-cyan-500/20 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
            <div className="flex items-center gap-4">
             <div className="p-3 rounded-2xl bg-gradient-to-br from-orange-500/30 via-orange-500/15 to-orange-500/5 text-orange-100 shadow-inner ring-1 ring-orange-400/30">
               <Clock className="w-6 h-6" />
@@ -377,7 +377,7 @@ export default function Dashboard() {
             </div>
           </div>
         </Card>
-        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-white/8 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
+        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-cyan-500/20 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
            <div className="flex items-center gap-4">
             <div className="p-3 rounded-2xl bg-gradient-to-br from-purple-500/30 via-purple-500/15 to-purple-500/5 text-purple-100 shadow-inner ring-1 ring-purple-400/30">
               <Target className="w-6 h-6" />
@@ -388,7 +388,7 @@ export default function Dashboard() {
             </div>
           </div>
         </Card>
-        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-white/8 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
+        <Card padding="md" className="bg-gradient-to-br from-surface/90 via-surface/80 to-surface/70 border-cyan-500/20 backdrop-blur-md shadow-[0_15px_40px_-18px_rgba(0,0,0,0.85)]">
            <div className="flex items-center gap-4">
           <div className="p-3 rounded-2xl bg-gradient-to-br from-green-500/30 via-green-500/15 to-green-500/5 text-green-100 shadow-inner ring-1 ring-green-400/30">
             <Users className="w-6 h-6" />
@@ -411,7 +411,7 @@ export default function Dashboard() {
             <Card className="border-primary/20 bg-surface/50">
                 <form onSubmit={handleCreateTask} className="space-y-4 p-4">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                        <div className="flex items-center gap-3 flex-1 rounded-2xl border border-white/5 bg-surface/60 px-3 py-2">
+                        <div className="flex items-center gap-3 flex-1 rounded-2xl border border-cyan-500/20 bg-surface/60 px-3 py-2">
                             <div className="p-2 rounded-xl bg-primary/15 text-primary">
                                 <Plus className="w-5 h-5" />
                             </div>
