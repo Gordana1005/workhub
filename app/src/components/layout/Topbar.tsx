@@ -226,7 +226,7 @@ export default function Topbar() {
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="fixed top-16 left-4 mt-14 w-48 p-1 rounded-xl bg-surface border border-border shadow-2xl overflow-hidden z-[100]"
+                      className="fixed top-16 left-1/2 -translate-x-16 mt-2 w-48 p-1 rounded-xl bg-surface border border-border shadow-2xl overflow-hidden z-[100]"
                     >
                       {navItems.slice(7).map(({ href, label, icon: Icon }) => (
                         <Link key={href} href={href} onClick={() => setShowDesktopMenu(false)}>
@@ -351,7 +351,7 @@ export default function Topbar() {
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="fixed top-16 right-2 mt-14 w-56 p-1 rounded-xl bg-surface border border-border shadow-2xl overflow-hidden z-[100]"
+                      className="fixed top-16 right-2 mt-14 md:mt-2 w-56 p-1 rounded-xl bg-surface border border-border shadow-2xl overflow-hidden z-[100]"
                     >
                      <div className="p-2 border-b border-border/50 mb-1">
                         <p className="text-sm font-medium text-white">My Account</p>
