@@ -25,6 +25,11 @@ export async function GET(request: Request) {
     const projectId = searchParams.get('projectId') || searchParams.get('project_id');
     const workspaceId = searchParams.get('workspace_id') || searchParams.get('workspaceId');
 
+    // Every caller scopes notes to a workspace or a project; without one this would list notes across workspaces
+    if (!projectId && !workspaceId) {
+      return NextResponse.json({ error: 'workspace_id or project_id is required' }, { status: 400 });
+    }
+
     const membershipFor = (wsId: string) =>
       supabaseAdmin
         .from('workspace_members')

@@ -81,12 +81,18 @@ function isStandalone(): boolean {
   return window.matchMedia?.('(display-mode: standalone)').matches || (navigator as any).standalone === true
 }
 
+let saveIssue = ''
+
 async function saveSubscription(subscription: PushSubscription): Promise<boolean> {
   const res = await fetch('/api/push/subscribe', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(subscription.toJSON()),
   })
+  if (!res.ok) {
+    const body = await res.json().catch(() => null)
+    saveIssue = `save ${res.status}${body?.code ? ' ' + body.code : ''}${body?.error ? ': ' + String(body.error).slice(0, 80) : ''}`
+  }
   return res.ok
 }
 
@@ -100,6 +106,7 @@ export default function PushToggle() {
   const [state, setState] = useState<PushState>('loading')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
+  const [errorDetail, setErrorDetail] = useState('')
   const [reason, setReason] = useState('')
   const [showIosNote, setShowIosNote] = useState(false)
 
@@ -151,6 +158,8 @@ export default function PushToggle() {
   const enable = async () => {
     setBusy(true)
     setError(false)
+    setErrorDetail('')
+    let step = 'permission'
     try {
       const permission = await Notification.requestPermission()
       if (permission === 'denied') {
@@ -159,8 +168,9 @@ export default function PushToggle() {
       }
       if (permission !== 'granted') return
 
+      step = 'worker'
       const registration = await getRegistration()
-      if (!registration) throw new Error('no service worker')
+      if (!registration) throw new Error(`no service worker ${workerIssue}`.trim())
 
       let publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
       if (!publicKey) {
@@ -169,6 +179,7 @@ export default function PushToggle() {
       }
       if (!publicKey) throw new Error('push not configured')
 
+      step = 'subscribe'
       const subscription =
         (await registration.pushManager.getSubscription()) ||
         (await registration.pushManager.subscribe({
@@ -176,9 +187,11 @@ export default function PushToggle() {
           applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
         }))
 
+      step = 'save'
+      saveIssue = ''
       if (!(await saveSubscription(subscription))) {
         await subscription.unsubscribe().catch(() => false)
-        throw new Error('save failed')
+        throw new Error(saveIssue || 'save failed')
       }
 
       // Remember the language so server-side messages (daily digest) match the app
@@ -189,7 +202,11 @@ export default function PushToggle() {
       }).catch(() => {})
 
       setState('on')
-    } catch {
+    } catch (caught) {
+      const err = caught as Error
+      const detail = `${step}: ${err?.name && err.name !== 'Error' ? err.name + ' - ' : ''}${String(err?.message ?? caught).slice(0, 140)}`
+      console.error('[push] enable failed at', detail, caught)
+      setErrorDetail(detail)
       setError(true)
     } finally {
       setBusy(false)
@@ -250,6 +267,7 @@ export default function PushToggle() {
         {error ? (
           <p role="alert" className="mt-2 text-sm text-red-600 dark:text-red-400">
             {t('settings.push.error')}
+            {errorDetail ? <span className="mt-1 block text-xs text-text-muted">({errorDetail})</span> : null}
           </p>
         ) : null}
       </div>
