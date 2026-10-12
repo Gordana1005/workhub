@@ -26,7 +26,7 @@ export default function ActiveTimer() {
   }
 
   return (
-    <div className="fixed bottom-6 right-6 p-4 bg-surface shadow-neumorphic dark:shadow-neumorphic-dark rounded-lg z-50">
+    <div className="fixed bottom-20 right-4 z-50 rounded-xl border border-border bg-surface p-4 shadow-lg lg:bottom-6 lg:right-6">
       <div className="flex items-center space-x-4">
         <div className="text-2xl font-mono font-bold text-text-primary">
           {formatTime(time)}

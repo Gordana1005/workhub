@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { X, Save, History } from 'lucide-react'
+import { ArrowLeft, History, Save, X } from 'lucide-react'
 import RichTextEditor from './RichTextEditor'
 import TagSelector from './TagSelector'
 import VersionHistory from './VersionHistory'
+import { useTranslations } from 'next-intl'
+import { Button } from '@/components/ui/Button'
 
 interface Tag {
   id: string
@@ -30,6 +32,9 @@ interface NoteEditorProps {
   isEdit?: boolean
 }
 
+const fieldClass =
+  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+
 export default function NoteEditor({
   initialTitle = '',
   initialContent = '',
@@ -40,19 +45,21 @@ export default function NoteEditor({
   workspaceId,
   onSave,
   onCancel,
-  isEdit = false
+  isEdit = false,
 }: NoteEditorProps) {
+  const t = useTranslations('pages.notes')
   const [title, setTitle] = useState(initialTitle)
   const [content, setContent] = useState(initialContent)
   const [tags, setTags] = useState<Tag[]>(initialTags)
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId)
   const [isSaving, setIsSaving] = useState(false)
+  const [projectError, setProjectError] = useState(false)
   const [showVersionHistory, setShowVersionHistory] = useState(false)
 
   const handleSave = async () => {
     if (!title.trim()) return
     if (!selectedProjectId) {
-      alert('Please select a project')
+      setProjectError(true)
       return
     }
 
@@ -72,109 +79,108 @@ export default function NoteEditor({
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-      <div className="bg-surface/90 border border-white/10 rounded-2xl w-full max-w-3xl max-h-[80vh] mt-20 sm:mt-0 flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
-          <h2 className="text-2xl font-bold">
-            {isEdit ? 'Edit Note' : 'New Note'}
-          </h2>
-          <div className="flex items-center gap-2">
-            {isEdit && noteId && (
-              <button
-                onClick={() => setShowVersionHistory(true)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white"
-                title="Version History"
-              >
-                <History className="w-4 h-4" />
-              </button>
-            )}
-            <button
-              onClick={onCancel}
-              className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+    <div className="fixed inset-0 z-[80] flex min-h-0 min-w-0 flex-col bg-surface text-text-primary lg:static lg:inset-auto lg:z-auto lg:max-h-[calc(100dvh-16rem)] lg:min-h-[28rem] lg:w-full lg:rounded-2xl lg:border lg:border-border">
+      <div className="flex items-center gap-2 border-b border-border px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] lg:pt-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg p-2 text-text-secondary hover:bg-surface-hover lg:hidden"
+          aria-label={t('back')}
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-text-primary">
+          {isEdit ? t('editorTitleEdit') : t('newNote')}
+        </h2>
+        {isEdit && noteId ? (
+          <button
+            type="button"
+            onClick={() => setShowVersionHistory(true)}
+            className="rounded-lg p-2 text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+            title={t('versionHistory')}
+            aria-label={t('versionHistory')}
+          >
+            <History className="h-4 w-4" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={onCancel}
+          className="hidden rounded-lg p-2 text-text-secondary hover:bg-surface-hover lg:inline-flex"
+          aria-label={t('close')}
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-4">
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="note-project">
+            {t('project')}
+          </label>
+          <select
+            id="note-project"
+            value={selectedProjectId}
+            onChange={(event) => {
+              setSelectedProjectId(event.target.value)
+              setProjectError(false)
+            }}
+            className={fieldClass}
+          >
+            <option value="" disabled>
+              {t('selectProject')}
+            </option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+          {projectError ? <p className="mt-1.5 text-sm text-danger">{t('selectProjectAlert')}</p> : null}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2 text-gray-300">
-              Project *
-            </label>
-            <select
-              value={selectedProjectId}
-              onChange={(e) => setSelectedProjectId(e.target.value)}
-              className="input-field w-full"
-            >
-              <option value="" disabled>Select a project</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-2 text-gray-300">
-              Title *
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Enter note title..."
-              className="input-field w-full text-lg"
-              autoFocus
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-2 text-gray-300">
-              Tags
-            </label>
-            <TagSelector
-              workspaceId={workspaceId}
-              selectedTags={tags}
-              onChange={setTags}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-2 text-gray-300">
-              Content
-            </label>
-            <RichTextEditor
-              content={content}
-              onChange={setContent}
-              placeholder="Start writing your note... Use the toolbar or markdown shortcuts"
-              editable={true}
-            />
-          </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="note-title">
+            {t('noteTitle')}
+          </label>
+          <input
+            id="note-title"
+            type="text"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={t('noteTitlePlaceholder')}
+            className={`${fieldClass} text-base`}
+            autoFocus
+          />
         </div>
 
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-white/10">
-          <button
-            onClick={onCancel}
-            className="btn-secondary"
-            disabled={isSaving}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            className="btn-primary flex items-center gap-2"
-            disabled={!title.trim() || isSaving}
-          >
-            <Save className="w-4 h-4" />
-            {isSaving ? 'Saving...' : 'Save Note'}
-          </button>
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-text-secondary">{t('tags')}</p>
+          <TagSelector workspaceId={workspaceId} selectedTags={tags} onChange={setTags} />
+        </div>
+
+        <div className="min-w-0">
+          <p className="mb-1.5 text-sm font-medium text-text-secondary">{t('content')}</p>
+          <RichTextEditor
+            content={content}
+            onChange={setContent}
+            placeholder={t('contentPlaceholder')}
+            editable
+          />
         </div>
       </div>
 
-      {/* Version History Modal */}
-      {showVersionHistory && noteId && (
+      <div className="flex items-center justify-end gap-2 border-t border-border px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:pb-3">
+        <Button type="button" variant="secondary" onClick={onCancel} disabled={isSaving}>
+          {t('cancel')}
+        </Button>
+        <Button type="button" onClick={handleSave} disabled={!title.trim() || isSaving} className="gap-2">
+          <Save className="h-4 w-4" />
+          {isSaving ? t('saving') : t('saveNote')}
+        </Button>
+      </div>
+
+      {showVersionHistory && noteId ? (
         <VersionHistory
           noteId={noteId}
           currentContent={content}
@@ -182,7 +188,7 @@ export default function NoteEditor({
           onRestore={handleRestore}
           onClose={() => setShowVersionHistory(false)}
         />
-      )}
+      ) : null}
     </div>
   )
 }

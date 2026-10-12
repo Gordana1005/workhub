@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { MessageSquare, Send, Trash2, User } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { enUS, mk } from 'date-fns/locale';
+import { useLocale, useTranslations } from 'next-intl';
 
 interface Comment {
   id: string;
@@ -21,6 +23,9 @@ interface CommentThreadProps {
 }
 
 export default function CommentThread({ taskId, currentUserId }: CommentThreadProps) {
+  const t = useTranslations('pages.tasks');
+  const locale = useLocale();
+  const dateLocale = locale === 'mk' ? mk : enUS;
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(false);
@@ -73,7 +78,7 @@ export default function CommentThread({ taskId, currentUserId }: CommentThreadPr
   };
 
   const handleDelete = async (commentId: string) => {
-    if (!confirm('Delete this comment?')) return;
+    if (!confirm(t('confirmDeleteComment'))) return;
 
     try {
       const response = await fetch(`/api/comments?id=${commentId}`, {
@@ -90,43 +95,45 @@ export default function CommentThread({ taskId, currentUserId }: CommentThreadPr
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 text-sm font-semibold text-gray-300">
+      <div className="flex items-center gap-2 text-sm font-semibold text-text-secondary">
         <MessageSquare className="w-4 h-4" />
-        <span>Comments ({comments.length})</span>
+        <span>{t('commentsCount', { count: comments.length })}</span>
       </div>
 
       {/* Comments List */}
       <div className="space-y-3 max-h-80 overflow-y-auto">
         {loading ? (
-          <p className="text-sm text-gray-400 text-center py-4">Loading comments...</p>
+          <p className="text-sm text-text-secondary text-center py-4">{t('loadingComments')}</p>
         ) : comments.length === 0 ? (
-          <p className="text-sm text-gray-400 text-center py-4">No comments yet. Be the first to comment!</p>
+          <p className="text-sm text-text-secondary text-center py-4">{t('noComments')}</p>
         ) : (
           comments.map((comment) => (
-            <div key={comment.id} className="bg-surface-light/50 p-3 rounded-lg">
-              <div className="flex items-start justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center">
-                    <User className="w-4 h-4 text-purple-400" />
+            <div key={comment.id} className="bg-surface-hover p-3 rounded-lg">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="w-8 h-8 shrink-0 rounded-full bg-primary/10 flex items-center justify-center">
+                    <User className="w-4 h-4 text-primary" />
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">{comment.user.username}</p>
-                    <p className="text-xs text-gray-400">
-                      {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true })}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-text-primary">{comment.user.username}</p>
+                    <p className="text-xs text-text-secondary">
+                      {formatDistanceToNow(new Date(comment.created_at), { addSuffix: true, locale: dateLocale })}
                     </p>
                   </div>
                 </div>
                 {comment.user_id === currentUserId && (
                   <button
                     onClick={() => handleDelete(comment.id)}
-                    className="p-1 hover:bg-red-500/20 text-red-400 rounded transition-colors"
-                    title="Delete comment"
+                    className="shrink-0 p-2 hover:bg-danger/10 text-danger rounded transition-colors"
+                    title={t('deleteComment')}
+                    aria-label={t('deleteComment')}
+                    type="button"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 )}
               </div>
-              <p className="text-sm text-gray-300 whitespace-pre-wrap">{comment.content}</p>
+              <p className="text-sm text-text-secondary whitespace-pre-wrap break-words">{comment.content}</p>
             </div>
           ))
         )}
@@ -139,18 +146,18 @@ export default function CommentThread({ taskId, currentUserId }: CommentThreadPr
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSubmit(e)}
-          placeholder="Add a comment..."
-          className="flex-1 px-4 py-2 bg-surface-light rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none text-sm"
+          placeholder={t('addComment')}
+          className="min-w-0 flex-1 px-4 py-2 bg-secondary rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none text-sm"
           disabled={submitting}
         />
         <button
           type="button"
           onClick={handleSubmit}
           disabled={!newComment.trim() || submitting}
-          className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-2"
+          className="shrink-0 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors flex items-center gap-2 text-white"
         >
           <Send className="w-4 h-4" />
-          {submitting ? 'Sending...' : 'Send'}
+          {submitting ? t('sending') : t('send')}
         </button>
       </div>
     </div>

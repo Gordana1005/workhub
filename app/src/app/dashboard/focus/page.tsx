@@ -3,48 +3,58 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
-import {
-  Play,
-  Pause,
-  Square,
-  Coffee,
-  Zap,
-  X,
-  Settings,
-  Volume2,
-  VolumeX
-} from 'lucide-react'
+import { Pause, Play } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+import { Button } from '@/components/ui/Button'
+import { Dialog } from '@/components/ui/Dialog'
+import { IconMenu } from '@/components/ui/IconMenu'
+import { PageHeader } from '@/components/ui/PageHeader'
 
 interface Task {
   id: string
   title: string
   description: string | null
   estimated_hours: number | null
+  is_completed?: boolean
 }
 
 type SessionType = 'work' | 'break' | 'longBreak'
 
+const fieldClass =
+  'w-full max-w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+
+function safeMinutes(value: number, fallback: number) {
+  return Number.isFinite(value) && value > 0 ? value : fallback
+}
+
 export default function FocusMode() {
+  const t = useTranslations('pages.tools')
   const router = useRouter()
   const { currentWorkspace } = useWorkspaceStore()
 
-  // Timer state
-  const [time, setTime] = useState(25 * 60) // 25 minutes default
+  const [time, setTime] = useState(25 * 60)
   const [isRunning, setIsRunning] = useState(false)
   const [sessionType, setSessionType] = useState<SessionType>('work')
   const [sessionsCompleted, setSessionsCompleted] = useState(0)
 
-  // Settings
   const [workDuration, setWorkDuration] = useState(25)
   const [breakDuration, setBreakDuration] = useState(5)
   const [longBreakDuration, setLongBreakDuration] = useState(15)
   const [showSettings, setShowSettings] = useState(false)
   const [soundEnabled, setSoundEnabled] = useState(true)
 
-  // Task state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [showTaskSelector, setShowTaskSelector] = useState(false)
+
+  const minutesFor = useCallback(
+    (type: SessionType) => {
+      if (type === 'work') return safeMinutes(workDuration, 25)
+      if (type === 'break') return safeMinutes(breakDuration, 5)
+      return safeMinutes(longBreakDuration, 15)
+    },
+    [workDuration, breakDuration, longBreakDuration]
+  )
 
   const loadTasks = useCallback(async () => {
     if (!currentWorkspace) return
@@ -54,7 +64,7 @@ export default function FocusMode() {
       const data = await res.json()
 
       if (Array.isArray(data)) {
-        setTasks(data.filter((t: any) => !t.is_completed).slice(0, 20))
+        setTasks(data.filter((task: Task) => !task.is_completed).slice(0, 20))
       }
     } catch (error) {
       console.error('Error loading tasks:', error)
@@ -63,34 +73,28 @@ export default function FocusMode() {
 
   const handleSessionComplete = useCallback(() => {
     setIsRunning(false)
-    
-    if (soundEnabled) {
-      // Browser notification sound
-      if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('Focus session complete!', {
-          body: sessionType === 'work' ? 'Time for a break!' : 'Ready for another session?',
-        })
-      }
+
+    if (soundEnabled && 'Notification' in window && Notification.permission === 'granted') {
+      new Notification(t('focus.notifyTitle'), {
+        body: sessionType === 'work' ? t('focus.notifyBreak') : t('focus.notifyReady'),
+      })
     }
 
     if (sessionType === 'work') {
-      setSessionsCompleted(prev => {
-        const newCount = prev + 1
-        // After 4 work sessions, take a long break
-        if (newCount % 4 === 0) {
-          setSessionType('longBreak')
-          setTime(longBreakDuration * 60)
-        } else {
-          setSessionType('break')
-          setTime(breakDuration * 60)
-        }
-        return newCount
-      })
+      const newCount = sessionsCompleted + 1
+      setSessionsCompleted(newCount)
+      if (newCount % 4 === 0) {
+        setSessionType('longBreak')
+        setTime(safeMinutes(longBreakDuration, 15) * 60)
+      } else {
+        setSessionType('break')
+        setTime(safeMinutes(breakDuration, 5) * 60)
+      }
     } else {
       setSessionType('work')
-      setTime(workDuration * 60)
+      setTime(safeMinutes(workDuration, 25) * 60)
     }
-  }, [soundEnabled, sessionType, breakDuration, longBreakDuration, workDuration])
+  }, [soundEnabled, sessionType, sessionsCompleted, breakDuration, longBreakDuration, workDuration, t])
 
   useEffect(() => {
     if (currentWorkspace) {
@@ -99,47 +103,33 @@ export default function FocusMode() {
   }, [currentWorkspace, loadTasks])
 
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
-
-    if (isRunning && time > 0) {
-      interval = setInterval(() => {
-        setTime((prevTime) => {
-          if (prevTime <= 1) {
-            handleSessionComplete()
-            return 0
-          }
-          return prevTime - 1
-        })
-      }, 1000)
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
     }
+  }, [])
 
-    return () => {
-      if (interval) clearInterval(interval)
-    }
+  useEffect(() => {
+    if (!isRunning || time > 0) return
+    const timeout = window.setTimeout(() => handleSessionComplete(), 0)
+    return () => window.clearTimeout(timeout)
   }, [isRunning, time, handleSessionComplete])
+
+  useEffect(() => {
+    if (!isRunning || time <= 0) return
+    const interval = setInterval(() => {
+      setTime((prevTime) => (prevTime <= 1 ? 0 : prevTime - 1))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [isRunning, time])
 
   const startSession = (type: SessionType) => {
     setSessionType(type)
-    let duration: number
-    
-    switch (type) {
-      case 'work':
-        duration = workDuration * 60
-        break
-      case 'break':
-        duration = breakDuration * 60
-        break
-      case 'longBreak':
-        duration = longBreakDuration * 60
-        break
-    }
-    
-    setTime(duration)
+    setTime(minutesFor(type) * 60)
     setIsRunning(false)
   }
 
   const toggleTimer = () => {
-    setIsRunning(!isRunning)
+    setIsRunning((running) => !running)
   }
 
   const resetTimer = () => {
@@ -147,357 +137,185 @@ export default function FocusMode() {
     startSession(sessionType)
   }
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60)
-    const s = seconds % 60
-    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+  const formatTime = (totalSeconds: number) => {
+    const minutes = Math.floor(totalSeconds / 60)
+    const secs = totalSeconds % 60
+    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
   }
 
   const getProgress = () => {
-    let totalDuration: number
-    switch (sessionType) {
-      case 'work':
-        totalDuration = workDuration * 60
-        break
-      case 'break':
-        totalDuration = breakDuration * 60
-        break
-      case 'longBreak':
-        totalDuration = longBreakDuration * 60
-        break
-    }
-    return ((totalDuration - time) / totalDuration) * 100
-  }
-
-  const getSessionColor = () => {
-    switch (sessionType) {
-      case 'work':
-        return 'from-purple-500 to-blue-600'
-      case 'break':
-        return 'from-green-500 to-emerald-600'
-      case 'longBreak':
-        return 'from-orange-500 to-amber-600'
-    }
+    const total = minutesFor(sessionType) * 60
+    return Math.min(100, Math.max(0, ((total - time) / total) * 100))
   }
 
   const getSessionLabel = () => {
-    switch (sessionType) {
-      case 'work':
-        return 'Focus Time'
-      case 'break':
-        return 'Short Break'
-      case 'longBreak':
-        return 'Long Break'
-    }
+    if (sessionType === 'work') return t('focus.focusTime')
+    if (sessionType === 'break') return t('focus.shortBreak')
+    return t('focus.longBreak')
   }
 
-  const requestNotificationPermission = () => {
-    if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission()
-    }
+  const closeSettings = () => {
+    if (!isRunning) setTime(minutesFor(sessionType) * 60)
+    setShowSettings(false)
   }
 
-  useEffect(() => {
-    requestNotificationPermission()
-  }, [])
+  const sessionButtonClass = (active: boolean) =>
+    active
+      ? 'rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white'
+      : 'rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-text-secondary'
 
   return (
-    <div className="min-h-screen bg-gradient-radial flex flex-col">
-      {/* Header */}
-      <div className="p-4 md:p-6 flex items-center justify-between">
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="btn-secondary flex items-center gap-2"
-        >
-          <X className="w-4 h-4" />
-          Exit Focus Mode
-        </button>
+    <div className="space-y-8">
+      <PageHeader
+        title={getSessionLabel()}
+        description={t('focus.sessionsCompleted', { count: sessionsCompleted })}
+        action={
+          <IconMenu
+            label={t('focus.settings')}
+            items={[
+              { label: t('focus.change'), onClick: () => setShowTaskSelector(true) },
+              { label: t('focus.settings'), onClick: () => setShowSettings(true) },
+              { label: t('focus.reset'), onClick: resetTimer },
+              { label: t('focus.exit'), onClick: () => router.push('/dashboard') },
+            ]}
+          />
+        }
+      />
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setSoundEnabled(!soundEnabled)}
-            className="btn-secondary w-10 h-10 flex items-center justify-center"
-          >
-            {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-          </button>
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <Settings className="w-4 h-4" />
-            <span className="hidden md:inline">Settings</span>
-          </button>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={() => startSession('work')} className={sessionButtonClass(sessionType === 'work')}>
+          {t('focus.work')}
+        </button>
+        <button type="button" onClick={() => startSession('break')} className={sessionButtonClass(sessionType === 'break')}>
+          {t('focus.break')}
+        </button>
+        <button
+          type="button"
+          onClick={() => startSession('longBreak')}
+          className={sessionButtonClass(sessionType === 'longBreak')}
+        >
+          {t('focus.longBreak')}
+        </button>
+      </div>
+
+      <div className="space-y-5 py-4 text-center">
+        <p className="font-mono text-6xl font-semibold tabular-nums tracking-tight text-text-primary sm:text-7xl">
+          {formatTime(time)}
+        </p>
+        <div
+          className="mx-auto h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-surface-hover"
+          role="progressbar"
+          aria-valuenow={Math.round(getProgress())}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={getSessionLabel()}
+        >
+          <div className="h-full bg-primary" style={{ width: `${getProgress()}%` }} />
+        </div>
+        <button type="button" onClick={() => setShowTaskSelector(true)} className="mx-auto block max-w-full text-sm text-primary">
+          <span className="break-words">
+            {selectedTask ? `${t('focus.workingOn')} ${selectedTask.title}` : t('focus.selectTaskPrompt')}
+          </span>
+        </button>
+        {selectedTask?.description ? (
+          <p className="mx-auto line-clamp-3 max-w-md break-words text-sm text-text-secondary">{selectedTask.description}</p>
+        ) : null}
+        <div className="flex justify-center">
+          <Button onClick={toggleTimer} className="gap-2">
+            {isRunning ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {isRunning ? t('focus.pause') : t('focus.start')}
+          </Button>
+        </div>
+        <div className="flex justify-center gap-2" aria-hidden>
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div
+              key={index}
+              className={`h-2.5 w-2.5 rounded-full ${index < sessionsCompleted % 4 ? 'bg-primary' : 'bg-surface-hover'}`}
+            />
+          ))}
         </div>
       </div>
 
-      {/* Main Focus Area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-4">
-        {/* Session Type Selector */}
-        <div className="flex gap-2 mb-8">
-          <button
-            onClick={() => startSession('work')}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${
-              sessionType === 'work'
-                ? 'bg-gradient-to-r from-purple-500 to-blue-600 text-white shadow-glow'
-                : 'bg-surface text-gray-400 hover:text-white'
-            }`}
-          >
-            <Zap className="w-4 h-4 inline mr-2" />
-            Work
-          </button>
-          <button
-            onClick={() => startSession('break')}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${
-              sessionType === 'break'
-                ? 'bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-glow-green'
-                : 'bg-surface text-gray-400 hover:text-white'
-            }`}
-          >
-            <Coffee className="w-4 h-4 inline mr-2" />
-            Break
-          </button>
-          <button
-            onClick={() => startSession('longBreak')}
-            className={`px-4 py-2 rounded-lg font-medium transition-all ${
-              sessionType === 'longBreak'
-                ? 'bg-gradient-to-r from-orange-500 to-amber-600 text-white'
-                : 'bg-surface text-gray-400 hover:text-white'
-            }`}
-          >
-            <Coffee className="w-4 h-4 inline mr-2" />
-            Long Break
-          </button>
-        </div>
-
-        {/* Timer Display */}
-        <div className="relative mb-12">
-          {/* Progress Ring */}
-          <svg className="w-80 h-80 md:w-96 md:h-96 transform -rotate-90">
-            <circle
-              cx="50%"
-              cy="50%"
-              r="45%"
-              fill="none"
-              stroke="rgba(255,255,255,0.1)"
-              strokeWidth="8"
+      <Dialog
+        open={showSettings}
+        title={t('focus.pomodoroSettings')}
+        onClose={closeSettings}
+        footer={
+          <Button type="button" className="w-full" onClick={closeSettings}>
+            {t('focus.save')}
+          </Button>
+        }
+      >
+        <div className="space-y-4">
+          <label className="block text-sm text-text-secondary">
+            {t('focus.workDuration')}
+            <input
+              type="number"
+              value={workDuration}
+              onChange={(event) => setWorkDuration(Number(event.target.value))}
+              className={`${fieldClass} mt-1.5`}
+              min="1"
+              max="60"
             />
-            <circle
-              cx="50%"
-              cy="50%"
-              r="45%"
-              fill="none"
-              stroke="url(#gradient)"
-              strokeWidth="8"
-              strokeDasharray={`${2 * Math.PI * (0.45 * (typeof window !== 'undefined' ? window.innerWidth > 768 ? 192 : 160 : 160))}`}
-              strokeDashoffset={`${2 * Math.PI * (0.45 * (typeof window !== 'undefined' ? window.innerWidth > 768 ? 192 : 160 : 160)) * (1 - getProgress() / 100)}`}
-              strokeLinecap="round"
-              className="transition-all duration-1000"
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('focus.shortBreakMinutes')}
+            <input
+              type="number"
+              value={breakDuration}
+              onChange={(event) => setBreakDuration(Number(event.target.value))}
+              className={`${fieldClass} mt-1.5`}
+              min="1"
+              max="30"
             />
-            <defs>
-              <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" className={`${sessionType === 'work' ? 'stop-color-purple-500' : sessionType === 'break' ? 'stop-color-green-500' : 'stop-color-orange-500'}`} />
-                <stop offset="100%" className={`${sessionType === 'work' ? 'stop-color-blue-600' : sessionType === 'break' ? 'stop-color-emerald-600' : 'stop-color-amber-600'}`} />
-              </linearGradient>
-            </defs>
-          </svg>
-
-          {/* Time Display */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className="text-7xl md:text-8xl font-bold font-mono gradient-text mb-4">
-              {formatTime(time)}
-            </div>
-            <div className="text-xl md:text-2xl text-gray-400 font-medium">
-              {getSessionLabel()}
-            </div>
-          </div>
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('focus.longBreakMinutes')}
+            <input
+              type="number"
+              value={longBreakDuration}
+              onChange={(event) => setLongBreakDuration(Number(event.target.value))}
+              className={`${fieldClass} mt-1.5`}
+              min="1"
+              max="60"
+            />
+          </label>
+          <label className="flex items-start gap-3 text-sm text-text-primary">
+            <input
+              type="checkbox"
+              checked={soundEnabled}
+              onChange={(event) => setSoundEnabled(event.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-border"
+            />
+            <span>{t('focus.notifyToggle')}</span>
+          </label>
         </div>
+      </Dialog>
 
-        {/* Current Task */}
-        {selectedTask ? (
-          <div className="card p-6 max-w-2xl w-full mb-8">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="text-sm text-gray-400 mb-1">Working on:</div>
-                <h3 className="text-xl font-semibold mb-2">{selectedTask.title}</h3>
-                {selectedTask.description && (
-                  <p className="text-gray-400 text-sm">{selectedTask.description}</p>
-                )}
-              </div>
-              <button
-                onClick={() => setShowTaskSelector(true)}
-                className="text-purple-400 hover:text-purple-300 text-sm"
-              >
-                Change
-              </button>
-            </div>
-          </div>
+      <Dialog open={showTaskSelector} title={t('focus.selectTask')} onClose={() => setShowTaskSelector(false)} size="lg">
+        {tasks.length === 0 ? (
+          <p className="py-6 text-center text-sm text-text-secondary">{t('focus.noTasks')}</p>
         ) : (
-          <button
-            onClick={() => setShowTaskSelector(true)}
-            className="card p-6 max-w-2xl w-full mb-8 hover:border-purple-500/50 transition-colors"
-          >
-            <div className="text-center text-gray-400">
-              Select a task to focus on
-            </div>
-          </button>
-        )}
-
-        {/* Controls */}
-        <div className="flex gap-4">
-          <button
-            onClick={toggleTimer}
-            className={`px-8 py-4 rounded-xl font-semibold text-lg flex items-center gap-3 transition-all shadow-xl hover:scale-105 ${
-              isRunning
-                ? 'bg-gradient-to-r from-orange-500 to-red-600'
-                : `bg-gradient-to-r ${getSessionColor()}`
-            }`}
-          >
-            {isRunning ? (
-              <>
-                <Pause className="w-6 h-6" />
-                Pause
-              </>
-            ) : (
-              <>
-                <Play className="w-6 h-6" />
-                Start
-              </>
-            )}
-          </button>
-          <button
-            onClick={resetTimer}
-            className="btn-secondary px-8 py-4"
-          >
-            <Square className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Sessions Counter */}
-        <div className="mt-8 text-gray-400">
-          <div className="flex items-center gap-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className={`w-3 h-3 rounded-full ${
-                  i < sessionsCompleted % 4
-                    ? 'bg-gradient-blue-purple'
-                    : 'bg-white/10'
-                }`}
-              />
+          <div className="space-y-2">
+            {tasks.map((task) => (
+              <button
+                key={task.id}
+                type="button"
+                onClick={() => {
+                  setSelectedTask(task)
+                  setShowTaskSelector(false)
+                }}
+                className="w-full rounded-xl border border-border px-3 py-3 text-left hover:bg-surface-hover"
+              >
+                <span className="block break-words font-medium text-text-primary">{task.title}</span>
+                {task.description ? (
+                  <span className="mt-1 line-clamp-2 block break-words text-sm text-text-secondary">{task.description}</span>
+                ) : null}
+              </button>
             ))}
           </div>
-          <div className="text-sm text-center mt-2">
-            {sessionsCompleted} session{sessionsCompleted !== 1 ? 's' : ''} completed
-          </div>
-        </div>
-      </div>
-
-      {/* Settings Modal */}
-      {showSettings && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="card w-full max-w-md p-6">
-            <h3 className="text-2xl font-bold mb-6">Pomodoro Settings</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Work Duration (minutes)
-                </label>
-                <input
-                  type="number"
-                  value={workDuration}
-                  onChange={(e) => setWorkDuration(Number(e.target.value))}
-                  className="input-field w-full"
-                  min="1"
-                  max="60"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Short Break (minutes)
-                </label>
-                <input
-                  type="number"
-                  value={breakDuration}
-                  onChange={(e) => setBreakDuration(Number(e.target.value))}
-                  className="input-field w-full"
-                  min="1"
-                  max="30"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  Long Break (minutes)
-                </label>
-                <input
-                  type="number"
-                  value={longBreakDuration}
-                  onChange={(e) => setLongBreakDuration(Number(e.target.value))}
-                  className="input-field w-full"
-                  min="1"
-                  max="60"
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => setShowSettings(false)}
-                className="btn-primary flex-1"
-              >
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Task Selector Modal */}
-      {showTaskSelector && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="card w-full max-w-2xl max-h-[80vh] flex flex-col">
-            <div className="p-6 border-b border-white/10 flex items-center justify-between">
-              <h3 className="text-2xl font-bold">Select Task</h3>
-              <button
-                onClick={() => setShowTaskSelector(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6">
-              {tasks.length === 0 ? (
-                <div className="text-center py-12 text-gray-400">
-                  No tasks available
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {tasks.map((task) => (
-                    <button
-                      key={task.id}
-                      onClick={() => {
-                        setSelectedTask(task)
-                        setShowTaskSelector(false)
-                      }}
-                      className="card p-4 w-full text-left card-hover"
-                    >
-                      <h4 className="font-semibold mb-1">{task.title}</h4>
-                      {task.description && (
-                        <p className="text-sm text-gray-400 line-clamp-2">
-                          {task.description}
-                        </p>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+        )}
+      </Dialog>
     </div>
   )
 }

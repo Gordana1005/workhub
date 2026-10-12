@@ -1,34 +1,43 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { X, Keyboard } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { Dialog } from '@/components/ui/Dialog';
 
-const shortcuts = [
-  { category: 'Actions', items: [
-    { keys: ['N'], description: 'Create new task' },
-    { keys: ['P'], description: 'Create new project' },
-    { keys: ['F'], description: 'Search/Filter tasks' },
-    { keys: ['Space'], description: 'Start/Pause timer' },
+type ShortcutItem = {
+  keys: string[];
+  descriptionKey: string;
+  mac?: string[];
+};
+
+const shortcuts: { categoryKey: string; items: ShortcutItem[] }[] = [
+  { categoryKey: 'shortcuts.actions', items: [
+    { keys: ['N'], descriptionKey: 'shortcuts.newTask' },
+    { keys: ['P'], descriptionKey: 'shortcuts.newProject' },
+    { keys: ['F'], descriptionKey: 'shortcuts.searchTasks' },
+    { keys: ['Space'], descriptionKey: 'shortcuts.timer' },
   ]},
-  { category: 'Navigation', items: [
-    { keys: ['G', 'D'], description: 'Go to Dashboard' },
-    { keys: ['G', 'T'], description: 'Go to Tasks' },
-    { keys: ['G', 'P'], description: 'Go to Projects' },
-    { keys: ['G', 'N'], description: 'Go to Notes' },
-    { keys: ['G', 'R'], description: 'Go to Reports' },
-    { keys: ['G', 'F'], description: 'Go to Focus Mode' },
+  { categoryKey: 'shortcuts.navigation', items: [
+    { keys: ['G', 'D'], descriptionKey: 'shortcuts.goDashboard' },
+    { keys: ['G', 'T'], descriptionKey: 'shortcuts.goTasks' },
+    { keys: ['G', 'P'], descriptionKey: 'shortcuts.goProjects' },
+    { keys: ['G', 'N'], descriptionKey: 'shortcuts.goNotes' },
+    { keys: ['G', 'R'], descriptionKey: 'shortcuts.goReports' },
+    { keys: ['G', 'F'], descriptionKey: 'shortcuts.goFocus' },
   ]},
-  { category: 'Global', items: [
-    { keys: ['Ctrl', 'K'], description: 'Open command palette', mac: ['⌘', 'K'] },
-    { keys: ['Ctrl', '/'], description: 'Show keyboard shortcuts', mac: ['⌘', '/'] },
-    { keys: ['Esc'], description: 'Close modal/dialog' },
+  { categoryKey: 'shortcuts.global', items: [
+    { keys: ['Ctrl', 'K'], descriptionKey: 'shortcuts.openPalette', mac: ['⌘', 'K'] },
+    { keys: ['Ctrl', '/'], descriptionKey: 'shortcuts.showShortcuts', mac: ['⌘', '/'] },
+    { keys: ['Esc'], descriptionKey: 'shortcuts.closeDialog' },
   ]},
 ];
 
 export default function KeyboardShortcutsHelp() {
+  const t = useTranslations('pages.tools');
   const [isOpen, setIsOpen] = useState(false);
   const [isMac, setIsMac] = useState(false);
+  const close = useCallback(() => setIsOpen(false), []);
 
   useEffect(() => {
     setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
@@ -43,55 +52,37 @@ export default function KeyboardShortcutsHelp() {
     if (isOpen) setIsOpen(false);
   }, { enabled: isOpen });
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="card w-full max-w-2xl max-h-[80vh] overflow-y-auto m-4">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Keyboard className="w-6 h-6 text-purple-400" />
-            <h2 className="text-2xl font-bold gradient-text">Keyboard Shortcuts</h2>
-          </div>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="space-y-6">
-          {shortcuts.map((category) => (
-            <div key={category.category}>
-              <h3 className="text-sm font-semibold text-purple-400 uppercase mb-3">
-                {category.category}
-              </h3>
-              <div className="space-y-2">
-                {category.items.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between py-2">
-                    <span className="text-sm text-gray-300">{item.description}</span>
-                    <div className="flex gap-1">
-                      {(isMac && item.mac ? item.mac : item.keys).map((key, keyIdx) => (
-                        <kbd
-                          key={keyIdx}
-                          className="px-3 py-1 text-xs font-semibold bg-surface-light/50 rounded border border-white/10 min-w-[2rem] text-center"
-                        >
-                          {key}
-                        </kbd>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 pt-6 border-t border-white/10 text-center text-sm text-gray-400">
-          Press <kbd className="px-2 py-1 bg-surface-light/50 rounded border border-white/10">Esc</kbd> to close
-        </div>
+    <Dialog open={isOpen} title={t('shortcuts.title')} onClose={close} size="lg">
+      <div className="space-y-5">
+        {shortcuts.map((category) => (
+          <section key={category.categoryKey}>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+              {t(category.categoryKey)}
+            </h3>
+            <ul className="divide-y divide-border">
+              {category.items.map((item) => (
+                <li key={item.descriptionKey} className="flex flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-sm text-text-primary">{t(item.descriptionKey)}</span>
+                  <span className="flex flex-wrap gap-1">
+                    {(isMac && item.mac ? item.mac : item.keys).map((key) => (
+                      <kbd
+                        key={key}
+                        className="min-w-8 rounded-md border border-border bg-surface-hover px-2 py-1 text-center text-xs font-semibold text-text-primary"
+                      >
+                        {key === 'Space' ? t('shortcuts.space') : key}
+                      </kbd>
+                    ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+        <p className="border-t border-border pt-4 text-center text-sm text-text-secondary">
+          {t('shortcuts.press')} <kbd className="rounded-md border border-border bg-surface-hover px-2 py-1 text-xs font-semibold text-text-primary">Esc</kbd> {t('shortcuts.toClose')}
+        </p>
       </div>
-    </div>
+    </Dialog>
   );
 }

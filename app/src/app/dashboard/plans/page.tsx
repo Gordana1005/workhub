@@ -1,49 +1,56 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Calendar, Target, TrendingUp, MoreVertical, Edit, Trash } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { format, differenceInDays } from 'date-fns';
+import { format } from 'date-fns';
+import { enUS, mk } from 'date-fns/locale';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useRouter } from 'next/navigation';
+import { useLocale, useTranslations } from 'next-intl';
+import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { IconMenu } from '@/components/ui/IconMenu';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 interface Plan {
   id: string;
   name: string;
-  description: string;
-  goal: string;
+  description: string | null;
+  goal: string | null;
   start_date: string;
   end_date: string;
   status: 'draft' | 'active' | 'completed' | 'cancelled';
   color: string;
-  milestones?: Milestone[];
 }
 
-interface Milestone {
-  id: string;
-  name: string;
-  target_date: string;
-  completion_percentage: number;
-  is_completed: boolean;
-}
+const fieldClass =
+  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
+
+const colors = [
+  '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b',
+  '#10b981', '#06b6d4', '#f43f5e', '#6366f1',
+];
 
 export default function PlansPage() {
+  const t = useTranslations('pages.plans');
+  const locale = useLocale();
+  const dateLocale = locale === 'mk' ? mk : enUS;
   const [plans, setPlans] = useState<Plan[]>([]);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const { currentWorkspace } = useWorkspaceStore();
   const router = useRouter();
 
   const loadPlans = useCallback(async () => {
     if (!currentWorkspace?.id) return;
-    
+
     setLoading(true);
     const { data } = await supabase
       .from('plans')
-      .select(`
-        *,
-        milestones:plan_milestones(*)
-      `)
+      .select('*')
       .eq('workspace_id', currentWorkspace.id)
       .order('start_date', { ascending: false });
 
@@ -57,218 +64,125 @@ export default function PlansPage() {
     }
   }, [currentWorkspace?.id, loadPlans]);
 
-  const getOverallProgress = (plan: Plan) => {
-    if (!plan.milestones || plan.milestones.length === 0) return 0;
-    
-    const totalPercentage = plan.milestones.reduce(
-      (sum, m) => sum + m.completion_percentage,
-      0
-    );
-    return Math.round(totalPercentage / plan.milestones.length);
+  const closeForm = useCallback(() => {
+    setShowForm(false);
+    setEditingPlan(null);
+  }, []);
+
+  const openCreate = () => {
+    setEditingPlan(null);
+    setShowForm(true);
   };
 
-  const getDaysRemaining = (plan: Plan) => {
-    const days = differenceInDays(new Date(plan.end_date), new Date());
-    return days > 0 ? days : 0;
+  const openEdit = (plan: Plan) => {
+    setEditingPlan(plan);
+    setShowForm(true);
   };
 
-  const getStatusColor = (status: Plan['status']) => {
-    switch (status) {
-      case 'active': return 'bg-green-500/10 text-green-500 border-green-500/20';
-      case 'completed': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      case 'draft': return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
-      case 'cancelled': return 'bg-red-500/10 text-red-500 border-red-500/20';
+  const deletePlan = async (id: string) => {
+    if (!confirm(t('deletePlanConfirm'))) return;
+    const { error } = await supabase.from('plans').delete().eq('id', id);
+    if (error) {
+      console.error(error);
+      return;
     }
+    loadPlans();
+  };
+
+  const dateLabel = (plan: Plan) => {
+    return `${format(new Date(plan.start_date), 'MMM d', { locale: dateLocale })} – ${format(new Date(plan.end_date), 'MMM d, yyyy', { locale: dateLocale })}`;
   };
 
   return (
-    <div className="p-8">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold text-white mb-2">Plans</h1>
-          <p className="text-slate-400">Strategic roadmaps and quarterly goals</p>
-        </div>
-        
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
-        >
-          <Plus className="w-5 h-5" />
-          New Plan
-        </button>
-      </div>
+    <div className="min-w-0 space-y-6">
+      <PageHeader
+        title={t('title')}
+        description={t('subtitle')}
+        action={
+          <Button type="button" onClick={openCreate} className="gap-2">
+            <Plus className="h-4 w-4" />
+            {t('newPlan')}
+          </Button>
+        }
+      />
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard
-          label="Active Plans"
-          value={plans.filter(p => p.status === 'active').length}
-          icon={<Target className="w-6 h-6" />}
-          color="blue"
-        />
-        <StatCard
-          label="Completed"
-          value={plans.filter(p => p.status === 'completed').length}
-          icon={<TrendingUp className="w-6 h-6" />}
-          color="green"
-        />
-        <StatCard
-          label="Total Milestones"
-          value={plans.reduce((sum, p) => sum + (p.milestones?.length || 0), 0)}
-          icon={<Calendar className="w-6 h-6" />}
-          color="purple"
-        />
-        <StatCard
-          label="Avg Progress"
-          value={plans.length > 0 ? `${Math.round(plans.reduce((sum, p) => sum + getOverallProgress(p), 0) / plans.length)}%` : '0%'}
-          icon={<TrendingUp className="w-6 h-6" />}
-          color="amber"
-        />
-      </div>
-
-      {/* Plans Grid */}
       {loading ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="bg-slate-900 border border-slate-800 rounded-2xl p-6 animate-pulse">
-              <div className="h-6 bg-slate-800 rounded w-1/2 mb-4" />
-              <div className="h-4 bg-slate-800 rounded w-3/4 mb-2" />
-              <div className="h-4 bg-slate-800 rounded w-2/3" />
-            </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {[1, 2, 3, 4].map((item) => (
+            <div key={item} className="h-24 animate-pulse rounded-2xl border border-border bg-surface" />
           ))}
         </div>
       ) : plans.length === 0 ? (
-        <div className="text-center py-16 bg-slate-900 border border-slate-800 rounded-2xl">
-          <Target className="w-16 h-16 text-slate-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-white mb-2">No plans yet</h3>
-          <p className="text-slate-400 mb-6">Create your first strategic plan to get started</p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
-          >
-            Create Plan
-          </button>
-        </div>
+        <EmptyState
+          title={t('emptyTitle')}
+          body={t('emptyBody')}
+          action={
+            <Button type="button" onClick={openCreate} className="gap-2">
+              <Plus className="h-4 w-4" />
+              {t('createPlan')}
+            </Button>
+          }
+        />
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {plans.map(plan => (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {plans.map((plan) => (
             <div
               key={plan.id}
-              className="bg-slate-900 border border-slate-800 rounded-2xl p-6 hover:border-slate-700 transition-colors cursor-pointer group"
+              className="flex min-w-0 cursor-pointer items-start gap-3 rounded-2xl border border-border bg-surface p-4 hover:border-primary/40"
               onClick={() => router.push(`/dashboard/plans/${plan.id}`)}
             >
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3 flex-1">
-                  <div
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: plan.color }}
-                  />
-                  <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
-                </div>
-                
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(plan.status)}`}
-                >
-                  {plan.status}
-                </span>
-              </div>
-
-              {plan.description && (
-                <p className="text-slate-400 text-sm mb-4 line-clamp-2">{plan.description}</p>
-              )}
-
-              {plan.goal && (
-                <div className="flex items-start gap-2 mb-4 p-3 bg-slate-800/50 rounded-lg">
-                  <Target className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
-                  <p className="text-sm text-slate-300">{plan.goal}</p>
-                </div>
-              )}
-
-              <div className="flex items-center gap-6 text-sm text-slate-400 mb-4">
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  {format(new Date(plan.start_date), 'MMM d')} - {format(new Date(plan.end_date), 'MMM d, yyyy')}
-                </div>
-                <div className="flex items-center gap-1">
-                  {getDaysRemaining(plan)} days left
-                </div>
-              </div>
-
-              {/* Progress Bar */}
-              <div className="mb-3">
-                <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-slate-400">Overall Progress</span>
-                  <span className="text-white font-medium">{getOverallProgress(plan)}%</span>
-                </div>
-                <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-600 rounded-full transition-all duration-500"
-                    style={{ width: `${getOverallProgress(plan)}%` }}
+              <div
+                className="mt-1.5 h-3 w-3 shrink-0 rounded-full"
+                style={{ backgroundColor: plan.color || '#3b82f6' }}
+              />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2">
+                  <h2 className="min-w-0 flex-1 break-words text-base font-semibold text-text-primary">{plan.name}</h2>
+                  <IconMenu
+                    label={t('editPlan')}
+                    items={[
+                      { label: t('editPlan'), onClick: () => openEdit(plan) },
+                      { label: t('deletePlan'), onClick: () => deletePlan(plan.id), danger: true },
+                    ]}
                   />
                 </div>
-              </div>
-
-              {/* Milestones Summary */}
-              <div className="flex items-center gap-4 text-sm">
-                <span className="text-slate-400">
-                  {plan.milestones?.length || 0} milestones
-                </span>
-                <span className="text-slate-400">
-                  {plan.milestones?.filter(m => m.is_completed).length || 0} completed
-                </span>
+                {plan.goal ? (
+                  <p className="mt-1 line-clamp-1 text-sm text-text-secondary">{plan.goal}</p>
+                ) : null}
+                <p className="mt-2 text-sm text-text-secondary">
+                  {t(`status.${plan.status}`)} · {dateLabel(plan)}
+                </p>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {showCreateModal && (
-        <CreatePlanModal
-          onClose={() => setShowCreateModal(false)}
-          onSave={() => {
-            setShowCreateModal(false);
-            loadPlans();
-          }}
-        />
-      )}
+      <PlanFormDialog
+        open={showForm}
+        plan={editingPlan}
+        onClose={closeForm}
+        onSaved={() => {
+          closeForm();
+          loadPlans();
+        }}
+      />
     </div>
   );
 }
 
-interface StatCardProps {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-  color: 'blue' | 'green' | 'purple' | 'amber';
-}
-
-function StatCard({ label, value, icon, color }: StatCardProps) {
-  const colorClasses = {
-    blue: 'bg-blue-500/10 text-blue-400',
-    green: 'bg-green-500/10 text-green-400',
-    purple: 'bg-purple-500/10 text-purple-400',
-    amber: 'bg-amber-500/10 text-amber-400',
-  };
-
-  return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-4">
-        <div className={`p-3 rounded-xl ${colorClasses[color]}`}>
-          {icon}
-        </div>
-        <span className="text-3xl font-bold text-white">{value}</span>
-      </div>
-      <p className="text-slate-400 text-sm">{label}</p>
-    </div>
-  );
-}
-
-interface CreatePlanModalProps {
+function PlanFormDialog({
+  open,
+  plan,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  plan: Plan | null;
   onClose: () => void;
-  onSave: () => void;
-}
-
-function CreatePlanModal({ onClose, onSave }: CreatePlanModalProps) {
+  onSaved: () => void;
+}) {
+  const t = useTranslations('pages.plans');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [goal, setGoal] = useState('');
@@ -279,12 +193,22 @@ function CreatePlanModal({ onClose, onSave }: CreatePlanModalProps) {
   const [saving, setSaving] = useState(false);
   const { currentWorkspace } = useWorkspaceStore();
 
+  useEffect(() => {
+    if (!open) return;
+    setName(plan?.name ?? '');
+    setDescription(plan?.description ?? '');
+    setGoal(plan?.goal ?? '');
+    setStartDate(plan?.start_date ? plan.start_date.slice(0, 10) : '');
+    setEndDate(plan?.end_date ? plan.end_date.slice(0, 10) : '');
+    setColor(plan?.color || '#3b82f6');
+    setStatus(plan?.status ?? 'draft');
+  }, [open, plan]);
+
   const handleSave = async () => {
     if (!name || !startDate || !endDate || !currentWorkspace?.id) return;
 
     setSaving(true);
-    const { error } = await supabase.from('plans').insert({
-      workspace_id: currentWorkspace.id,
+    const fields = {
       name,
       description,
       goal,
@@ -292,141 +216,140 @@ function CreatePlanModal({ onClose, onSave }: CreatePlanModalProps) {
       end_date: endDate,
       color,
       status,
-    });
+    };
 
-    if (!error) {
-      onSave();
-    }
+    const { error } = plan
+      ? await supabase.from('plans').update(fields).eq('id', plan.id)
+      : await supabase.from('plans').insert({
+          workspace_id: currentWorkspace.id,
+          name,
+          description,
+          goal,
+          start_date: startDate,
+          end_date: endDate,
+          color,
+          status,
+        });
+
+    if (!error) onSaved();
     setSaving(false);
   };
 
-  const colors = [
-    '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b',
-    '#10b981', '#06b6d4', '#f43f5e', '#6366f1'
-  ];
-
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 p-4">
-      <div className="bg-surface/90 border border-white/10 rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] mt-20 sm:mt-0 overflow-y-auto shadow-2xl">
-        <h2 className="text-2xl font-bold text-white mb-6">Create New Plan</h2>
-
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Plan Name *
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-              placeholder="Q1 2026 Roadmap"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Description
-            </label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-              placeholder="What's this plan about?"
-              rows={3}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Strategic Goal
-            </label>
-            <input
-              type="text"
-              value={goal}
-              onChange={(e) => setGoal(e.target.value)}
-              className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-              placeholder="Launch MVP and reach 100 users"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                Start Date *
-              </label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-text-secondary mb-2">
-                End Date *
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">
-              Status
-            </label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as Plan['status'])}
-              className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-            >
-              <option value="draft">Draft</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-3">
-              Color
-            </label>
-            <div className="flex gap-3">
-              {colors.map(c => (
-                <button
-                  key={c}
-                  onClick={() => setColor(c)}
-                  className={`w-10 h-10 rounded-lg transition-all ${
-                    color === c ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900' : ''
-                  }`}
-                  style={{ backgroundColor: c }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-3 mt-6">
-          <button
-            onClick={onClose}
-            className="flex-1 px-6 py-3 bg-surface hover:bg-surface-hover text-white rounded-xl border border-white/10 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
+    <Dialog
+      open={open}
+      title={plan ? t('editPlanTitle') : t('createTitle')}
+      onClose={onClose}
+      size="lg"
+      footer={
+        <div className="flex gap-3">
+          <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          <Button
+            type="submit"
+            form="plan-form"
+            className="flex-1"
             disabled={!name || !startDate || !endDate || saving}
-            className="flex-1 px-6 py-3 bg-primary hover:bg-primary-hover text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {saving ? 'Creating...' : 'Create Plan'}
-          </button>
+            {saving ? (plan ? t('saving') : t('creating')) : plan ? t('saveChanges') : t('createPlan')}
+          </Button>
         </div>
-      </div>
-    </div>
+      }
+    >
+      <form
+        id="plan-form"
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          handleSave();
+        }}
+      >
+        <label className="block text-sm text-text-secondary">
+          {t('planName')}
+          <input
+            type="text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            className={`${fieldClass} mt-1.5`}
+            placeholder={t('planNamePlaceholder')}
+          />
+        </label>
+
+        <label className="block text-sm text-text-secondary">
+          {t('description')}
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            className={`${fieldClass} mt-1.5`}
+            placeholder={t('descriptionPlaceholder')}
+            rows={3}
+          />
+        </label>
+
+        <label className="block text-sm text-text-secondary">
+          {t('goal')}
+          <input
+            type="text"
+            value={goal}
+            onChange={(event) => setGoal(event.target.value)}
+            className={`${fieldClass} mt-1.5`}
+            placeholder={t('goalPlaceholder')}
+          />
+        </label>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <label className="block text-sm text-text-secondary">
+            {t('startDate')}
+            <input
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+              className={`${fieldClass} mt-1.5`}
+            />
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('endDate')}
+            <input
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              className={`${fieldClass} mt-1.5`}
+            />
+          </label>
+        </div>
+
+        <label className="block text-sm text-text-secondary">
+          {t('statusLabel')}
+          <select
+            value={status}
+            onChange={(event) => setStatus(event.target.value as Plan['status'])}
+            className={`${fieldClass} mt-1.5`}
+          >
+            <option value="draft">{t('status.draft')}</option>
+            <option value="active">{t('status.active')}</option>
+            <option value="completed">{t('status.completed')}</option>
+            <option value="cancelled">{t('status.cancelled')}</option>
+          </select>
+        </label>
+
+        <div>
+          <p className="text-sm text-text-secondary">{t('color')}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {colors.map((swatch) => (
+              <button
+                key={swatch}
+                type="button"
+                aria-label={swatch}
+                aria-pressed={color === swatch}
+                onClick={() => setColor(swatch)}
+                className={`h-8 w-8 rounded-lg ${color === swatch ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface' : ''}`}
+                style={{ backgroundColor: swatch }}
+              />
+            ))}
+          </div>
+        </div>
+      </form>
+    </Dialog>
   );
 }

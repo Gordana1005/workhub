@@ -162,32 +162,32 @@ export default function Topbar() {
 
   return (
     <>
-    <header className="z-20 h-16 px-3 sm:px-4 lg:px-6 border-b border-cyan-500/20 bg-transparent backdrop-blur-xl flex items-center justify-between sticky top-0 text-white">
+    <header className="z-20 h-16 px-3 sm:px-4 lg:px-6 border-b border-border bg-background/80 backdrop-blur-xl flex items-center justify-between sticky top-0 text-text-primary">
         <div className="flex items-center gap-2 sm:gap-4 lg:gap-6 min-w-0 flex-1">
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-1.5 sm:gap-2 group flex-shrink-0">
              <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-white transition-colors">
                  <Zap className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />
              </div>
-             <span className="font-bold text-sm sm:text-lg text-white tracking-tight">TrackWork<span className="text-primary">.</span></span>
+             <span className="font-bold text-sm sm:text-lg text-text-primary tracking-tight">TrackWork<span className="text-primary">.</span></span>
           </Link>
 
           {/* Separator */}
-          <div className="h-6 w-px bg-white/10 hidden lg:block" />
+          <div className="h-6 w-px bg-border hidden lg:block" />
 
           {/* Home crumb */}
           <Link href="/dashboard" className="hidden lg:block flex-shrink-0">
             <Button
               variant="ghost"
               size="sm"
-              className="text-white/80 hover:text-white hover:bg-white/5 gap-2"
+              className="text-text-secondary hover:text-text-primary hover:bg-surface-hover gap-2"
             >
               <Home className="w-4 h-4" />
               Home
             </Button>
           </Link>
 
-          <div className="h-6 w-px bg-white/10 hidden lg:block" />
+          <div className="h-6 w-px bg-border hidden lg:block" />
 
           {/* Main Navigation */}
           <nav className="hidden md:flex items-center gap-1 min-w-0 flex-1 overflow-hidden">
@@ -197,8 +197,8 @@ export default function Topbar() {
                   variant="ghost"
                   size="sm"
                   className={clsx(
-                    'text-sm gap-2 hover:bg-white/5 flex-shrink-0',
-                    isActive(href) ? 'bg-white/10 text-white shadow-sm shadow-primary/30' : 'text-white/80'
+                    'text-sm gap-2 hover:bg-surface-hover flex-shrink-0',
+                    isActive(href) ? 'bg-primary/10 text-primary shadow-sm shadow-primary/30' : 'text-text-secondary'
                   )}
                 >
                   <Icon className="w-4 h-4" />
@@ -212,7 +212,7 @@ export default function Topbar() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-sm gap-2 hover:bg-white/5 text-white/80"
+                  className="text-sm gap-2 hover:bg-surface-hover text-text-secondary"
                   onClick={() => setShowDesktopMenu(!showDesktopMenu)}
                 >
                   <Settings className="w-4 h-4" />
@@ -230,7 +230,7 @@ export default function Topbar() {
                     >
                       {navItems.slice(7).map(({ href, label, icon: Icon }) => (
                         <Link key={href} href={href} onClick={() => setShowDesktopMenu(false)}>
-                          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-text-secondary hover:text-white transition-colors">
+                          <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-colors">
                             <Icon className="w-4 h-4" />
                             <span className="text-sm">{label}</span>
                           </div>
@@ -257,7 +257,7 @@ export default function Topbar() {
             <Button
               variant="ghost"
               size="sm"
-              className="relative text-text-secondary hover:text-white p-2"
+              className="relative text-text-secondary hover:text-text-primary p-2"
               onClick={() => setShowMobileWorkspaceMenu(!showMobileWorkspaceMenu)}
             >
               <Building2 className="w-5 h-5" />
@@ -273,7 +273,7 @@ export default function Topbar() {
                     className="fixed top-16 right-4 mt-14 w-64 p-1 rounded-xl bg-surface border border-border shadow-2xl overflow-hidden z-[100]"
                   >
                   <div className="p-3 border-b border-border/50 mb-1">
-                    <p className="text-sm font-medium text-white">Switch Workspace</p>
+                    <p className="text-sm font-medium text-text-primary">Switch Workspace</p>
                     <p className="text-xs text-text-muted">Select a workspace to work in</p>
                   </div>
                   <div className="max-h-48 overflow-y-auto">
@@ -285,10 +285,10 @@ export default function Topbar() {
                           setShowMobileWorkspaceMenu(false)
                         }}
                         className={clsx(
-                          'w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-white/5 transition-colors',
+                          'w-full flex items-center gap-3 p-2 rounded-lg text-left hover:bg-surface-hover transition-colors',
                           currentWorkspace?.id === workspace.id
                             ? 'bg-primary/10 text-primary'
-                            : 'text-text-secondary hover:text-white'
+                            : 'text-text-secondary hover:text-text-primary'
                         )}
                       >
                         <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
@@ -305,7 +305,7 @@ export default function Topbar() {
                   </div>
                   <div className="border-t border-border/50 mt-1 pt-1">
                     <Link href="/dashboard/workspaces" onClick={() => setShowMobileWorkspaceMenu(false)}>
-                      <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-text-secondary hover:text-white transition-colors">
+                      <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-colors">
                         <div className="w-8 h-8 rounded-lg bg-surface-hover flex items-center justify-center flex-shrink-0">
                           <Plus className="w-4 h-4" />
                         </div>
@@ -323,7 +323,7 @@ export default function Topbar() {
           <Button
             variant="ghost"
             size="sm"
-            className="relative text-text-secondary hover:text-white"
+            className="relative text-text-secondary hover:text-text-primary"
               onClick={() => setShowNotifications(true)}
           >
             <Bell className="w-5 h-5" />
@@ -339,7 +339,7 @@ export default function Topbar() {
                 src={profile.avatar_url || undefined}
                 fallback={profile.username ? profile.username.substring(0,2).toUpperCase() : 'ME'}
                 alt={profile.username || 'User Profile'}
-                  className="cursor-pointer hover:ring-2 ring-primary/50 transition-all border border-cyan-500/20"
+                  className="cursor-pointer hover:ring-2 ring-primary/50 transition-all border border-border"
                 />
              </div>
 
@@ -354,10 +354,10 @@ export default function Topbar() {
                       className="fixed top-16 right-2 mt-14 md:mt-2 w-56 p-1 rounded-xl bg-surface border border-border shadow-2xl overflow-hidden z-[100]"
                     >
                      <div className="p-2 border-b border-border/50 mb-1">
-                        <p className="text-sm font-medium text-white">My Account</p>
+                        <p className="text-sm font-medium text-text-primary">My Account</p>
                         <p className="text-xs text-text-muted">Manage your profile</p>
                      </div>
-                     <Link href="/dashboard/settings" onClick={() => setShowProfileMenu(false)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 text-text-secondary hover:text-white transition-colors">
+                     <Link href="/dashboard/settings" onClick={() => setShowProfileMenu(false)} className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface-hover text-text-secondary hover:text-text-primary transition-colors">
                         <Settings className="w-4 h-4" />
                         <span className="text-sm">Settings</span>
                      </Link>
@@ -374,13 +374,13 @@ export default function Topbar() {
     </header>
 
     {/* Mobile horizontal nav under the topbar */}
-    <div className="md:hidden sticky top-16 z-[90] bg-transparent border-b border-cyan-500/20 backdrop-blur-xl">
+    <div className="md:hidden sticky top-16 z-[90] bg-background/80 border-b border-border backdrop-blur-xl">
       <div className="flex items-center gap-2 overflow-x-auto px-4 py-3 no-scrollbar">
         <Link href="/dashboard" className="shrink-0">
           <Button
             variant="ghost"
             size="sm"
-            className="text-xs gap-2 rounded-full bg-white/5 text-white/90 hover:bg-white/10"
+            className="text-xs gap-2 rounded-full bg-surface-hover text-text-primary hover:bg-surface-hover"
           >
             <Home className="w-4 h-4" />
             Home
@@ -392,8 +392,8 @@ export default function Topbar() {
               variant="ghost"
               size="sm"
               className={clsx(
-                'text-xs gap-2 rounded-full px-3 bg-white/0 text-white/80 hover:bg-white/10',
-                isActive(href) && 'bg-white/15 text-white shadow-sm shadow-primary/40'
+                'text-xs gap-2 rounded-full px-3 bg-transparent text-text-secondary hover:bg-surface-hover hover:text-text-primary',
+                isActive(href) && 'bg-primary/10 text-primary shadow-sm shadow-primary/40'
               )}
             >
               <Icon className="w-4 h-4" />

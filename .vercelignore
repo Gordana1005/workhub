@@ -1,0 +1,6 @@
+WORK
+.git
+node_modules
+**/.next
+**/node_modules
+**/*.log

@@ -1,9 +1,20 @@
 
 import { createClient } from '@supabase/supabase-js'
+import fs from 'fs'
 
-// Load env vars
-const supabaseUrl = 'https://miqwspnfqdqrwkdqviif.supabase.co'
-const supabaseServiceKey = 'sb_secret_fbfukuUsJcMb1BwXCO6C0g_bZBYI0E7'
+function loadEnv(path) {
+  const out = {}
+  for (const line of fs.readFileSync(path, 'utf8').split(/\r?\n/)) {
+    if (!line || line.startsWith('#') || !line.includes('=')) continue
+    const i = line.indexOf('=')
+    out[line.slice(0, i).trim()] = line.slice(i + 1).trim()
+  }
+  return out
+}
+
+const env = loadEnv(new URL('../.env.local', import.meta.url))
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_ROLE_KEY
 
 if (!supabaseUrl || !supabaseServiceKey) {
   console.error('Missing Supabase credentials')

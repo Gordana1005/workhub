@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, X, FileText, FileJson, FileSpreadsheet } from 'lucide-react';
+import { Download, FileText, FileJson, FileSpreadsheet } from 'lucide-react';
 import { exportTasks, exportTimeEntries, exportProjects, exportNotes, ExportFormat } from '@/lib/export';
+import { useTranslations } from 'next-intl';
+import { Dialog } from '@/components/ui/Dialog';
 
 interface ExportDialogProps {
   isOpen: boolean;
@@ -12,17 +14,23 @@ interface ExportDialogProps {
   defaultFilename?: string;
 }
 
-export default function ExportDialog({ 
-  isOpen, 
-  onClose, 
-  data, 
+export default function ExportDialog({
+  isOpen,
+  onClose,
+  data,
   dataType,
-  defaultFilename 
+  defaultFilename
 }: ExportDialogProps) {
+  const t = useTranslations('pages.tools');
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [filename, setFilename] = useState(defaultFilename || `${dataType}-export`);
 
-  if (!isOpen) return null;
+  const typeLabels: Record<ExportDialogProps['dataType'], string> = {
+    tasks: t('export.typeTasks'),
+    'time-entries': t('export.typeTimeEntries'),
+    projects: t('export.typeProjects'),
+    notes: t('export.typeNotes'),
+  };
 
   const handleExport = () => {
     const options = { format, filename };
@@ -46,95 +54,79 @@ export default function ExportDialog({
   };
 
   const formats = [
-    { value: 'csv' as ExportFormat, label: 'CSV', icon: FileSpreadsheet, description: 'Spreadsheet format (Excel, Google Sheets)' },
-    { value: 'json' as ExportFormat, label: 'JSON', icon: FileJson, description: 'Machine-readable format for developers' },
-    { value: 'markdown' as ExportFormat, label: 'Markdown', icon: FileText, description: 'Human-readable text format' },
+    { value: 'csv' as ExportFormat, label: t('export.csv'), icon: FileSpreadsheet, description: t('export.csvHelp') },
+    { value: 'json' as ExportFormat, label: t('export.json'), icon: FileJson, description: t('export.jsonHelp') },
+    { value: 'markdown' as ExportFormat, label: t('export.markdown'), icon: FileText, description: t('export.markdownHelp') },
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="card w-full max-w-lg m-4">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <Download className="w-6 h-6 text-purple-400" />
-            <h2 className="text-2xl font-bold gradient-text">Export Data</h2>
-          </div>
+    <Dialog
+      open={isOpen}
+      title={t('export.title')}
+      onClose={onClose}
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row">
+          <button type="button" onClick={onClose} className="btn-secondary flex-1">
+            {t('export.cancel')}
+          </button>
           <button
-            onClick={onClose}
-            className="p-2 hover:bg-white/5 rounded-lg transition-colors"
+            type="button"
+            onClick={handleExport}
+            disabled={!filename.trim()}
+            className="btn-primary inline-flex flex-1 items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <X className="w-5 h-5" />
+            <Download className="h-4 w-4" />
+            {t('export.export')}
           </button>
         </div>
-
-        <div className="space-y-6">
-          {/* Format Selection */}
-          <div>
-            <label className="block text-sm font-medium mb-3">Export Format</label>
-            <div className="space-y-2">
-              {formats.map((f) => (
-                <button
-                  key={f.value}
-                  onClick={() => setFormat(f.value)}
-                  className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
-                    format === f.value
-                      ? 'border-purple-500 bg-purple-500/10'
-                      : 'border-white/10 hover:border-white/20'
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <f.icon className={`w-5 h-5 mt-0.5 ${format === f.value ? 'text-purple-400' : 'text-gray-400'}`} />
-                    <div className="flex-1">
-                      <div className="font-semibold">{f.label}</div>
-                      <div className="text-sm text-gray-400 mt-1">{f.description}</div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Filename Input */}
-          <div>
-            <label className="block text-sm font-medium mb-2">Filename</label>
-            <input
-              type="text"
-              value={filename}
-              onChange={(e) => setFilename(e.target.value)}
-              className="w-full px-4 py-2 bg-surface-light rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
-              placeholder="Enter filename"
-            />
-            <p className="text-xs text-gray-400 mt-2">
-              File extension will be added automatically
-            </p>
-          </div>
-
-          {/* Info */}
-          <div className="p-4 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-            <p className="text-sm text-gray-300">
-              Exporting <span className="font-semibold text-purple-400">{data.length}</span> {dataType.replace('-', ' ')}
-            </p>
-          </div>
-
-          {/* Actions */}
-          <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className="btn-secondary flex-1"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleExport}
-              disabled={!filename.trim()}
-              className="btn-primary flex-1 flex items-center justify-center gap-2"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </button>
+      }
+    >
+      <div className="space-y-5">
+        <div>
+          <p className="mb-2 text-sm font-medium text-text-primary">{t('export.format')}</p>
+          <div className="space-y-2">
+            {formats.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setFormat(item.value)}
+                className={`w-full rounded-xl border p-3 text-left ${
+                  format === item.value
+                    ? 'border-primary bg-primary/10'
+                    : 'border-border hover:bg-surface-hover'
+                }`}
+              >
+                <span className="flex items-start gap-3">
+                  <item.icon className={`mt-0.5 h-5 w-5 shrink-0 ${format === item.value ? 'text-primary' : 'text-text-secondary'}`} />
+                  <span className="min-w-0">
+                    <span className="block font-semibold text-text-primary">{item.label}</span>
+                    <span className="mt-0.5 block text-sm text-text-secondary">{item.description}</span>
+                  </span>
+                </span>
+              </button>
+            ))}
           </div>
         </div>
+
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-text-primary" htmlFor="export-filename">
+            {t('export.filename')}
+          </label>
+          <input
+            id="export-filename"
+            type="text"
+            value={filename}
+            onChange={(e) => setFilename(e.target.value)}
+            className="block w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none"
+            placeholder={t('export.filenamePlaceholder')}
+          />
+          <p className="mt-1.5 text-xs text-text-secondary">{t('export.extensionHint')}</p>
+        </div>
+
+        <p className="rounded-lg border border-border bg-surface-hover p-3 text-sm text-text-primary">
+          {t('export.exportingBefore')} <span className="font-semibold text-primary">{data.length}</span> {t('export.exportingAfter', { type: typeLabels[dataType] })}
+        </p>
       </div>
-    </div>
+    </Dialog>
   );
 }

@@ -2,11 +2,16 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { useLocale, useTranslations } from 'next-intl'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
-import { Plus, Search, Grid, List, Calendar, X, Edit2, Trash2, Upload, Image as ImageIcon } from 'lucide-react'
+import { Plus, Search, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
+import { Dialog } from '@/components/ui/Dialog'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { IconMenu } from '@/components/ui/IconMenu'
+import { PageHeader } from '@/components/ui/PageHeader'
+import CreateProjectDialog from '@/components/create/CreateProjectDialog'
 
 interface Project {
   id: string
@@ -21,47 +26,54 @@ interface Project {
   logo_url: string | null
 }
 
+const COLORS = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#feca57', '#ff6b6b', '#4ecdc4']
+
+const fieldClass =
+  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+
+const emptyForm = {
+  name: '',
+  description: '',
+  color: '#667eea',
+  status: 'active',
+  start_date: '',
+  end_date: '',
+  logo_file: null as File | null,
+}
+
 export default function ProjectsPage() {
+  const t = useTranslations('pages.projects')
+  const locale = useLocale()
   const router = useRouter()
   const { currentWorkspace } = useWorkspaceStore()
-  const [view, setView] = useState<'grid' | 'list'>('grid')
   const [searchQuery, setSearchQuery] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [editingProject, setEditingProject] = useState<Project | null>(null)
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
-  const [userLoading, setUserLoading] = useState(true)
   const [uploadingLogo, setUploadingLogo] = useState(false)
-  
-  // Form state
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    color: '#667eea',
-    status: 'active',
-    start_date: '',
-    end_date: '',
-    logo_file: null as File | null
-  })
+  const [formData, setFormData] = useState(emptyForm)
 
-  useEffect(() => {
-    const getCurrentUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) setCurrentUserId(user.id)
-      setUserLoading(false)
+  const statusLabel = (status: string) => {
+    const map: Record<string, string> = {
+      active: t('status.active'),
+      completed: t('status.completed'),
+      planning: t('status.planning'),
+      archived: t('status.archived'),
+      on_hold: t('status.onHold'),
+      'on-hold': t('status.onHold'),
+      in_progress: t('status.inProgress'),
+      'in-progress': t('status.inProgress'),
     }
-    getCurrentUser()
-  }, [])
+    return map[status] ?? status.replace(/[-_]/g, ' ')
+  }
 
   const loadProjects = useCallback(async () => {
     if (!currentWorkspace) return
-    
     try {
       setLoading(true)
       const response = await fetch(`/api/projects?workspace_id=${currentWorkspace.id}`)
       const data = await response.json()
-      
       if (!response.ok) throw new Error(data.error)
       setProjects(data.projects || [])
     } catch (error) {
@@ -72,128 +84,27 @@ export default function ProjectsPage() {
   }, [currentWorkspace])
 
   useEffect(() => {
-    if (currentWorkspace) {
-      loadProjects()
-    }
+    if (currentWorkspace) loadProjects()
   }, [currentWorkspace, loadProjects])
 
-  // Also load data on mount in case currentWorkspace is already set
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (currentWorkspace) {
-        loadProjects()
-      }
-    }, 100)
-    return () => clearTimeout(timer)
-  }, [currentWorkspace, loadProjects])
-
-  const handleCreateProject = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    if (!currentWorkspace) {
-      alert('Please select a workspace first')
-      return
-    }
-
-    try {
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        alert('You must be logged in to create projects')
-        return
-      }
-
-      let logo_url = null
-
-      // Upload logo if provided
-      if (formData.logo_file) {
-        setUploadingLogo(true)
-        const fileExt = formData.logo_file.name.split('.').pop()
-        const fileName = `${user.id}-${Date.now()}.${fileExt}`
-        const filePath = `project-logos/${fileName}`
-
-        const { error: uploadError } = await supabase.storage
-          .from('project-assets')
-          .upload(filePath, formData.logo_file)
-
-        if (uploadError) throw uploadError
-
-        const { data: urlData } = supabase.storage
-          .from('project-assets')
-          .getPublicUrl(filePath)
-
-        logo_url = urlData.publicUrl
-        setUploadingLogo(false)
-      }
-
-      const projectData: any = {
-        workspace_id: currentWorkspace.id,
-        name: formData.name,
-        description: formData.description || null,
-        color: formData.color,
-        status: formData.status,
-        start_date: formData.start_date || null,
-        end_date: formData.end_date || null
-      }
-
-      if (logo_url) {
-        projectData.logo_url = logo_url
-      }
-
-      const response = await fetch('/api/projects', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(projectData)
-      })
-      
-      const data = await response.json()
-      if (!response.ok) throw new Error(data.error)
-
-      // Reset form and reload
-      setFormData({
-        name: '',
-        description: '',
-        color: '#667eea',
-        status: 'active',
-        start_date: '',
-        end_date: '',
-        logo_file: null
-      })
-      setShowCreateDialog(false)
-      loadProjects()
-    } catch (error) {
-      console.error('Error creating project:', error)
-      alert(`Failed to create project: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      setUploadingLogo(false)
-    }
+  const closeEdit = () => {
+    setEditingProject(null)
+    setFormData(emptyForm)
   }
 
-  const handleUpdateProject = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
+  const handleUpdateProject = async (event: React.FormEvent) => {
+    event.preventDefault()
     if (!editingProject) return
 
     try {
-      let logo_url = editingProject.logo_url
-
-      // Upload new logo if provided
+      let logoUrl = editingProject.logo_url
       if (formData.logo_file) {
         setUploadingLogo(true)
         const fileExt = formData.logo_file.name.split('.').pop()
-        const fileName = `${editingProject.id}-${Date.now()}.${fileExt}`
-        const filePath = `project-logos/${fileName}`
-
-        const { error: uploadError } = await supabase.storage
-          .from('project-assets')
-          .upload(filePath, formData.logo_file)
-
+        const filePath = `project-logos/${editingProject.id}-${Date.now()}.${fileExt}`
+        const { error: uploadError } = await supabase.storage.from('project-assets').upload(filePath, formData.logo_file)
         if (uploadError) throw uploadError
-
-        const { data: urlData } = supabase.storage
-          .from('project-assets')
-          .getPublicUrl(filePath)
-
-        logo_url = urlData.publicUrl
+        logoUrl = supabase.storage.from('project-assets').getPublicUrl(filePath).data.publicUrl
         setUploadingLogo(false)
       }
 
@@ -208,34 +119,21 @@ export default function ProjectsPage() {
           status: formData.status,
           start_date: formData.start_date || null,
           end_date: formData.end_date || null,
-          logo_url: logo_url
-        })
+          logo_url: logoUrl,
+        }),
       })
-      
       const data = await response.json()
       if (!response.ok) throw new Error(data.error)
-
-      // Reset form and reload
-      setFormData({
-        name: '',
-        description: '',
-        color: '#667eea',
-        status: 'active',
-        start_date: '',
-        end_date: '',
-        logo_file: null
-      })
-      setEditingProject(null)
+      closeEdit()
       loadProjects()
     } catch (error) {
       console.error('Error updating project:', error)
-      alert(`Failed to update project: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      alert(t('updateFailed', { error: error instanceof Error ? error.message : t('unknownError') }))
       setUploadingLogo(false)
     }
   }
 
-  const handleEditProject = (project: Project, e: React.MouseEvent) => {
-    e.stopPropagation()
+  const openEdit = (project: Project) => {
     setEditingProject(project)
     setFormData({
       name: project.name,
@@ -244,385 +142,238 @@ export default function ProjectsPage() {
       status: project.status,
       start_date: project.start_date || '',
       end_date: project.end_date || '',
-      logo_file: null
+      logo_file: null,
     })
   }
 
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      // Check file size (3MB max)
-      if (file.size > 3 * 1024 * 1024) {
-        alert('File size must be less than 3MB')
-        return
-      }
-      setFormData({ ...formData, logo_file: file })
-    }
-  }
-
-  const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    
-    if (!confirm('Are you sure you want to delete this project? This will also delete all associated tasks.')) {
+  const handleLogoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    if (file.size > 3 * 1024 * 1024) {
+      alert(t('fileTooLarge'))
       return
     }
+    setFormData({ ...formData, logo_file: file })
+  }
 
+  const handleDeleteProject = async (projectId: string) => {
+    if (!confirm(t('deleteConfirm'))) return
     try {
-      const response = await fetch(`/api/projects?id=${projectId}`, {
-        method: 'DELETE'
-      })
-      
+      const response = await fetch(`/api/projects?id=${projectId}`, { method: 'DELETE' })
       const data = await response.json()
       if (!response.ok) throw new Error(data.error)
-
       loadProjects()
     } catch (error) {
       console.error('Error deleting project:', error)
-      alert(`Failed to delete project: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      alert(t('deleteFailed', { error: error instanceof Error ? error.message : t('unknownError') }))
     }
   }
 
-  const filteredProjects = projects.filter(project =>
+  const filteredProjects = projects.filter((project) =>
     project.name.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const dateLabel = (project: Project) => {
+    const start = project.start_date ? new Date(project.start_date).toLocaleDateString(locale) : ''
+    const end = project.end_date ? new Date(project.end_date).toLocaleDateString(locale) : ''
+    if (start && end) return `${start} – ${end}`
+    return start || end || new Date(project.created_at).toLocaleDateString(locale)
+  }
+
   return (
-    <div className="space-y-8">
-      {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-3xl md:text-4xl font-bold text-white">Projects</h1>
-        <p className="text-text-secondary">Manage and track all your projects</p>
+    <div className="space-y-6">
+      <PageHeader
+        title={t('title')}
+        description={t('subtitle')}
+        action={
+          loading || projects.length > 0 ? (
+            <Button onClick={() => setShowCreateDialog(true)} className="gap-2" aria-label={t('newProject')}>
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('newProject')}</span>
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+        <input
+          type="search"
+          placeholder={t('searchPlaceholder')}
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          className={`${fieldClass} pl-9`}
+        />
       </div>
 
-      {/* Actions Bar */}
-      <Card className="bg-surface/70 border-white/5 backdrop-blur-md p-4 md:p-6">
-        <div className="flex flex-col md:flex-row gap-4 md:items-center md:justify-between">
-          <div className="flex-1 relative w-full md:w-auto">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted w-5 h-5" />
-            <input
-              type="text"
-              placeholder="Search projects..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-12 pr-4 py-3 rounded-xl bg-surface/80 border border-white/10 text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2 justify-end">
-            <button
-              onClick={() => setView('grid')}
-              className={`p-3 rounded-xl transition-all ${
-                view === 'grid'
-                  ? 'bg-primary text-white'
-                  : 'bg-surface/60 text-text-secondary border border-white/10 hover:bg-surface-hover'
-              }`}
-            >
-              <Grid className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setView('list')}
-              className={`p-3 rounded-xl transition-all ${
-                view === 'list'
-                  ? 'bg-primary text-white'
-                  : 'bg-surface/60 text-text-secondary border border-white/10 hover:bg-surface-hover'
-              }`}
-            >
-              <List className="w-5 h-5" />
-            </button>
-            <Button 
-              onClick={() => setShowCreateDialog(true)}
-              className="bg-primary text-white px-6 py-3 rounded-xl hover:bg-primary-hover transition-colors inline-flex items-center gap-2"
-            >
-              <Plus className="w-5 h-5" />
-              New Project
-            </Button>
-          </div>
-        </div>
-      </Card>
-
-      {/* Projects Grid/List */}
-      {loading || userLoading ? (
-        <div className="text-center py-12">
-          <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto"></div>
-        </div>
+      {loading ? (
+        <p className="py-12 text-center text-sm text-text-muted">{t('loadingProject')}</p>
       ) : filteredProjects.length === 0 ? (
-        <Card className="bg-surface/70 border-white/5 rounded-xl p-12 text-center">
-          <div className="w-20 h-20 bg-surface/60 rounded-xl flex items-center justify-center mx-auto mb-4">
-            <Plus className="w-10 h-10 text-text-muted" />
-          </div>
-          <h3 className="text-2xl font-bold text-white mb-2">No projects yet</h3>
-          <p className="text-text-secondary mb-6">Create your first project to get started</p>
-          <Button
-            onClick={() => setShowCreateDialog(true)}
-            className="bg-primary text-white px-6 py-3 rounded-xl hover:bg-primary-hover inline-flex items-center gap-2"
-          >
-            <Plus className="w-5 h-5" />
-            Create Project
-          </Button>
-        </Card>
+        <EmptyState
+          title={t('emptyTitle')}
+          body={t('emptyBody')}
+          action={
+            <Button onClick={() => setShowCreateDialog(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              {t('createProject')}
+            </Button>
+          }
+        />
       ) : (
-        <div className={view === 'grid' ? 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'space-y-4'}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProjects.map((project) => (
             <div
               key={project.id}
-              className="bg-surface/70 border border-white/5 rounded-xl p-6 hover:border-primary/40 transition-all cursor-pointer group relative"
+              className="flex cursor-pointer items-start gap-3 rounded-2xl border border-border bg-surface p-4 hover:border-primary/40"
               onClick={() => router.push(`/dashboard/projects/${project.id}`)}
             >
-              {/* Action buttons - fixed z-index and positioning */}
-              <div className="absolute top-4 right-4 flex items-center gap-2" style={{ zIndex: 20 }}>
-                {/* Show edit/delete for all projects in user's workspace */}
-                <button
-                  onClick={(e) => handleEditProject(project, e)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-primary/10 hover:bg-primary/20 rounded-lg text-primary hover:text-primary/80"
-                  title="Edit project"
+              {project.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={project.logo_url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+              ) : (
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-semibold text-white"
+                  style={{ backgroundColor: project.color || '#667eea' }}
                 >
-                  <Edit2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={(e) => handleDeleteProject(project.id, e)}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 hover:text-red-300"
-                  title="Delete project"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  {project.logo_url ? (
-                    <>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={project.logo_url}
-                        alt={project.name}
-                        className="w-12 h-12 rounded-lg object-cover"
-                      />
-                    </>
-                  ) : (
-                    <div
-                      className="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-xl"
-                      style={{ backgroundColor: project.color || '#667eea' }}
-                    >
-                      {project.name.charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  {project.name.charAt(0).toUpperCase()}
                 </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  project.status === 'active' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                  project.status === 'in-progress' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                  project.status === 'on-hold' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-                  project.status === 'completed' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
-                  'bg-gray-500/20 text-gray-400 border border-gray-500/30'
-                }`}>
-                  {project.status.replace('-', ' ')}
-                </span>
-              </div>
-              
-              <h3 className="text-xl font-bold text-white mb-2">{project.name}</h3>
-              {project.description && (
-                <p className="text-text-secondary mb-4 line-clamp-2">{project.description}</p>
               )}
-
-              <div className="flex items-center gap-4 text-sm text-text-secondary">
-                {project.start_date && (
-                  <div className="flex items-center gap-1">
-                    <Calendar className="w-4 h-4" />
-                    {new Date(project.start_date).toLocaleDateString()}
-                  </div>
-                )}
-                {project.end_date && (
-                  <div className="flex items-center gap-1">
-                    → {new Date(project.end_date).toLocaleDateString()}
-                  </div>
-                )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start gap-2">
+                  <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-text-primary">{project.name}</h2>
+                  <IconMenu
+                    label={t('editProject')}
+                    items={[
+                      { label: t('editProject'), onClick: () => openEdit(project) },
+                      { label: t('deleteProject'), onClick: () => handleDeleteProject(project.id), danger: true },
+                    ]}
+                  />
+                </div>
+                <p className="line-clamp-1 text-sm text-text-secondary">
+                  {project.description || t('noDescription')}
+                </p>
+                <p className="mt-2 text-xs text-text-muted">
+                  {statusLabel(project.status)} · {dateLabel(project)}
+                </p>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Create/Edit Project Dialog */}
-      {(showCreateDialog || editingProject) && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-surface/90 border border-white/10 rounded-2xl p-6 md:p-8 max-w-2xl w-full max-h-[80vh] mt-20 sm:mt-0 overflow-y-auto">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-white">
-                {editingProject ? 'Edit Project' : 'Create New Project'}
-              </h2>
-              <button
-                onClick={() => {
-                  setShowCreateDialog(false)
-                  setEditingProject(null)
-                  setFormData({
-                    name: '',
-                    description: '',
-                    color: '#667eea',
-                    status: 'active',
-                    start_date: '',
-                    end_date: '',
-                    logo_file: null
-                  })
-                }}
-                className="text-text-secondary hover:text-white transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            
-            <form onSubmit={editingProject ? handleUpdateProject : handleCreateProject} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">Project Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  placeholder="Enter project name..."
-                />
-              </div>
+      <CreateProjectDialog
+        open={showCreateDialog}
+        onClose={() => {
+          setShowCreateDialog(false)
+          loadProjects()
+        }}
+      />
 
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">Description</label>
-                <textarea
-                  rows={4}
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  placeholder="Enter project description..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Project Logo (Max 3MB)
-                </label>
-                <div className="flex items-center gap-4">
-                  {formData.logo_file && (
-                    <div className="relative w-16 h-16 rounded-lg overflow-hidden">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={URL.createObjectURL(formData.logo_file)}
-                        alt="Preview"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
-                  {editingProject?.logo_url && !formData.logo_file && (
-                    <div className="relative w-16 h-16 rounded-lg overflow-hidden">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={editingProject.logo_url}
-                        alt="Current logo"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  )}
-                  <label className="flex-1 cursor-pointer">
-                    <div className="flex items-center gap-2 px-4 py-3 bg-surface border border-white/10 rounded-xl text-text-secondary hover:text-white hover:border-primary/40 transition-all">
-                      <Upload className="w-5 h-5" />
-                      <span>{formData.logo_file ? formData.logo_file.name : 'Choose logo image...'}</span>
-                    </div>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoChange}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-                <p className="text-xs text-text-muted mt-1">
-                  Recommended: Square image, PNG or JPG, max 3MB
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-2">Color</label>
-                  <div className="flex gap-2 flex-wrap">
-                    {['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#feca57', '#ff6b6b', '#4ecdc4'].map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setFormData({ ...formData, color })}
-                        className={`w-10 h-10 rounded-lg transition-all ${
-                          formData.color === color ? 'ring-2 ring-white ring-offset-2 ring-offset-surface scale-110' : 'hover:scale-110'
-                        }`}
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-2">Status</label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  >
-                    <option value="planning">Planning</option>
-                    <option value="active">Active</option>
-                    <option value="in-progress">In Progress</option>
-                    <option value="on-hold">On Hold</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-2">Start Date</label>
-                  <input
-                    type="date"
-                    value={formData.start_date}
-                    onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-text-secondary mb-2">End Date</label>
-                  <input
-                    type="date"
-                    value={formData.end_date}
-                    onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setShowCreateDialog(false)
-                    setEditingProject(null)
-                    setFormData({
-                      name: '',
-                      description: '',
-                      color: '#667eea',
-                      status: 'active',
-                      start_date: '',
-                      end_date: '',
-                      logo_file: null
-                    })
-                  }}
-                  className="flex-1 px-6 py-3 bg-surface text-white rounded-xl border border-white/10 hover:bg-surface-hover transition-colors"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={uploadingLogo}
-                  className="flex-1 px-6 py-3 bg-primary text-white rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50"
-                >
-                  {uploadingLogo ? 'Uploading...' : editingProject ? 'Update Project' : 'Create Project'}
-                </Button>
-              </div>
-            </form>
+      <Dialog
+        open={Boolean(editingProject)}
+        title={t('editProjectTitle')}
+        onClose={closeEdit}
+        size="lg"
+        footer={
+          <div className="flex gap-3">
+            <Button type="button" variant="secondary" className="flex-1" onClick={closeEdit}>
+              {t('cancel')}
+            </Button>
+            <Button type="submit" form="edit-project-form" className="flex-1" disabled={uploadingLogo}>
+              {uploadingLogo ? t('uploading') : t('updateProject')}
+            </Button>
           </div>
-        </div>
-      )}
+        }
+      >
+        <form id="edit-project-form" onSubmit={handleUpdateProject} className="space-y-4">
+          <label className="block text-sm text-text-secondary">
+            {t('projectName')}
+            <input
+              required
+              value={formData.name}
+              onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+              className={`${fieldClass} mt-1.5`}
+              placeholder={t('projectNamePlaceholder')}
+            />
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('description')}
+            <textarea
+              rows={3}
+              value={formData.description}
+              onChange={(event) => setFormData({ ...formData, description: event.target.value })}
+              className={`${fieldClass} mt-1.5`}
+              placeholder={t('descriptionPlaceholder')}
+            />
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('logo')}
+            <div className="mt-1.5 flex items-center gap-3">
+              {formData.logo_file ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={URL.createObjectURL(formData.logo_file)} alt={t('logoPreviewAlt')} className="h-12 w-12 rounded-lg object-cover" />
+              ) : editingProject?.logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={editingProject.logo_url} alt={t('currentLogoAlt')} className="h-12 w-12 rounded-lg object-cover" />
+              ) : null}
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-secondary">
+                <Upload className="h-4 w-4 shrink-0" />
+                <span className="truncate">{formData.logo_file ? formData.logo_file.name : t('chooseLogo')}</span>
+                <input type="file" accept="image/*" onChange={handleLogoChange} className="hidden" />
+              </label>
+            </div>
+          </label>
+          <div>
+            <p className="text-sm text-text-secondary">{t('color')}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={color}
+                  onClick={() => setFormData({ ...formData, color })}
+                  className={`h-8 w-8 rounded-lg ${formData.color === color ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface' : ''}`}
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
+          </div>
+          <label className="block text-sm text-text-secondary">
+            {t('statusField')}
+            <select
+              value={formData.status}
+              onChange={(event) => setFormData({ ...formData, status: event.target.value })}
+              className={`${fieldClass} mt-1.5`}
+            >
+              <option value="planning">{t('status.planning')}</option>
+              <option value="active">{t('status.active')}</option>
+              <option value="in-progress">{t('status.inProgress')}</option>
+              <option value="on-hold">{t('status.onHold')}</option>
+              <option value="completed">{t('status.completed')}</option>
+            </select>
+          </label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="block text-sm text-text-secondary">
+              {t('startDate')}
+              <input
+                type="date"
+                value={formData.start_date}
+                onChange={(event) => setFormData({ ...formData, start_date: event.target.value })}
+                className={`${fieldClass} mt-1.5`}
+              />
+            </label>
+            <label className="block text-sm text-text-secondary">
+              {t('endDate')}
+              <input
+                type="date"
+                value={formData.end_date}
+                onChange={(event) => setFormData({ ...formData, end_date: event.target.value })}
+                className={`${fieldClass} mt-1.5`}
+              />
+            </label>
+          </div>
+        </form>
+      </Dialog>
     </div>
   )
 }

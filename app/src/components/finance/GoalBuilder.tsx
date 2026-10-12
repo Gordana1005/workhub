@@ -1,8 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Target, TrendingUp, Calendar, DollarSign } from 'lucide-react';
+import { Target } from 'lucide-react';
 import { differenceInDays, differenceInWeeks, differenceInMonths, addDays, format } from 'date-fns';
+import { enUS, mk } from 'date-fns/locale';
+import { useTranslations } from 'next-intl';
+import { useLocaleSwitch } from '@/i18n/LocaleProvider';
 
 interface GoalBuilderProps {
   onSave: (goal: any) => void;
@@ -10,7 +13,12 @@ interface GoalBuilderProps {
   initialData?: any;
 }
 
+const fieldClass = 'block w-full min-w-0 max-w-full rounded-xl border border-border bg-secondary px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none';
+
 export default function GoalBuilder({ onSave, onCancel, initialData }: GoalBuilderProps) {
+  const t = useTranslations('pages.tools');
+  const { locale } = useLocaleSwitch();
+  const dateLocale = locale === 'mk' ? mk : enUS;
   const [mode, setMode] = useState<'target' | 'daily'>('target');
   const [goalData, setGoalData] = useState({
     name: initialData?.name || '',
@@ -18,13 +26,12 @@ export default function GoalBuilder({ onSave, onCancel, initialData }: GoalBuild
     targetAmount: initialData?.target_amount || 0,
     currentAmount: initialData?.current_amount || 0,
     targetDate: initialData?.target_date || '',
-    dailyIncome: 0, // For reverse calculation
+    dailyIncome: 0,
   });
 
   const [forecast, setForecast] = useState<any>(null);
 
   const calculateForward = () => {
-    // Calculate how much per day/week/month needed to hit target
     if (!goalData.targetDate || !goalData.targetAmount) return;
 
     const target = goalData.targetAmount - goalData.currentAmount;
@@ -33,7 +40,7 @@ export default function GoalBuilder({ onSave, onCancel, initialData }: GoalBuild
     const monthsRemaining = differenceInMonths(new Date(goalData.targetDate), new Date());
 
     if (daysRemaining <= 0) {
-      alert('Target date must be in the future');
+      alert(t('finance.targetDateFuture'));
       return;
     }
 
@@ -47,7 +54,6 @@ export default function GoalBuilder({ onSave, onCancel, initialData }: GoalBuild
   };
 
   const calculateBackward = () => {
-    // Calculate how long to hit target at current daily rate
     if (!goalData.dailyIncome || !goalData.targetAmount) return;
 
     const target = goalData.targetAmount - goalData.currentAmount;
@@ -74,7 +80,7 @@ export default function GoalBuilder({ onSave, onCancel, initialData }: GoalBuild
 
   const handleSave = () => {
     if (!goalData.name || !goalData.targetAmount) {
-      alert('Please provide goal name and target amount');
+      alert(t('finance.goalFieldsRequired'));
       return;
     }
 
@@ -89,214 +95,200 @@ export default function GoalBuilder({ onSave, onCancel, initialData }: GoalBuild
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-      <h3 className="text-xl font-semibold text-white mb-6">Financial Goal Calculator</h3>
-
-      {/* Mode Toggle */}
-      <div className="flex gap-2 mb-6">
+    <div className="min-w-0 space-y-4">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <button
+          type="button"
           onClick={() => { setMode('target'); setForecast(null); }}
-          className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
+          className={`rounded-lg px-3 py-2 text-sm font-medium leading-snug ${
             mode === 'target'
-              ? 'bg-blue-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              ? 'bg-primary text-white'
+              : 'border border-border bg-secondary text-text-secondary hover:bg-surface-hover'
           }`}
         >
-          Target Amount & Date
+          {t('finance.modeTarget')}
         </button>
         <button
+          type="button"
           onClick={() => { setMode('daily'); setForecast(null); }}
-          className={`flex-1 py-3 rounded-xl font-medium transition-colors ${
+          className={`rounded-lg px-3 py-2 text-sm font-medium leading-snug ${
             mode === 'daily'
-              ? 'bg-blue-600 text-white'
-              : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+              ? 'bg-primary text-white'
+              : 'border border-border bg-secondary text-text-secondary hover:bg-surface-hover'
           }`}
         >
-          Daily Income Rate
+          {t('finance.modeDaily')}
         </button>
       </div>
 
-      {/* Common Fields */}
-      <div className="space-y-4 mb-6">
+      <div className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Goal Name <span className="text-red-500">*</span>
+          <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="goal-name">
+            {t('finance.goalName')} <span className="text-red-600">*</span>
           </label>
           <input
+            id="goal-name"
             type="text"
             value={goalData.name}
             onChange={(e) => setGoalData({ ...goalData, name: e.target.value })}
-            placeholder="e.g., Save for vacation"
-            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white"
+            placeholder={t('finance.goalNamePlaceholder')}
+            className={fieldClass}
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Description (Optional)
+          <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="goal-description">
+            {t('finance.descriptionOptional')}
           </label>
           <textarea
+            id="goal-description"
             value={goalData.description}
             onChange={(e) => setGoalData({ ...goalData, description: e.target.value })}
-            placeholder="Add details about your goal..."
+            placeholder={t('finance.goalDescriptionPlaceholder')}
             rows={2}
-            className="w-full px-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white resize-none"
+            className={`${fieldClass} resize-none`}
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Target Amount <span className="text-red-500">*</span>
+          <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="goal-target">
+            {t('finance.targetAmount')} <span className="text-red-600">*</span>
           </label>
-          <div className="relative">
-            <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-            <input
-              type="number"
-              step="0.01"
-              value={goalData.targetAmount || ''}
-              onChange={(e) => setGoalData({ ...goalData, targetAmount: parseFloat(e.target.value) || 0 })}
-              placeholder="100000"
-              className="w-full pl-12 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white"
-            />
-          </div>
+          <input
+            id="goal-target"
+            type="number"
+            step="0.01"
+            value={goalData.targetAmount || ''}
+            onChange={(e) => setGoalData({ ...goalData, targetAmount: parseFloat(e.target.value) || 0 })}
+            placeholder="100000"
+            className={fieldClass}
+          />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Current Amount
+          <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="goal-current">
+            {t('finance.currentAmount')}
           </label>
-          <div className="relative">
-            <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-            <input
-              type="number"
-              step="0.01"
-              value={goalData.currentAmount || ''}
-              onChange={(e) => setGoalData({ ...goalData, currentAmount: parseFloat(e.target.value) || 0 })}
-              placeholder="0"
-              className="w-full pl-12 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white"
-            />
-          </div>
+          <input
+            id="goal-current"
+            type="number"
+            step="0.01"
+            value={goalData.currentAmount || ''}
+            onChange={(e) => setGoalData({ ...goalData, currentAmount: parseFloat(e.target.value) || 0 })}
+            placeholder="0"
+            className={fieldClass}
+          />
         </div>
-      </div>
 
-      {/* Mode-Specific Fields */}
-      {mode === 'target' ? (
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Target Date <span className="text-red-500">*</span>
-          </label>
-          <div className="relative">
-            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+        {mode === 'target' ? (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="goal-date">
+              {t('finance.targetDate')} <span className="text-red-600">*</span>
+            </label>
             <input
+              id="goal-date"
               type="date"
               value={goalData.targetDate}
               onChange={(e) => setGoalData({ ...goalData, targetDate: e.target.value })}
               min={new Date().toISOString().split('T')[0]}
-              className="w-full pl-12 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white"
+              className={fieldClass}
             />
           </div>
-        </div>
-      ) : (
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Daily Income/Savings Rate <span className="text-red-500">*</span>
-          </label>
-          <div className="relative">
-            <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+        ) : (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="goal-daily">
+              {t('finance.dailyRate')} <span className="text-red-600">*</span>
+            </label>
             <input
+              id="goal-daily"
               type="number"
               step="0.01"
               value={goalData.dailyIncome || ''}
               onChange={(e) => setGoalData({ ...goalData, dailyIncome: parseFloat(e.target.value) || 0 })}
               placeholder="100"
-              className="w-full pl-12 pr-4 py-3 bg-slate-800 border border-slate-700 rounded-xl text-white"
+              className={fieldClass}
             />
+            <p className="mt-1 text-xs text-text-secondary">{t('finance.dailyRateHint')}</p>
           </div>
-          <p className="mt-2 text-xs text-slate-500">
-            How much can you save or earn per day?
-          </p>
-        </div>
-      )}
+        )}
+      </div>
 
       <button
+        type="button"
         onClick={handleCalculate}
         disabled={
-          !goalData.targetAmount || 
+          !goalData.targetAmount ||
           (mode === 'target' && !goalData.targetDate) ||
           (mode === 'daily' && !goalData.dailyIncome)
         }
-        className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium mb-6 transition-colors"
+        className="w-full rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Calculate
+        {t('finance.calculate')}
       </button>
 
-      {/* Forecast Results */}
       {forecast && (
-        <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-2xl p-6 mb-4">
-          <div className="flex items-center gap-2 mb-4">
-            <Target className="w-5 h-5 text-blue-500" />
-            <h4 className="text-lg font-semibold text-white">Your Path to ${goalData.targetAmount.toLocaleString()}</h4>
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <Target className="h-5 w-5 shrink-0 text-primary" />
+            <h4 className="text-base font-semibold text-text-primary">
+              {t('finance.pathTo', { amount: `$${goalData.targetAmount.toLocaleString()}` })}
+            </h4>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-slate-900/50 rounded-xl p-4">
-              <div className="text-sm text-slate-400 mb-1">Per Day</div>
-              <div className="text-2xl font-bold text-white">
-                ${forecast.perDay.toFixed(2)}
-              </div>
+          <dl className="mb-4 divide-y divide-border rounded-xl border border-border bg-surface text-sm">
+            <div className="flex items-center justify-between gap-3 px-3 py-2">
+              <dt className="text-text-secondary">{t('finance.perDay')}</dt>
+              <dd className="font-semibold text-text-primary">${forecast.perDay.toFixed(2)}</dd>
             </div>
-            <div className="bg-slate-900/50 rounded-xl p-4">
-              <div className="text-sm text-slate-400 mb-1">Per Week</div>
-              <div className="text-2xl font-bold text-white">
-                ${forecast.perWeek.toFixed(2)}
-              </div>
+            <div className="flex items-center justify-between gap-3 px-3 py-2">
+              <dt className="text-text-secondary">{t('finance.perWeek')}</dt>
+              <dd className="font-semibold text-text-primary">${forecast.perWeek.toFixed(2)}</dd>
             </div>
-            <div className="bg-slate-900/50 rounded-xl p-4">
-              <div className="text-sm text-slate-400 mb-1">Per Month</div>
-              <div className="text-2xl font-bold text-white">
-                ${forecast.perMonth.toFixed(2)}
-              </div>
+            <div className="flex items-center justify-between gap-3 px-3 py-2">
+              <dt className="text-text-secondary">{t('finance.perMonth')}</dt>
+              <dd className="font-semibold text-text-primary">${forecast.perMonth.toFixed(2)}</dd>
             </div>
-          </div>
+          </dl>
 
           {mode === 'target' ? (
             <div className="text-center">
-              <div className="text-3xl font-bold text-white mb-2">
-                {forecast.daysRemaining} days
+              <div className="text-2xl font-semibold text-text-primary">
+                {t('finance.daysCount', { count: forecast.daysRemaining })}
               </div>
-              <div className="text-slate-400">
-                until {format(new Date(goalData.targetDate), 'MMMM d, yyyy')}
+              <div className="mt-1 text-sm text-text-secondary">
+                {t('finance.untilDate', { date: format(new Date(goalData.targetDate), 'MMMM d, yyyy', { locale: dateLocale }) })}
               </div>
             </div>
           ) : (
             <div className="text-center">
-              <div className="text-3xl font-bold text-white mb-2">
-                {forecast.daysNeeded} days
+              <div className="text-2xl font-semibold text-text-primary">
+                {t('finance.daysCount', { count: forecast.daysNeeded })}
               </div>
-              <div className="text-slate-400">
-                Goal reached by {format(forecast.estimatedDate, 'MMMM d, yyyy')}
+              <div className="mt-1 text-sm text-text-secondary">
+                {t('finance.goalReachedBy', { date: format(forecast.estimatedDate, 'MMMM d, yyyy', { locale: dateLocale }) })}
               </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Action Buttons */}
-      <div className="flex gap-3">
+      <div className="sticky bottom-0 -mx-4 -mb-4 flex flex-col-reverse gap-2 border-t border-border bg-surface px-4 py-3 sm:flex-row">
         {onCancel && (
           <button
+            type="button"
             onClick={onCancel}
-            className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium transition-colors"
+            className="flex-1 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-surface-hover"
           >
-            Cancel
+            {t('finance.cancel')}
           </button>
         )}
         <button
+          type="button"
           onClick={handleSave}
           disabled={!goalData.name || !goalData.targetAmount || !forecast}
-          className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors"
+          className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Save Goal
+          {t('finance.saveGoal')}
         </button>
       </div>
     </div>

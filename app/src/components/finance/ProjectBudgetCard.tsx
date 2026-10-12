@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, Clock, AlertTriangle, Edit2, Check, X, FileText } from 'lucide-react';
+import { AlertTriangle, Check, X, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import BudgetRequestForm from './BudgetRequestForm';
 import BudgetRequestsList from './BudgetRequestsList';
+import { useTranslations } from 'next-intl';
+import { IconMenu } from '@/components/ui/IconMenu';
 
 interface ProjectBudgetCardProps {
   projectId: string;
@@ -32,6 +34,7 @@ interface ProjectFinancials {
 }
 
 export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps) {
+  const t = useTranslations('pages.tools');
   const [financials, setFinancials] = useState<ProjectFinancials | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
@@ -117,19 +120,19 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
       // Close edit mode after data is loaded
       setIsEditing(false);
       
-      alert('Budget saved successfully!');
+      alert(t('finance.budgetSaved'));
     } catch (error: any) {
       console.error('Failed to save budget:', error);
-      alert(`Failed to save budget: ${error.message || 'Unknown error'}`);
+      alert(t('finance.budgetSaveFailed', { message: error.message || t('finance.unknownError') }));
     }
   };
 
   if (loading) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+      <div className="min-w-0 rounded-2xl border border-border bg-surface p-4 sm:p-6">
         <div className="animate-pulse">
-          <div className="h-6 bg-slate-800 rounded w-1/3 mb-4"></div>
-          <div className="h-24 bg-slate-800 rounded"></div>
+          <div className="h-6 bg-surface-hover rounded w-1/3 mb-4"></div>
+          <div className="h-24 bg-surface-hover rounded"></div>
         </div>
       </div>
     );
@@ -145,50 +148,57 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
   // Show setup form if no budget configured
   if (!hasBudget && !isEditing) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold text-white">Project Budget</h3>
+      <div className="min-w-0 rounded-2xl border border-border bg-surface p-4 sm:p-6">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-lg font-semibold text-text-primary">{t('finance.projectBudget')}</h3>
           <button
+            type="button"
             onClick={() => setIsEditing(true)}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
+            className="self-start rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
           >
-            Set Budget
+            {t('finance.setBudget')}
           </button>
         </div>
-        <p className="text-slate-400 text-sm">
-          Track expenses, income, and profitability for this project by setting a budget.
+        <p className="text-text-secondary text-sm">
+          {t('finance.setBudgetHelp')}
         </p>
       </div>
     );
   }
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-xl font-semibold text-white">Project Budget</h3>
-        <div className="flex items-center gap-2">
+    <div className="min-w-0 rounded-2xl border border-border bg-surface p-4 sm:p-6">
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <h3 className="min-w-0 text-lg font-semibold text-text-primary">{t('finance.projectBudget')}</h3>
+        <div className="flex shrink-0 items-center gap-2">
           {isOverBudget && (
-            <div className="flex items-center gap-2 px-3 py-1 bg-red-500/10 text-red-500 rounded-full text-sm">
-              <AlertTriangle className="w-4 h-4" />
-              Over Budget
+            <div className="flex items-center gap-2 rounded-full bg-danger/10 px-3 py-1 text-sm text-danger">
+              <AlertTriangle className="h-4 w-4" />
+              {t('finance.overBudget')}
             </div>
           )}
           {!isEditing ? (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-colors"
-            >
-              <Edit2 className="w-4 h-4" />
-            </button>
+            <IconMenu
+              label={t('finance.moreActions')}
+              items={[
+                { label: t('finance.editBudget'), onClick: () => setIsEditing(true) },
+                { label: t('finance.addExpense'), onClick: () => { window.location.href = `/dashboard/finance?project=${projectId}&type=expense`; } },
+                { label: t('finance.addIncome'), onClick: () => { window.location.href = `/dashboard/finance?project=${projectId}&type=income`; } },
+              ]}
+            />
           ) : (
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={handleSaveBudget}
-                className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                aria-label={t('finance.update')}
+                className="rounded-lg bg-primary p-2 text-white hover:bg-primary-hover"
               >
-                <Check className="w-4 h-4" />
+                <Check className="h-4 w-4" />
               </button>
               <button
+                type="button"
+                aria-label={t('finance.cancel')}
                 onClick={() => {
                   setIsEditing(false);
                   setBudgetForm({
@@ -196,9 +206,9 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
                     hourly_rate: financials.hourly_rate?.toString() || '',
                   });
                 }}
-                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-colors"
+                className="rounded-lg border border-border bg-secondary p-2 text-text-secondary hover:bg-surface-hover hover:text-text-primary"
               >
-                <X className="w-4 h-4" />
+                <X className="h-4 w-4" />
               </button>
             </div>
           )}
@@ -208,8 +218,8 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
       {isEditing ? (
         <div className="space-y-4 mb-6">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Project Budget ({financials.budget_currency})
+            <label className="block text-sm font-medium text-text-secondary mb-2">
+              {t('finance.projectBudgetAmount', { currency: financials.budget_currency })}
             </label>
             <input
               type="number"
@@ -217,12 +227,12 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
               value={budgetForm.budget}
               onChange={(e) => setBudgetForm({ ...budgetForm, budget: e.target.value })}
               placeholder="10000.00"
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+              className="block w-full min-w-0 px-3 py-2.5 bg-secondary border border-border rounded-lg text-text-primary placeholder:text-text-muted"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">
-              Hourly Rate ({financials.budget_currency}) - Optional
+            <label className="block text-sm font-medium text-text-secondary mb-2">
+              {t('finance.hourlyRate', { currency: financials.budget_currency })}
             </label>
             <input
               type="number"
@@ -230,10 +240,10 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
               value={budgetForm.hourly_rate}
               onChange={(e) => setBudgetForm({ ...budgetForm, hourly_rate: e.target.value })}
               placeholder="75.00"
-              className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+              className="block w-full min-w-0 px-3 py-2.5 bg-secondary border border-border rounded-lg text-text-primary placeholder:text-text-muted"
             />
-            <p className="mt-1 text-xs text-slate-500">
-              Used to calculate billable amount from tracked hours
+            <p className="mt-1 text-xs text-text-secondary">
+              {t('finance.hourlyRateHint')}
             </p>
           </div>
         </div>
@@ -242,136 +252,101 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
           {hasBudget && (
             <div className="mb-6">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-slate-400">Budget Used</span>
-                <span className="text-sm font-medium text-white">
+                <span className="text-sm text-text-secondary">{t('finance.budgetUsed')}</span>
+                <span className="text-sm font-medium text-text-primary">
                   ${financials.total_expenses.toLocaleString()} / ${financials.budget?.toLocaleString() || '0'}
                 </span>
               </div>
-              <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-3 bg-surface-hover rounded-full overflow-hidden">
                 <div
                   className={`h-full transition-all ${
                     isOverBudget
-                      ? 'bg-red-500'
+                      ? 'bg-danger'
                       : isNearLimit
-                      ? 'bg-amber-500'
-                      : 'bg-green-500'
+                      ? 'bg-warning'
+                      : 'bg-success'
                   }`}
                   style={{ width: `${budgetPercentage}%` }}
                 />
               </div>
-              <div className="mt-1 text-xs text-slate-500 text-right">
-                {budgetPercentage.toFixed(1)}% used
+              <div className="mt-1 text-xs text-text-secondary text-right">
+                {t('finance.percentUsed', { percent: budgetPercentage.toFixed(1) })}
               </div>
             </div>
           )}
 
-          {/* Financial Stats */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className="bg-slate-800 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <DollarSign className="w-4 h-4 text-blue-500" />
-                <span className="text-sm text-slate-400">Remaining</span>
+          {/* Financial summary */}
+          <dl className="mb-6 divide-y divide-border rounded-xl border border-border text-sm">
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div className="min-w-0">
+                <dt className="text-text-secondary">{t('finance.remaining')}</dt>
+                {hasBudget && (
+                  <dd className="text-xs text-text-secondary">{t('finance.transactionCount', { count: financials.transaction_count })}</dd>
+                )}
               </div>
-              <div className={`text-2xl font-bold ${
-                financials.remaining_budget < 0 ? 'text-red-500' : 'text-white'
-              }`}>
-                ${Math.abs(financials.remaining_budget).toLocaleString()}
-              </div>
-              {hasBudget && (
-                <div className="text-xs text-slate-500 mt-1">
-                  {financials.transaction_count} transaction{financials.transaction_count !== 1 ? 's' : ''}
-                </div>
-              )}
+              <dd className={`shrink-0 font-semibold ${financials.remaining_budget < 0 ? 'text-danger' : 'text-text-primary'}`}>${Math.abs(financials.remaining_budget).toLocaleString()}</dd>
             </div>
-
-            <div className="bg-slate-800 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp className="w-4 h-4 text-green-500" />
-                <span className="text-sm text-slate-400">Income</span>
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div className="min-w-0">
+                <dt className="text-text-secondary">{t('finance.income')}</dt>
               </div>
-              <div className="text-2xl font-bold text-white">
-                ${financials.total_income.toLocaleString()}
-              </div>
+              <dd className="shrink-0 font-semibold text-text-primary">${financials.total_income.toLocaleString()}</dd>
             </div>
-
-            <div className="bg-slate-800 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Clock className="w-4 h-4 text-amber-500" />
-                <span className="text-sm text-slate-400">Pending Requests</span>
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div className="min-w-0">
+                <dt className="text-text-secondary">{t('finance.pendingRequests')}</dt>
+                <dd className="text-xs text-text-secondary">{t('finance.requestsCount', { count: financials.pending_requests_count || 0 })}</dd>
               </div>
-              <div className="text-2xl font-bold text-amber-500">
-                ${financials.pending_requests_amount?.toLocaleString() || '0'}
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                {financials.pending_requests_count || 0} request{financials.pending_requests_count !== 1 ? 's' : ''}
-              </div>
+              <dd className="shrink-0 font-semibold text-warning">${financials.pending_requests_amount?.toLocaleString() || '0'}</dd>
             </div>
-
-            <div className="bg-slate-800 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Check className="w-4 h-4 text-green-500" />
-                <span className="text-sm text-slate-400">Approved</span>
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <div className="min-w-0">
+                <dt className="text-text-secondary">{t('finance.approved')}</dt>
+                <dd className="text-xs text-text-secondary">{t('finance.paidAmount', { amount: `$${financials.paid_requests_amount?.toLocaleString() || '0'}` })}</dd>
               </div>
-              <div className="text-2xl font-bold text-white">
-                ${financials.approved_requests_amount?.toLocaleString() || '0'}
-              </div>
-              <div className="text-xs text-slate-500 mt-1">
-                ${financials.paid_requests_amount?.toLocaleString() || '0'} paid
-              </div>
+              <dd className="shrink-0 font-semibold text-text-primary">${financials.approved_requests_amount?.toLocaleString() || '0'}</dd>
             </div>
-
             {financials.hourly_rate && financials.hourly_rate > 0 && (
-              <div className="bg-slate-800 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Clock className="w-4 h-4 text-purple-500" />
-                  <span className="text-sm text-slate-400">Billable Hours</span>
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+                <div className="min-w-0">
+                  <dt className="text-text-secondary">{t('finance.billableHours')}</dt>
+                  <dd className="text-xs text-text-secondary">
+                    {t('finance.billableValue', { amount: `$${financials.billable_amount.toLocaleString()}`, rate: `$${financials.hourly_rate}` })}
+                  </dd>
                 </div>
-                <div className="text-2xl font-bold text-white">
-                  {financials.total_hours.toFixed(1)}h
-                </div>
-                <div className="text-xs text-slate-500 mt-1">
-                  ${financials.billable_amount.toLocaleString()} value @ ${financials.hourly_rate}/hr
-                </div>
+                <dd className="shrink-0 font-semibold text-text-primary">{financials.total_hours.toFixed(1)}h</dd>
               </div>
             )}
-
-            <div className="bg-slate-800 rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                {financials.profit >= 0 ? (
-                  <TrendingUp className="w-4 h-4 text-green-500" />
-                ) : (
-                  <TrendingDown className="w-4 h-4 text-red-500" />
-                )}
-                <span className="text-sm text-slate-400">Profit/Loss</span>
-              </div>
-              <div className={`text-2xl font-bold ${
-                financials.profit >= 0 ? 'text-green-500' : 'text-red-500'
-              }`}>
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <dt className="text-text-secondary">{t('finance.profitLoss')}</dt>
+              <dd className={`shrink-0 font-semibold ${financials.profit >= 0 ? 'text-success' : 'text-danger'}`}>
                 {financials.profit >= 0 ? '+' : '-'}${Math.abs(financials.profit).toLocaleString()}
-              </div>
+              </dd>
             </div>
-          </div>
+          </dl>
 
           {/* Budget Requests Section */}
           {hasBudget && (
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Budget Requests
+            <div>
+              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <h4 className="flex items-center gap-2 text-base font-semibold text-text-primary">
+                  <FileText className="h-5 w-5 shrink-0" />
+                  {t('finance.budgetRequests')}
                 </h4>
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                   <button
+                    type="button"
                     onClick={() => setShowRequestForm(true)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
+                    className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg text-sm transition-colors"
                   >
-                    Request Budget
+                    {t('finance.requestBudget')}
                   </button>
                   <button
+                    type="button"
                     onClick={() => setShowRequestsList(!showRequestsList)}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm transition-colors"
+                    className="px-4 py-2 bg-secondary hover:bg-surface-hover text-text-primary rounded-lg text-sm transition-colors border border-border"
                   >
-                    {showRequestsList ? 'Hide' : 'View'} Requests
+                    {showRequestsList ? t('finance.hideRequests') : t('finance.viewRequests')}
                   </button>
                 </div>
               </div>
@@ -385,22 +360,6 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
               )}
             </div>
           )}
-
-          {/* Quick Actions */}
-          <div className="flex gap-3">
-            <button
-              onClick={() => window.location.href = `/dashboard/finance?project=${projectId}&type=expense`}
-              className="flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-sm transition-colors"
-            >
-              Add Expense
-            </button>
-            <button
-              onClick={() => window.location.href = `/dashboard/finance?project=${projectId}&type=income`}
-              className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm transition-colors"
-            >
-              Add Income
-            </button>
-          </div>
         </>
       )}
 

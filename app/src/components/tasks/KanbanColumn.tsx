@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import KanbanCard from './KanbanCard';
@@ -14,31 +15,32 @@ interface KanbanColumnProps {
 }
 
 export default function KanbanColumn({ id, title, color, tasks, onTaskClick }: KanbanColumnProps) {
+  const t = useTranslations('pages.tasks');
   const { setNodeRef, isOver } = useDroppable({ id });
 
   return (
-    <div className="flex-shrink-0 w-full md:w-80">
+    <div className="w-72 flex-shrink-0 xl:w-80">
       <div className="card p-4">
         {/* Column Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div className={`w-3 h-3 rounded-full bg-gradient-to-r ${color}`} />
-            <h3 className="font-semibold text-lg">{title}</h3>
-            <span className="text-sm text-gray-400">({tasks.length})</span>
+            <h3 className="font-semibold text-base text-text-primary">{title}</h3>
+            <span className="text-sm text-text-secondary">({tasks.length})</span>
           </div>
         </div>
 
         {/* Drop Zone */}
         <div
           ref={setNodeRef}
-          className={`min-h-[150px] md:min-h-[400px] space-y-3 transition-all ${
-            isOver ? 'bg-purple-500/10 rounded-lg p-2' : ''
+          className={`min-h-[400px] space-y-3 transition-all ${
+            isOver ? 'bg-primary/10 rounded-lg p-2' : ''
           }`}
         >
           <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
             {tasks.length === 0 ? (
-              <div className="text-center text-gray-500 text-sm py-8">
-                Drop tasks here
+              <div className="text-center text-text-secondary text-sm py-8">
+                {t('dropTasksHere')}
               </div>
             ) : (
               tasks.map((task) => (

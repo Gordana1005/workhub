@@ -1,13 +1,16 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { createPortal } from 'react-dom'
+import { useTranslations } from 'next-intl'
+import { motion } from 'framer-motion'
 import { X, Calendar, User, Flag, FolderOpen, Repeat, Link2, MessageSquare, Save, Paperclip, Upload, Trash2 } from 'lucide-react'
 import RecurrenceSelector from './RecurrenceSelector'
 import DependencySelector from './DependencySelector'
 import CommentThread from './CommentThread'
 import { supabase } from '@/lib/supabase'
 import { Button } from '../ui/Button'
+import { IconMenu } from '../ui/IconMenu'
 
 interface RecurrencePattern {
   type: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom'
@@ -44,6 +47,7 @@ export default function TaskDetailModal({
   onUpdate,
   onDelete
 }: TaskDetailModalProps) {
+  const t = useTranslations('pages.tasks')
   const [projects, setProjects] = useState<any[]>(externalProjects || [])
   const [teamMembers, setTeamMembers] = useState<any[]>(externalTeamMembers || [])
   const [formData, setFormData] = useState({
@@ -182,6 +186,19 @@ export default function TaskDetailModal({
     }
   }, [activeTab, loadAttachments])
 
+  useEffect(() => {
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = previous
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+
   const handleUploadAttachment = async (file?: File | null) => {
     if (!file || !task?.id) return
     setUploading(true)
@@ -200,14 +217,14 @@ export default function TaskDetailModal({
 
       if (!res.ok) {
         const payload = await res.json()
-        throw new Error(payload.error || 'Upload failed')
+        throw new Error(payload.error || t('uploadFailed'))
       }
 
       const payload = await res.json()
       setAttachments((prev) => [payload.attachment, ...prev])
     } catch (error) {
       console.error('Error uploading attachment:', error)
-      setError(error instanceof Error ? error.message : 'Failed to upload file')
+      setError(error instanceof Error ? error.message : t('uploadFileFailed'))
     } finally {
       setUploading(false)
     }
@@ -226,13 +243,13 @@ export default function TaskDetailModal({
 
       if (!res.ok) {
         const payload = await res.json()
-        throw new Error(payload.error || 'Delete failed')
+        throw new Error(payload.error || t('deleteFailed'))
       }
 
       setAttachments((prev) => prev.filter((item) => item.id !== id))
     } catch (error) {
       console.error('Error deleting attachment:', error)
-      setError(error instanceof Error ? error.message : 'Failed to delete file')
+      setError(error instanceof Error ? error.message : t('deleteFileFailed'))
     }
   }
 
@@ -250,10 +267,10 @@ export default function TaskDetailModal({
 
     try {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
+      if (!user) throw new Error(t('notAuthenticated'))
 
       if (!formData.project_id) {
-        setError('Select a project for this task')
+        setError(t('selectProjectError'))
         setSaving(false)
         return
       }
@@ -286,7 +303,7 @@ export default function TaskDetailModal({
         })
         if (!res.ok) {
           const payload = await res.json()
-          throw new Error(payload.error || 'Failed to update task')
+          throw new Error(payload.error || t('updateTaskFailed'))
         }
         const payload = await res.json()
         savedTask = payload.task || { ...task, ...taskData }
@@ -299,7 +316,7 @@ export default function TaskDetailModal({
         })
         if (!res.ok) {
           const payload = await res.json()
-          throw new Error(payload.error || 'Failed to create task')
+          throw new Error(payload.error || t('createTaskFailed'))
         }
         const payload = await res.json()
         taskId = payload.id
@@ -338,7 +355,7 @@ export default function TaskDetailModal({
       onClose()
     } catch (error) {
       console.error('Error saving task:', error)
-      setError(error instanceof Error ? error.message : 'Failed to save task')
+      setError(error instanceof Error ? error.message : t('saveTaskFailed'))
     } finally {
       setSaving(false)
     }
@@ -346,14 +363,14 @@ export default function TaskDetailModal({
 
   const handleDeleteTask = async () => {
     if (!task?.id) return
-    if (!confirm('Are you sure you want to delete this task?')) return
+    if (!confirm(t('confirmDeleteTask'))) return
 
     try {
       const res = await fetch(`/api/tasks?id=${task.id}`, {
         method: 'DELETE'
       })
       if (!res.ok) {
-        throw new Error('Failed to delete task')
+        throw new Error(t('deleteTaskFailed'))
       }
       if (onDelete) {
         onDelete(task.id)
@@ -361,55 +378,50 @@ export default function TaskDetailModal({
       onClose()
     } catch (error) {
       console.error('Error deleting task:', error)
-      setError('Failed to delete task')
+      setError(t('deleteTaskFailed'))
     }
   }
 
-  const getPriorityColor = (priority: string) => {
-    const colors = {
-      urgent: 'bg-red-500/20 text-red-400 border-red-500/30',
-      high: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-      medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-      low: 'bg-green-500/20 text-green-400 border-green-500/30'
-    }
-    return colors[priority as keyof typeof colors] || colors.medium
-  }
+  if (typeof document === 'undefined') return null
 
-  return (
-    <motion.div 
+  return createPortal(
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end sm:items-center justify-center sm:p-4"
-      onClick={onClose}
+      className="fixed inset-0 z-[80] flex items-stretch justify-center sm:items-center sm:p-4"
     >
-      <motion.div 
-        initial={{ y: "100%" }}
-        animate={{ y: 0 }}
-        exit={{ y: "100%" }}
-        transition={{ type: "spring", damping: 25, stiffness: 300 }}
-        className="bg-surface/90 border border-white/10 rounded-t-2xl sm:rounded-2xl w-full max-w-4xl h-[80vh] sm:h-auto sm:max-h-[85vh] mt-20 sm:mt-0 flex flex-col shadow-2xl overflow-hidden"
+      <button
+        type="button"
+        aria-label={t('cancel')}
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={task ? t('editTask') : t('createNewTask')}
+        className="fixed inset-0 z-[81] flex h-[100dvh] w-full flex-col overflow-hidden rounded-none bg-surface text-text-primary sm:relative sm:inset-auto sm:h-auto sm:max-h-[85vh] sm:w-full sm:max-w-4xl sm:rounded-2xl sm:border sm:border-border sm:shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10 shrink-0">
-          <h2 className="text-2xl font-bold text-white">
-            {task ? 'Edit Task' : 'Create New Task'}
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-surface p-4 sm:p-6">
+          <h2 className="min-w-0 truncate text-lg font-semibold text-text-primary sm:text-2xl">
+            {task ? t('editTask') : t('createNewTask')}
           </h2>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {task?.id && onDelete && (
-              <button
-                onClick={handleDeleteTask}
-                className="p-2 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors"
-                title="Delete Task"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
+              <IconMenu
+                label={t('deleteTask')}
+                items={[{ label: t('deleteTask'), onClick: handleDeleteTask, danger: true }]}
+              />
             )}
             <button
+              type="button"
               onClick={onClose}
-              className="p-2 hover:bg-surface-hover rounded-lg transition-colors"
+              aria-label={t('close')}
+              className="rounded-lg p-2 transition-colors hover:bg-surface-hover"
             >
               <X className="w-5 h-5 text-text-secondary" />
             </button>
@@ -417,95 +429,100 @@ export default function TaskDetailModal({
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 px-6 pt-4 border-b border-white/10 overflow-x-auto scrollbar-hide">
+        <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border bg-surface px-4 pt-2 sm:px-6">
           <button
+            type="button"
             onClick={() => setActiveTab('details')}
-            className={`px-4 py-2 rounded-t-lg transition-colors whitespace-nowrap ${
+            className={`shrink-0 whitespace-nowrap rounded-t-lg px-3 py-2 text-sm transition-colors ${
               activeTab === 'details'
-                ? 'bg-surface text-white'
-                : 'text-text-secondary hover:bg-surface/50'
+                ? 'border-b-2 border-primary text-text-primary'
+                : 'text-text-secondary hover:bg-surface-hover'
             }`}
           >
-            Details
+            {t('details')}
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('recurrence')}
-            className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 whitespace-nowrap ${
+            className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-t-lg px-3 py-2 text-sm transition-colors ${
               activeTab === 'recurrence'
-                ? 'bg-surface text-white'
-                : 'text-text-secondary hover:bg-surface/50'
+                ? 'border-b-2 border-primary text-text-primary'
+                : 'text-text-secondary hover:bg-surface-hover'
             }`}
           >
-            <Repeat className="w-4 h-4" />
-            Recurrence
+            <Repeat className="h-4 w-4" />
+            {t('recurrence')}
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('dependencies')}
-            className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 whitespace-nowrap ${
+            className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-t-lg px-3 py-2 text-sm transition-colors ${
               activeTab === 'dependencies'
-                ? 'bg-surface text-white'
-                : 'text-text-secondary hover:bg-surface/50'
+                ? 'border-b-2 border-primary text-text-primary'
+                : 'text-text-secondary hover:bg-surface-hover'
             }`}
           >
-            <Link2 className="w-4 h-4" />
-            Dependencies
+            <Link2 className="h-4 w-4" />
+            {t('dependencies')}
           </button>
           {task?.id && (
             <button
+              type="button"
               onClick={() => setActiveTab('attachments')}
-              className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 whitespace-nowrap ${
+              className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-t-lg px-3 py-2 text-sm transition-colors ${
                 activeTab === 'attachments'
-                  ? 'bg-surface text-white'
-                  : 'text-text-secondary hover:bg-surface/50'
+                  ? 'border-b-2 border-primary text-text-primary'
+                  : 'text-text-secondary hover:bg-surface-hover'
               }`}
             >
-              <Paperclip className="w-4 h-4" />
-              Files
+              <Paperclip className="h-4 w-4" />
+              {t('files')}
             </button>
           )}
           {task?.id && (
             <button
+              type="button"
               onClick={() => setActiveTab('comments')}
-              className={`px-4 py-2 rounded-t-lg transition-colors flex items-center gap-2 whitespace-nowrap ${
+              className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-t-lg px-3 py-2 text-sm transition-colors ${
                 activeTab === 'comments'
-                  ? 'bg-surface text-white'
-                  : 'text-text-secondary hover:bg-surface/50'
+                  ? 'border-b-2 border-primary text-text-primary'
+                  : 'text-text-secondary hover:bg-surface-hover'
               }`}
             >
-              <MessageSquare className="w-4 h-4" />
-              Comments
+              <MessageSquare className="h-4 w-4" />
+              {t('comments')}
             </button>
           )}
         </div>
 
         {/* Content */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6">
+        <form onSubmit={handleSubmit} className="min-h-0 flex-1 overflow-y-auto bg-surface p-4 sm:p-6">
           {activeTab === 'details' && (
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Task Title *
+                  {t('taskTitle')}
                 </label>
                 <input
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({...formData, title: e.target.value})}
-                  className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  placeholder="Enter task title..."
+                  className="w-full px-4 py-3 bg-surface border border-border rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  placeholder={t('enterTaskTitle')}
                   required
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Description
+                  {t('description')}
                 </label>
                 <textarea
                   rows={4}
                   value={formData.description}
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  placeholder="Enter task description..."
+                  className="w-full px-4 py-3 bg-surface border border-border rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  placeholder={t('enterTaskDescription')}
                 />
               </div>
 
@@ -513,30 +530,30 @@ export default function TaskDetailModal({
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-2">
                     <Flag className="w-4 h-4 inline mr-1" />
-                    Priority
+                    {t('priority')}
                   </label>
                   <select 
                     value={formData.priority}
                     onChange={(e) => setFormData({...formData, priority: e.target.value})}
-                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full px-4 py-3 bg-surface border border-border rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
                   >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="urgent">Urgent</option>
+                    <option value="low">{t('priorityLow')}</option>
+                    <option value="medium">{t('priorityMedium')}</option>
+                    <option value="high">{t('priorityHigh')}</option>
+                    <option value="urgent">{t('priorityUrgent')}</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-2">
                     <Calendar className="w-4 h-4 inline mr-1" />
-                    Due Date
+                    {t('dueDate')}
                   </label>
                   <input
                     type="date"
                     value={formData.due_date}
                     onChange={(e) => setFormData({...formData, due_date: e.target.value})}
-                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full px-4 py-3 bg-surface border border-border rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                 </div>
               </div>
@@ -545,15 +562,15 @@ export default function TaskDetailModal({
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-2">
                     <FolderOpen className="w-4 h-4 inline mr-1" />
-                    Project
+                    {t('project')}
                   </label>
                   <select 
                     required
                     value={formData.project_id}
                     onChange={(e) => setFormData({...formData, project_id: e.target.value})}
-                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full px-4 py-3 bg-surface border border-border rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
                   >
-                    <option value="" disabled>Select a project</option>
+                    <option value="" disabled>{t('selectProject')}</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>{project.name}</option>
                     ))}
@@ -563,15 +580,15 @@ export default function TaskDetailModal({
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-2">
                     <User className="w-4 h-4 inline mr-1" />
-                    Assignee
+                    {t('assignee')}
                   </label>
                   <select 
                     required
                     value={formData.assignee_id}
                     onChange={(e) => setFormData({...formData, assignee_id: e.target.value})}
-                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full px-4 py-3 bg-surface border border-border rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
                   >
-                    <option value="" disabled>Select assignee</option>
+                    <option value="" disabled>{t('selectAssignee')}</option>
                     {teamMembers.map((member) => (
                       <option key={member.id} value={member.id}>{member.username}</option>
                     ))}
@@ -582,27 +599,27 @@ export default function TaskDetailModal({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-2">
-                    Category
+                    {t('category')}
                   </label>
                   <input
                     type="text"
                     value={formData.category}
                     onChange={(e) => setFormData({...formData, category: e.target.value})}
-                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    placeholder="e.g., Development, Design..."
+                    className="w-full px-4 py-3 bg-surface border border-border rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    placeholder={t('categoryExample')}
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-text-secondary mb-2">
-                    Estimated Hours
+                    {t('estimatedHours')}
                   </label>
                   <input
                     type="number"
                     step="0.5"
                     value={formData.estimated_hours}
                     onChange={(e) => setFormData({...formData, estimated_hours: e.target.value})}
-                    className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    className="w-full px-4 py-3 bg-surface border border-border rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
                     placeholder="0.0"
                   />
                 </div>
@@ -610,14 +627,14 @@ export default function TaskDetailModal({
 
               <div>
                 <label className="block text-sm font-medium text-text-secondary mb-2">
-                  Tags (comma-separated)
+                  {t('tagsComma')}
                 </label>
                 <input
                   type="text"
                   value={formData.tags}
                   onChange={(e) => setFormData({...formData, tags: e.target.value})}
-                  className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  placeholder="e.g., urgent, frontend, bug-fix"
+                  className="w-full px-4 py-3 bg-surface border border-border rounded-xl text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  placeholder={t('tagsExample')}
                 />
               </div>
             </div>
@@ -648,12 +665,12 @@ export default function TaskDetailModal({
             <div className="py-4 space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-300 font-medium">Task Files</p>
-                  <p className="text-xs text-gray-400">Upload specs, screenshots, or any supporting docs.</p>
+                  <p className="text-sm text-text-secondary font-medium">{t('taskFiles')}</p>
+                  <p className="text-xs text-text-secondary">{t('taskFilesHelp')}</p>
                 </div>
-                <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-700 bg-slate-900/60 text-white cursor-pointer ${uploading ? 'opacity-60 pointer-events-none' : 'hover:border-slate-500'}`}>
+                <label className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border bg-secondary text-text-primary cursor-pointer ${uploading ? 'opacity-60 pointer-events-none' : 'hover:border-primary'}`}>
                   <Upload className="w-4 h-4" />
-                  <span className="text-sm">Upload</span>
+                  <span className="text-sm">{t('upload')}</span>
                   <input
                     type="file"
                     className="hidden"
@@ -669,36 +686,37 @@ export default function TaskDetailModal({
 
               <div className="space-y-3">
                 {attachments.length === 0 ? (
-                  <div className="px-4 py-3 rounded-lg border border-dashed border-slate-700 text-sm text-gray-400 bg-slate-900/40">
-                    No attachments yet. Drop files here once the task is created.
+                  <div className="px-4 py-3 rounded-lg border border-dashed border-border text-sm text-text-secondary bg-surface-hover">
+                    {t('noAttachments')}
                   </div>
                 ) : (
                   attachments.map((file) => (
-                    <div key={file.id} className="flex items-center justify-between gap-3 px-4 py-3 bg-slate-900/40 border border-slate-700 rounded-lg">
+                    <div key={file.id} className="flex items-center justify-between gap-3 px-4 py-3 bg-surface-hover border border-border rounded-lg">
                       <div className="flex items-center gap-3 min-w-0">
-                        <Paperclip className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <Paperclip className="w-4 h-4 text-text-secondary flex-shrink-0" />
                         <div className="min-w-0">
                           {file.url ? (
                             <a
                               href={file.url}
                               target="_blank"
                               rel="noreferrer"
-                              className="text-sm text-white hover:underline truncate block"
+                              className="text-sm text-text-primary hover:underline truncate block"
                             >
                               {file.file_name}
                             </a>
                           ) : (
-                            <p className="text-sm text-white truncate">{file.file_name}</p>
+                            <p className="text-sm text-text-primary truncate">{file.file_name}</p>
                           )}
-                          <p className="text-xs text-gray-400">
+                          <p className="text-xs text-text-secondary">
                             {formatBytes(file.file_size)} • {file.created_at ? new Date(file.created_at).toLocaleString() : ''}
                           </p>
                         </div>
                       </div>
                       <button
                         type="button"
+                        aria-label={t('delete')}
                         onClick={() => handleDeleteAttachment(file.id)}
-                        className="p-2 rounded-lg hover:bg-red-500/10 text-red-300 border border-transparent hover:border-red-500/30"
+                        className="p-2 rounded-lg hover:bg-red-500/10 text-red-500 border border-transparent hover:border-red-500/30"
                         disabled={uploading}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -718,9 +736,9 @@ export default function TaskDetailModal({
         </form>
 
         {/* Footer */}
-        <div className="flex flex-col gap-3 p-6 border-t border-white/10">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-border bg-surface p-4 sm:p-6">
           {error && (
-            <div className="px-4 py-3 bg-red-500/10 text-red-300 border border-red-500/30 rounded-lg text-sm">
+            <div className="px-4 py-3 bg-red-500/10 text-red-500 border border-red-500/30 rounded-lg text-sm">
               {error}
             </div>
           )}
@@ -728,32 +746,34 @@ export default function TaskDetailModal({
         <div className="flex gap-3">
           <Button
             type="button"
+            variant="secondary"
             onClick={onClose}
-            className="flex-1 px-6 py-3 bg-surface text-white rounded-xl border border-white/10 hover:bg-surface-hover transition-colors"
+            className="flex-1"
           >
-            Cancel
+            {t('cancel')}
           </Button>
           <Button
             type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="flex-1 px-6 py-3 bg-primary text-white rounded-xl hover:bg-primary-hover transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            className="flex-1 gap-2 text-white"
           >
             {saving ? (
               <>
-                <div className="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></div>
-                Saving...
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"></div>
+                {t('saving')}
               </>
             ) : (
               <>
-                <Save className="w-5 h-5" />
-                {task ? 'Update Task' : 'Create Task'}
+                <Save className="h-4 w-4" />
+                {task ? t('updateTask') : t('createTask')}
               </>
             )}
           </Button>
         </div>
         </div>
-      </motion.div>
-    </motion.div>
+      </div>
+    </motion.div>,
+    document.body
   )
 }

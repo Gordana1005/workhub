@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ThemeProvider } from '@/components/ThemeProvider';
+import { LocaleProvider } from '@/i18n/LocaleProvider';
 import { QueryProvider } from '@/components/QueryProvider';
 import KeyboardShortcutsHelp from '@/components/KeyboardShortcutsHelp';
 import "./globals.css";
 
 const inter = Inter({
-  subsets: ["latin"],
+  subsets: ["latin", "cyrillic"],
   variable: "--font-inter",
 });
 
@@ -33,6 +34,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('trackwork-theme')||'system';var d=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light';var l=localStorage.getItem('trackwork-locale');if(l==='mk'||l==='en')document.documentElement.lang=l;}catch(e){}})();`,
+          }}
+        />
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/icon.svg" />
         <meta name="theme-color" content="#3b82f6" />
@@ -45,10 +51,12 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         <QueryProvider>
-          <ThemeProvider>
-            {children}
-            <KeyboardShortcutsHelp />
-          </ThemeProvider>
+          <LocaleProvider>
+            <ThemeProvider>
+              {children}
+              <KeyboardShortcutsHelp />
+            </ThemeProvider>
+          </LocaleProvider>
         </QueryProvider>
       </body>
     </html>

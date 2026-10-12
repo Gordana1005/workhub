@@ -7,10 +7,10 @@ export function LoadingSkeleton({ type = 'list', count = 10 }: LoadingSkeletonPr
   if (type === 'calendar') {
     return (
       <div className="animate-pulse space-y-4">
-        <div className="h-12 bg-slate-800 rounded-xl"></div>
+        <div className="h-12 bg-border rounded-xl"></div>
         <div className="grid grid-cols-7 gap-2">
           {[...Array(35)].map((_, i) => (
-            <div key={i} className="h-24 bg-slate-800 rounded-lg"></div>
+            <div key={i} className="h-24 bg-border rounded-lg"></div>
           ))}
         </div>
       </div>
@@ -19,12 +19,12 @@ export function LoadingSkeleton({ type = 'list', count = 10 }: LoadingSkeletonPr
 
   if (type === 'board') {
     return (
-      <div className="grid grid-cols-4 gap-4 animate-pulse">
+      <div className="grid grid-cols-2 gap-4 animate-pulse md:grid-cols-4">
         {[...Array(4)].map((_, i) => (
           <div key={i} className="space-y-3">
-            <div className="h-10 bg-slate-800 rounded-xl"></div>
+            <div className="h-10 bg-border rounded-xl"></div>
             {[...Array(3)].map((_, j) => (
-              <div key={j} className="h-24 bg-slate-800/50 rounded-lg"></div>
+              <div key={j} className="h-24 bg-border/50 rounded-lg"></div>
             ))}
           </div>
         ))}
@@ -34,9 +34,9 @@ export function LoadingSkeleton({ type = 'list', count = 10 }: LoadingSkeletonPr
 
   if (type === 'charts') {
     return (
-      <div className="grid grid-cols-2 gap-6 animate-pulse">
+      <div className="grid grid-cols-1 gap-6 animate-pulse md:grid-cols-2">
         {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-64 bg-slate-800 rounded-xl"></div>
+          <div key={i} className="h-64 bg-border rounded-xl"></div>
         ))}
       </div>
     );
@@ -44,11 +44,11 @@ export function LoadingSkeleton({ type = 'list', count = 10 }: LoadingSkeletonPr
 
   if (type === 'card') {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 animate-pulse">
-        <div className="h-6 bg-slate-800 rounded w-3/4 mb-4"></div>
+      <div className="bg-surface border border-border rounded-xl p-6 animate-pulse">
+        <div className="h-6 bg-border rounded w-3/4 mb-4"></div>
         <div className="space-y-2">
-          <div className="h-4 bg-slate-800 rounded w-full"></div>
-          <div className="h-4 bg-slate-800 rounded w-5/6"></div>
+          <div className="h-4 bg-border rounded w-full"></div>
+          <div className="h-4 bg-border rounded w-5/6"></div>
         </div>
       </div>
     );
@@ -58,7 +58,7 @@ export function LoadingSkeleton({ type = 'list', count = 10 }: LoadingSkeletonPr
   return (
     <div className="space-y-3 animate-pulse">
       {[...Array(count)].map((_, i) => (
-        <div key={i} className="h-16 bg-slate-800 rounded-xl"></div>
+        <div key={i} className="h-16 bg-border rounded-xl"></div>
       ))}
     </div>
   );

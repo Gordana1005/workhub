@@ -2,16 +2,29 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
-import { supabase } from '@/lib/supabase'
 import NotesList from '@/components/notes/NotesList'
-import { Search, Filter } from 'lucide-react'
+import NoteEditor from '@/components/notes/NoteEditor'
+import TemplateSelector from '@/components/notes/TemplateSelector'
+import { Plus, Search } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+import { Button } from '@/components/ui/Button'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { IconMenu } from '@/components/ui/IconMenu'
+import { PageHeader } from '@/components/ui/PageHeader'
+
+interface Tag {
+  id: string
+  name: string
+  color: string
+}
 
 interface Note {
   id: string
   title: string
   content: string
   created_at: string
-  project_id: string
+  project_id?: string
+  tags?: Tag[]
 }
 
 interface Project {
@@ -19,7 +32,11 @@ interface Project {
   name: string
 }
 
+const fieldClass =
+  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+
 export default function NotesPage() {
+  const t = useTranslations('pages.notes')
   const { currentWorkspace, workspaces } = useWorkspaceStore()
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>('')
   const [notes, setNotes] = useState<Note[]>([])
@@ -27,6 +44,11 @@ export default function NotesPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [creating, setCreating] = useState(false)
+  const [editingNote, setEditingNote] = useState<Note | null>(null)
+  const [templateContent, setTemplateContent] = useState('')
+  const [editorKey, setEditorKey] = useState(0)
+  const [showTemplates, setShowTemplates] = useState(false)
 
   useEffect(() => {
     if (currentWorkspace && !activeWorkspaceId) {
@@ -44,7 +66,6 @@ export default function NotesPage() {
 
       if (response.ok && data.projects) {
         setProjects(data.projects)
-        // Auto-selection of first project removed to allow "All Projects" by default
       }
     } catch (error) {
       console.error('Error loading projects:', error)
@@ -57,9 +78,9 @@ export default function NotesPage() {
 
     try {
       setLoading(true)
-      
-      const url = selectedProjectId 
-        ? `/api/notes?projectId=${selectedProjectId}` 
+
+      const url = selectedProjectId
+        ? `/api/notes?projectId=${selectedProjectId}`
         : `/api/notes?workspaceId=${wsId}`
 
       const response = await fetch(url)
@@ -84,97 +105,233 @@ export default function NotesPage() {
     }
   }, [activeWorkspaceId, loadNotes, loadProjects])
 
-  useEffect(() => {
-    loadNotes()
-  }, [selectedProjectId, loadNotes])
+  const workspaceId = activeWorkspaceId || currentWorkspace?.id || ''
+  const editorOpen = creating || editingNote !== null
 
-  const filteredNotes = notes.filter(note =>
-    note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    note.content.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredNotes = notes.filter((note) => {
+    const query = searchQuery.toLowerCase()
+    const content = note.content || ''
+    return note.title.toLowerCase().includes(query) || content.toLowerCase().includes(query)
+  })
+
+  const closeEditor = () => {
+    setCreating(false)
+    setEditingNote(null)
+    setTemplateContent('')
+  }
+
+  const openCreate = () => {
+    if (projects.length === 0) return
+    setEditingNote(null)
+    setTemplateContent('')
+    setEditorKey((key) => key + 1)
+    setCreating(true)
+  }
+
+  const openNote = (note: Note) => {
+    setCreating(false)
+    setTemplateContent('')
+    setEditingNote(note)
+  }
+
+  const handleCreate = async (title: string, content: string, tags: Tag[], targetProjectId: string) => {
+    const finalProjectId = targetProjectId || selectedProjectId
+    if (!finalProjectId) return
+
+    try {
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: finalProjectId, title, content, tags }),
+      })
+
+      if (res.ok) {
+        closeEditor()
+        loadNotes()
+      }
+    } catch (error) {
+      console.error('Failed to create note:', error)
+    }
+  }
+
+  const handleUpdate = async (title: string, content: string, tags: Tag[]) => {
+    if (!editingNote) return
+
+    try {
+      const res = await fetch('/api/notes', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: editingNote.id, title, content, tags }),
+      })
+
+      if (res.ok) {
+        closeEditor()
+        loadNotes()
+      }
+    } catch (error) {
+      console.error('Failed to update note:', error)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm(t('deleteConfirm'))) return
+
+    try {
+      const res = await fetch(`/api/notes?id=${id}`, { method: 'DELETE' })
+
+      if (res.ok) {
+        if (editingNote?.id === id) closeEditor()
+        loadNotes()
+      }
+    } catch (error) {
+      console.error('Failed to delete note:', error)
+    }
+  }
+
+  const showSplit = !loading && projects.length > 0 && (filteredNotes.length > 0 || editorOpen)
 
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto animate-fadeIn">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold mb-2 gradient-text">
-            📝 Notes
-          </h1>
-          <p className="text-gray-400 text-base md:text-lg">
-            Capture ideas, documentation, and important information
-          </p>
-        </div>
-
-        <div className="w-full md:w-64">
-          <label className="block text-sm font-medium text-gray-400 mb-1">
-            Workspace Context
-          </label>
-          <select
-            value={activeWorkspaceId}
-            onChange={(e) => {
-              setActiveWorkspaceId(e.target.value)
-              setSelectedProjectId('') 
-            }}
-            className="w-full bg-slate-900 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-          >
-            {workspaces.map(ws => (
-              <option key={ws.id} value={ws.id}>{ws.name}</option>
-            ))}
-          </select>
-        </div>
+    <div className="min-w-0 space-y-6">
+      <div className={editorOpen ? 'max-lg:hidden' : ''}>
+      <PageHeader
+        title={t('title')}
+        description={t('subtitle')}
+        action={
+          <div className="flex items-center gap-1">
+            {projects.length > 0 ? (
+              <IconMenu
+                label={t('fromTemplateTitle')}
+                items={[{ label: t('fromTemplate'), onClick: () => setShowTemplates(true) }]}
+              />
+            ) : null}
+            <Button
+              type="button"
+              onClick={openCreate}
+              disabled={projects.length === 0}
+              title={projects.length === 0 ? t('needProjectTitle') : t('newNoteTitle')}
+              aria-label={t('newNote')}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('newNote')}</span>
+            </Button>
+          </div>
+        }
+      />
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4 mb-8">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+      <div className={`grid min-w-0 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_minmax(0,12rem)] ${editorOpen ? 'max-lg:hidden' : ''}`}>
+        <div className="relative min-w-0 sm:col-span-2 lg:col-span-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <input
-            type="text"
+            type="search"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search notes..."
-            className="input-field w-full pl-10"
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={t('searchPlaceholder')}
+            aria-label={t('searchPlaceholder')}
+            className={`${fieldClass} pl-9`}
           />
         </div>
 
-        <div className="flex items-center gap-2">
-          <Filter className="w-5 h-5 text-gray-400" />
+        <label className="block min-w-0 text-xs font-medium text-text-secondary">
+          {t('workspaceContext')}
+          <select
+            value={activeWorkspaceId}
+            onChange={(event) => {
+              setActiveWorkspaceId(event.target.value)
+              setSelectedProjectId('')
+              closeEditor()
+            }}
+            className={`${fieldClass} mt-1`}
+          >
+            {workspaces.map((ws) => (
+              <option key={ws.id} value={ws.id}>
+                {ws.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block min-w-0 text-xs font-medium text-text-secondary">
+          {t('categories.project')}
           <select
             value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
-            className="input-field min-w-[200px]"
+            onChange={(event) => setSelectedProjectId(event.target.value)}
+            className={`${fieldClass} mt-1`}
           >
-            <option value="">All Projects</option>
+            <option value="">{t('allProjects')}</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>
                 {project.name}
               </option>
             ))}
           </select>
-        </div>
+        </label>
       </div>
 
-      {/* Notes List */}
-      {loading ? (
-        <div className="text-center py-12">
-          <div className="animate-pulse-slow text-gray-400">Loading notes...</div>
-        </div>
-      ) : projects.length === 0 ? (
-        <div className="card p-12 text-center">
-          <h3 className="text-xl font-semibold mb-2">No projects found</h3>
-          <p className="text-gray-400">
-            Create a project first to start adding notes
-          </p>
-        </div>
-      ) : (
-        <NotesList
-          notes={filteredNotes}
-          projectId={selectedProjectId}
-          workspaceId={activeWorkspaceId || currentWorkspace?.id || ''}
-          projects={projects}
-          onRefresh={loadNotes}
+      <div className="flex min-w-0 flex-col lg:flex-row lg:items-start lg:gap-4">
+        <section className={`min-w-0 ${editorOpen ? 'max-lg:hidden' : ''} ${showSplit ? 'lg:w-80 lg:shrink-0' : 'w-full'}`}>
+          {loading ? (
+            <p className="rounded-2xl border border-border bg-surface px-4 py-12 text-center text-sm text-text-secondary">
+              {t('loading')}
+            </p>
+          ) : projects.length === 0 ? (
+            <EmptyState title={t('noProjectsTitle')} body={t('noProjectsBody')} />
+          ) : notes.length === 0 ? (
+            <EmptyState title={t('emptyTitle')} body={t('emptyBody')} />
+          ) : filteredNotes.length === 0 ? (
+            <p className="rounded-2xl border border-border bg-surface px-4 py-12 text-center text-sm text-text-secondary">
+              {t('noResults')}
+            </p>
+          ) : (
+            <div className="max-w-full rounded-2xl border border-border bg-surface">
+              <NotesList
+                notes={filteredNotes}
+                selectedId={editingNote?.id}
+                onOpen={openNote}
+                onDelete={handleDelete}
+              />
+            </div>
+          )}
+        </section>
+
+        {showSplit ? (
+          <section className={`min-w-0 lg:flex-1 ${editorOpen ? '' : 'max-lg:hidden'}`}>
+            {editorOpen && workspaceId ? (
+              <NoteEditor
+                key={editingNote?.id ?? `create-${editorKey}`}
+                workspaceId={workspaceId}
+                noteId={editingNote?.id}
+                initialTitle={editingNote?.title ?? ''}
+                initialContent={editingNote?.content ?? templateContent}
+                initialTags={editingNote?.tags ?? []}
+                initialProjectId={editingNote?.project_id ?? selectedProjectId}
+                projects={projects}
+                onSave={editingNote ? handleUpdate : handleCreate}
+                onCancel={closeEditor}
+                isEdit={Boolean(editingNote)}
+              />
+            ) : (
+              <div className="flex min-h-64 items-center justify-center rounded-2xl border border-border bg-surface p-6 text-center">
+                <p className="text-sm text-text-secondary">{t('openNoteHint')}</p>
+              </div>
+            )}
+          </section>
+        ) : null}
+      </div>
+
+      {showTemplates && workspaceId ? (
+        <TemplateSelector
+          workspaceId={workspaceId}
+          onSelect={(template) => {
+            setTemplateContent(template.content)
+            setEditingNote(null)
+            setEditorKey((key) => key + 1)
+            setCreating(true)
+          }}
+          onClose={() => setShowTemplates(false)}
         />
-      )}
+      ) : null}
     </div>
   )
 }

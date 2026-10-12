@@ -1,8 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { History, RotateCcw, X, Clock } from 'lucide-react';
+import { History, RotateCcw, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useLocale, useTranslations } from 'next-intl';
+import { Dialog } from '@/components/ui/Dialog';
+import { Button } from '@/components/ui/Button';
 
 interface NoteVersion {
   id: string;
@@ -22,6 +25,9 @@ interface VersionHistoryProps {
   onClose: () => void;
 }
 
+const previewClass =
+  'max-w-none break-words text-text-primary [&_a]:text-primary [&_a]:underline [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_img]:h-auto [&_img]:max-w-full [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-surface-hover [&_pre]:p-3 [&_pre]:text-text-primary [&_ul]:list-disc [&_ul]:pl-5';
+
 export default function VersionHistory({
   noteId,
   currentContent,
@@ -29,6 +35,8 @@ export default function VersionHistory({
   onRestore,
   onClose,
 }: VersionHistoryProps) {
+  const t = useTranslations('pages.notes');
+  const locale = useLocale();
   const [versions, setVersions] = useState<NoteVersion[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<NoteVersion | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,12 +74,12 @@ export default function VersionHistory({
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
-    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    
-    return date.toLocaleDateString('en-US', {
+    if (diffMins < 1) return t('justNow');
+    if (diffMins < 60) return t('minutesAgo', { count: diffMins });
+    if (diffHours < 24) return t('hoursAgo', { count: diffHours });
+    if (diffDays < 7) return t('daysAgo', { count: diffDays });
+
+    return date.toLocaleDateString(locale === 'mk' ? 'mk-MK' : 'en-US', {
       month: 'short',
       day: 'numeric',
       year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
@@ -84,130 +92,89 @@ export default function VersionHistory({
     return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-      <div className="card w-full max-w-6xl h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <History className="w-6 h-6 text-purple-500" />
-            Version History
-          </h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  const previewTitle = selectedVersion?.title || currentTitle;
+  const previewHtml = selectedVersion?.content ?? currentContent;
+  const previewMeta = selectedVersion
+    ? t('versionMeta', { number: selectedVersion.version_number, when: formatDate(selectedVersion.created_at) })
+    : t('currentVersion');
 
-        {/* Content */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Versions List */}
-          <div className="w-80 border-r border-white/10 overflow-y-auto">
-            <div className="p-4">
-              {/* Current Version */}
+  return (
+    <Dialog
+      open
+      title={t('versionHistory')}
+      onClose={onClose}
+      size="lg"
+      footer={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('close')}
+          </Button>
+          {selectedVersion ? (
+            <Button type="button" onClick={handleRestore} className="gap-2">
+              <RotateCcw className="h-4 w-4" />
+              {t('restoreVersion')}
+            </Button>
+          ) : null}
+        </div>
+      }
+    >
+      <div className="flex min-w-0 flex-col gap-4 sm:flex-row">
+        <div className="min-w-0 sm:max-h-[50vh] sm:w-52 sm:shrink-0 sm:overflow-y-auto">
+          <button
+            type="button"
+            onClick={() => setSelectedVersion(null)}
+            className={`mb-2 w-full min-w-0 rounded-xl p-3 text-left ${
+              !selectedVersion
+                ? 'bg-primary text-white'
+                : 'border border-border bg-secondary text-text-primary hover:bg-surface-hover'
+            }`}
+          >
+            <span className="mb-1 flex items-center gap-2 text-sm font-semibold">
+              <Clock className="h-4 w-4 shrink-0" />
+              {t('currentVersion')}
+            </span>
+            <span className="line-clamp-2 block text-xs opacity-80">
+              {stripHtml(currentContent).slice(0, 100)}
+            </span>
+          </button>
+
+          {loading ? (
+            <p className="py-6 text-center text-sm text-text-secondary">{t('loadingVersions')}</p>
+          ) : versions.length === 0 ? (
+            <div className="py-6 text-center text-sm text-text-secondary">
+              <History className="mx-auto mb-2 h-8 w-8 opacity-50" />
+              <p>{t('noPreviousVersions')}</p>
+            </div>
+          ) : (
+            versions.map((version) => (
               <button
-                onClick={() => setSelectedVersion(null)}
-                className={`w-full text-left p-4 rounded-xl mb-2 transition-colors ${
-                  !selectedVersion
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-800/50 hover:bg-slate-800'
+                key={version.id}
+                type="button"
+                onClick={() => setSelectedVersion(version)}
+                className={`mb-2 w-full min-w-0 rounded-xl p-3 text-left ${
+                  selectedVersion?.id === version.id
+                    ? 'bg-primary text-white'
+                    : 'border border-border bg-secondary text-text-primary hover:bg-surface-hover'
                 }`}
               >
-                <div className="flex items-center gap-2 mb-2">
-                  <Clock className="w-4 h-4" />
-                  <span className="font-semibold">Current Version</span>
-                </div>
-                <p className="text-sm opacity-80">
-                  {stripHtml(currentContent).slice(0, 100)}...
-                </p>
+                <span className="mb-1 flex items-center justify-between gap-2 text-sm">
+                  <span className="font-semibold">{t('version', { number: version.version_number })}</span>
+                  <span className="shrink-0 text-xs opacity-70">{formatDate(version.created_at)}</span>
+                </span>
+                <span className="line-clamp-2 block text-xs opacity-80">
+                  {stripHtml(version.content).slice(0, 80)}
+                </span>
               </button>
-
-              {/* Version List */}
-              {loading ? (
-                <div className="text-center py-8 text-slate-400">
-                  Loading versions...
-                </div>
-              ) : versions.length === 0 ? (
-                <div className="text-center py-8 text-slate-400">
-                  <History className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p>No previous versions</p>
-                </div>
-              ) : (
-                versions.map(version => (
-                  <button
-                    key={version.id}
-                    onClick={() => setSelectedVersion(version)}
-                    className={`w-full text-left p-4 rounded-xl mb-2 transition-colors ${
-                      selectedVersion?.id === version.id
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-800/50 hover:bg-slate-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-sm">
-                        Version {version.version_number}
-                      </span>
-                      <span className="text-xs opacity-70">
-                        {formatDate(version.created_at)}
-                      </span>
-                    </div>
-                    <p className="text-sm opacity-80 line-clamp-2">
-                      {stripHtml(version.content).slice(0, 80)}...
-                    </p>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-
-          {/* Preview */}
-          <div className="flex-1 overflow-y-auto p-8">
-            {selectedVersion ? (
-              <div>
-                <div className="mb-6">
-                  <h1 className="text-4xl font-bold mb-2">{selectedVersion.title}</h1>
-                  <p className="text-slate-400">
-                    Version {selectedVersion.version_number} • {formatDate(selectedVersion.created_at)}
-                  </p>
-                </div>
-                <div
-                  className="prose prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: selectedVersion.content }}
-                />
-              </div>
-            ) : (
-              <div>
-                <div className="mb-6">
-                  <h1 className="text-4xl font-bold mb-2">{currentTitle}</h1>
-                  <p className="text-slate-400">Current Version</p>
-                </div>
-                <div
-                  className="prose prose-invert max-w-none"
-                  dangerouslySetInnerHTML={{ __html: currentContent }}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t border-white/10">
-          <button onClick={onClose} className="btn-secondary">
-            Close
-          </button>
-          {selectedVersion && (
-            <button
-              onClick={handleRestore}
-              className="btn-primary flex items-center gap-2"
-            >
-              <RotateCcw className="w-4 h-4" />
-              Restore This Version
-            </button>
+            ))
           )}
         </div>
+
+        <div className="min-w-0 flex-1 overflow-x-hidden border-t border-border pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
+          <h3 className="break-words text-xl font-semibold text-text-primary">{previewTitle}</h3>
+          <p className="mb-4 mt-1 text-sm text-text-secondary">{previewMeta}</p>
+          <div className={previewClass} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+        </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

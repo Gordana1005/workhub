@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { useTranslations } from 'next-intl'
 import { supabase } from '@/lib/supabase'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { BarChart3, Clock, CheckCircle, TrendingUp } from 'lucide-react'
@@ -13,6 +14,7 @@ interface Stats {
 }
 
 export default function Stats() {
+  const t = useTranslations('pages.home')
   const { currentWorkspace } = useWorkspaceStore()
 
   const { data: stats, isLoading } = useQuery({
@@ -70,44 +72,44 @@ export default function Stats() {
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
-    return `${hours}h ${minutes}m`
+    return t('stats.timeValue', { hours, minutes })
   }
 
   const statCards = [
     {
-      title: 'Tasks Completed',
+      title: t('stats.tasksCompleted'),
       value: stats?.tasksCompleted || 0,
       icon: CheckCircle,
-      color: 'text-green-600'
+      color: 'text-success'
     },
     {
-      title: 'Time Logged',
+      title: t('stats.timeLogged'),
       value: formatTime(stats?.timeLogged || 0),
       icon: Clock,
-      color: 'text-blue-600'
+      color: 'text-primary'
     },
     {
-      title: 'Active Tasks',
+      title: t('stats.activeTasks'),
       value: stats?.activeTasks || 0,
       icon: BarChart3,
-      color: 'text-orange-600'
+      color: 'text-warning'
     },
     {
-      title: 'Completion Rate',
+      title: t('stats.completionRate'),
       value: `${stats?.completionRate || 0}%`,
       icon: TrendingUp,
-      color: 'text-purple-600'
+      color: 'text-primary'
     }
   ]
 
   if (isLoading) {
     return (
-      <div className="p-6 bg-surface shadow-neumorphic dark:shadow-neumorphic-dark rounded-lg">
-        <h3 className="text-lg font-semibold mb-4">Today's Stats</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="p-6 bg-surface border border-border rounded-xl">
+        <h3 className="text-lg font-semibold mb-4 text-text-primary">{t('stats.title')}</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="animate-pulse">
-              <div className="h-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+              <div className="h-20 bg-surface-hover rounded"></div>
             </div>
           ))}
         </div>
@@ -116,14 +118,14 @@ export default function Stats() {
   }
 
   return (
-    <div className="p-6 bg-surface shadow-neumorphic dark:shadow-neumorphic-dark rounded-lg">
-      <h3 className="text-lg font-semibold mb-4 text-text-primary">Today's Stats</h3>
+    <div className="p-6 bg-surface border border-border rounded-xl">
+      <h3 className="text-lg font-semibold mb-4 text-text-primary">{t('stats.title')}</h3>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {statCards.map((stat, index) => (
           <div
             key={index}
-            className="p-4 bg-surface shadow-neumorphic-inset dark:shadow-neumorphic-dark-inset rounded-md"
+            className="p-4 bg-surface border border-border rounded-lg"
           >
             <div className="flex items-center justify-between">
               <div>

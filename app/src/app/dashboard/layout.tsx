@@ -1,32 +1,48 @@
-﻿'use client'
+'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
-import Topbar from '@/components/layout/Topbar'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import AppShell from '@/components/shell/AppShell'
+import type { CreateKind } from '@/components/shell/NewMenu'
+import CreateWorkspaceDialog from '@/components/create/CreateWorkspaceDialog'
+import CreateProjectDialog from '@/components/create/CreateProjectDialog'
+import QuickTaskForm from '@/components/create/QuickTaskForm'
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const { fetchWorkspaces, workspaces } = useWorkspaceStore()
+  const router = useRouter()
+  const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces)
+  const [createKind, setCreateKind] = useState<CreateKind | null>(null)
 
   useEffect(() => {
-    if (workspaces.length === 0) {
-      fetchWorkspaces()
+    fetchWorkspaces()
+  }, [fetchWorkspaces])
+
+  const onCreate = (kind: CreateKind) => {
+    if (kind === 'note') {
+      router.push('/dashboard/notes')
+      return
     }
-  }, [fetchWorkspaces, workspaces.length])
+    if (kind === 'plan') {
+      router.push('/dashboard/plans')
+      return
+    }
+    setCreateKind(kind)
+  }
 
   return (
     <ErrorBoundary>
-      <div className="relative flex flex-col min-h-screen bg-bg-primary">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-[#2d0c5b] via-[#160b2d] to-transparent opacity-90" />
-        <Topbar />
-        <main className="relative z-10 flex-1 overflow-auto container mx-auto px-4 py-6 max-w-7xl">
-            {children}
-        </main>
-      </div>
+      <AppShell onCreate={onCreate}>
+        {children}
+        <CreateWorkspaceDialog open={createKind === 'workspace'} onClose={() => setCreateKind(null)} />
+        <CreateProjectDialog open={createKind === 'project'} onClose={() => setCreateKind(null)} />
+        <QuickTaskForm open={createKind === 'task'} onClose={() => setCreateKind(null)} />
+      </AppShell>
     </ErrorBoundary>
   )
 }

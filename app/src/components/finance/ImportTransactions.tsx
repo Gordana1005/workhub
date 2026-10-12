@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { Upload, CheckCircle, XCircle, X } from 'lucide-react';
+import { Upload, CheckCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import { supabase } from '@/lib/supabase';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
+import { useTranslations } from 'next-intl';
+import { Dialog } from '@/components/ui/Dialog';
 
 interface CSVRow {
   [key: string]: string;
@@ -23,7 +25,10 @@ interface ImportTransactionsProps {
   onClose: () => void;
 }
 
+const selectClass = 'block w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2 text-text-primary focus:border-primary focus:outline-none';
+
 export default function ImportTransactions({ accountId, onImport, onClose }: ImportTransactionsProps) {
+  const t = useTranslations('pages.tools');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<CSVRow[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -50,12 +55,11 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
       complete: (results) => {
         const data = results.data as CSVRow[];
         setPreview(data);
-        
+
         if (data.length > 0) {
           const csvHeaders = Object.keys(data[0]);
           setHeaders(csvHeaders);
-          
-          // Auto-detect columns
+
           const autoMapping: ColumnMapping = {
             date: csvHeaders.find(h => /date|time|when/i.test(h)) || '',
             description: csvHeaders.find(h => /desc|name|merchant|note|memo/i.test(h)) || '',
@@ -67,7 +71,7 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
       },
       error: (error) => {
         console.error('CSV parsing error:', error);
-        alert('Failed to parse CSV file. Please check the format.');
+        alert(t('finance.parseCsvFailed'));
       },
     });
   };
@@ -87,27 +91,22 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
 
         for (const row of data) {
           try {
-            // Skip empty rows
             if (!row[mapping.amount] || !row[mapping.description]) {
               failedCount++;
               continue;
             }
 
-            // Parse amount (remove currency symbols and commas)
             const amountStr = row[mapping.amount].replace(/[^0-9.-]/g, '');
             const amount = Math.abs(parseFloat(amountStr));
-            
+
             if (isNaN(amount) || amount <= 0) {
               failedCount++;
               continue;
             }
 
-            // Determine type (income or expense)
-            // Negative amounts or amounts with parentheses are expenses
             const isNegative = row[mapping.amount].includes('-') || row[mapping.amount].includes('(');
             const type = isNegative ? 'expense' : 'income';
 
-            // Parse date
             let date = new Date();
             if (mapping.date && row[mapping.date]) {
               const parsedDate = new Date(row[mapping.date]);
@@ -116,7 +115,6 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
               }
             }
 
-            // Find category
             let categoryId = null;
             if (mapping.category && row[mapping.category]) {
               const category = categories.find(
@@ -125,7 +123,6 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
               categoryId = category?.id || null;
             }
 
-            // Insert transaction
             const { error } = await supabase
               .from('finance_transactions')
               .insert({
@@ -152,7 +149,7 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
 
         setImportResults({ success: successCount, failed: failedCount });
         setIsImporting(false);
-        
+
         if (successCount > 0) {
           onImport();
         }
@@ -162,164 +159,181 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
 
   const loadCategories = async () => {
     if (!currentWorkspace?.id) return [];
-    
+
     const { data } = await supabase
       .from('finance_categories')
       .select('*')
       .or(`workspace_id.eq.${currentWorkspace.id},is_system.eq.true`);
-    
+
     return data || [];
   };
 
+  const fieldLabel = (field: string) => {
+    if (field === 'description') return t('finance.fieldDescriptionRequired');
+    if (field === 'amount') return t('finance.fieldAmountRequired');
+    if (field === 'date') return t('finance.fieldDate');
+    return t('finance.fieldCategory');
+  };
+
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-surface/90 border border-white/10 rounded-2xl max-w-4xl w-full max-h-[80vh] mt-20 sm:mt-0 overflow-hidden flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
-          <h2 className="text-xl font-bold text-white">Import Transactions from CSV</h2>
+    <Dialog
+      open
+      title={t('finance.importTitle')}
+      onClose={onClose}
+      size="lg"
+      footer={file && !importResults ? (
+        <div className="flex flex-col-reverse gap-2 sm:flex-row">
           <button
+            type="button"
             onClick={onClose}
-            className="text-text-secondary hover:text-white transition-colors"
+            className="flex-1 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-surface-hover"
           >
-            <X className="w-6 h-6" />
+            {t('finance.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleImport}
+            disabled={isImporting || !mapping.description || !mapping.amount}
+            className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isImporting ? t('finance.importing') : t('finance.importTransactions')}
           </button>
         </div>
+      ) : undefined}
+    >
+      {!file && (
+        <div className="rounded-xl border-2 border-dashed border-border px-4 py-10 text-center">
+          <Upload className="mx-auto mb-4 h-10 w-10 text-text-muted" />
+          <input
+            type="file"
+            accept=".csv"
+            onChange={handleFileUpload}
+            className="hidden"
+            id="csv-upload"
+          />
+          <label
+            htmlFor="csv-upload"
+            className="inline-flex cursor-pointer rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-surface-hover"
+          >
+            {t('finance.chooseCsv')}
+          </label>
+          <p className="mt-3 text-sm text-text-muted">{t('finance.uploadHint')}</p>
+        </div>
+      )}
 
-        <div className="p-6 overflow-auto">
-          {!file && (
-            <div className="border-2 border-dashed border-white/10 rounded-xl p-12 text-center">
-              <Upload className="w-16 h-16 text-text-muted mx-auto mb-4" />
-              <input
-                type="file"
-                accept=".csv"
-                onChange={handleFileUpload}
-                className="hidden"
-                id="csv-upload"
-              />
-              <label
-                htmlFor="csv-upload"
-                className="cursor-pointer px-6 py-3 bg-surface hover:bg-surface-hover text-white rounded-xl inline-block transition-colors border border-white/10"
-              >
-                Choose CSV File
-              </label>
-              <p className="text-sm text-text-muted mt-4">
-                Upload a CSV file with columns for date, description, amount, and category
-              </p>
+      {file && !importResults && (
+        <div className="min-w-0 space-y-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="break-words font-medium text-text-primary">{file.name}</p>
+              <p className="text-sm text-text-secondary">{(file.size / 1024).toFixed(2)} KB</p>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => {
+                setFile(null);
+                setPreview([]);
+                setHeaders([]);
+              }}
+              className="shrink-0 text-sm text-red-600 hover:text-red-500"
+            >
+              {t('finance.remove')}
+            </button>
+          </div>
 
-          {file && !importResults && (
-            <>
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-white font-medium">{file.name}</p>
-                    <p className="text-sm text-slate-400">{(file.size / 1024).toFixed(2)} KB</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setFile(null);
-                      setPreview([]);
-                      setHeaders([]);
-                    }}
-                    className="text-sm text-red-500 hover:text-red-400"
+          <div>
+            <h3 className="mb-3 text-sm font-medium text-text-primary">{t('finance.mapColumns')}</h3>
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              {Object.entries(mapping).map(([field, value]) => (
+                <div key={field} className="min-w-0">
+                  <label className="mb-1.5 block text-sm text-text-secondary">{fieldLabel(field)}</label>
+                  <select
+                    value={value}
+                    onChange={(e) => setMapping({ ...mapping, [field]: e.target.value })}
+                    className={selectClass}
                   >
-                    Remove
-                  </button>
+                    <option value="">{t('finance.selectColumn')}</option>
+                    {headers.map(header => (
+                      <option key={header} value={header}>{header}</option>
+                    ))}
+                  </select>
                 </div>
-              </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-text-secondary">{t('finance.requiredFields')}</p>
+          </div>
 
-              <div className="mb-6">
-                <h3 className="text-white font-medium mb-3">Map Columns</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  {Object.entries(mapping).map(([field, value]) => (
-                    <div key={field}>
-                      <label className="block text-sm text-slate-400 mb-2 capitalize">
-                        {field === 'description' ? 'Description *' : field === 'amount' ? 'Amount *' : field}
-                      </label>
-                      <select
-                        value={value}
-                        onChange={(e) => setMapping({ ...mapping, [field]: e.target.value })}
-                        className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                      >
-                        <option value="">Select column...</option>
-                        {headers.map(header => (
-                          <option key={header} value={header}>{header}</option>
-                        ))}
-                      </select>
-                    </div>
-                  ))}
-                </div>
-                <p className="text-xs text-slate-500 mt-2">* Required fields</p>
+          {preview.length > 0 && (
+            <div className="min-w-0">
+              <h3 className="mb-3 text-sm font-medium text-text-primary">{t('finance.previewRows')}</h3>
+              <ul className="space-y-2 lg:hidden">
+                {preview.map((row, i) => (
+                  <li key={i} className="rounded-xl border border-border bg-surface-hover p-3 text-sm">
+                    <p className="break-words font-medium text-text-primary">{row[mapping.description] || '-'}</p>
+                    <dl className="mt-2 space-y-1">
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-text-secondary">{t('finance.fieldAmount')}</dt>
+                        <dd className="text-right text-text-primary">{row[mapping.amount] || '-'}</dd>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-text-secondary">{t('finance.fieldDate')}</dt>
+                        <dd className="text-right text-text-primary">{row[mapping.date] || '-'}</dd>
+                      </div>
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-text-secondary">{t('finance.fieldCategory')}</dt>
+                        <dd className="break-words text-right text-text-primary">{row[mapping.category] || '-'}</dd>
+                      </div>
+                    </dl>
+                  </li>
+                ))}
+              </ul>
+              <div className="hidden overflow-x-auto rounded-lg bg-surface-hover lg:block">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-border">
+                    <tr>
+                      <th className="p-3 text-left font-medium text-text-secondary">{t('finance.fieldDate')}</th>
+                      <th className="p-3 text-left font-medium text-text-secondary">{t('finance.fieldDescription')}</th>
+                      <th className="p-3 text-right font-medium text-text-secondary">{t('finance.fieldAmount')}</th>
+                      <th className="p-3 text-left font-medium text-text-secondary">{t('finance.fieldCategory')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.map((row, i) => (
+                      <tr key={i} className="border-b border-border">
+                        <td className="p-3 text-text-primary">{row[mapping.date] || '-'}</td>
+                        <td className="p-3 text-text-primary">{row[mapping.description] || '-'}</td>
+                        <td className="p-3 text-right text-text-primary">{row[mapping.amount] || '-'}</td>
+                        <td className="p-3 text-text-primary">{row[mapping.category] || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-
-              {preview.length > 0 && (
-                <div className="mb-6">
-                  <h3 className="text-white font-medium mb-3">Preview (first 5 rows)</h3>
-                  <div className="bg-slate-800 rounded-lg overflow-auto">
-                    <table className="w-full text-sm">
-                      <thead className="border-b border-slate-700">
-                        <tr>
-                          <th className="text-left p-3 text-slate-400">Date</th>
-                          <th className="text-left p-3 text-slate-400">Description</th>
-                          <th className="text-right p-3 text-slate-400">Amount</th>
-                          <th className="text-left p-3 text-slate-400">Category</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {preview.map((row, i) => (
-                          <tr key={i} className="border-b border-slate-700/50">
-                            <td className="p-3 text-white">{row[mapping.date] || '-'}</td>
-                            <td className="p-3 text-white">{row[mapping.description] || '-'}</td>
-                            <td className="p-3 text-right text-white">{row[mapping.amount] || '-'}</td>
-                            <td className="p-3 text-white">{row[mapping.category] || '-'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {importResults && (
-            <div className="text-center py-8">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-500/10 mb-4">
-                <CheckCircle className="w-8 h-8 text-green-500" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Import Complete</h3>
-              <p className="text-slate-400 mb-6">
-                Successfully imported {importResults.success} transactions
-                {importResults.failed > 0 && `, ${importResults.failed} failed`}
-              </p>
-              <button
-                onClick={onClose}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
-              >
-                Close
-              </button>
             </div>
           )}
         </div>
+      )}
 
-        {file && !importResults && (
-          <div className="p-6 border-t border-slate-800 flex gap-3">
-            <button
-              onClick={onClose}
-              className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-medium transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleImport}
-              disabled={isImporting || !mapping.description || !mapping.amount}
-              className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors"
-            >
-              {isImporting ? 'Importing...' : 'Import Transactions'}
-            </button>
+      {importResults && (
+        <div className="py-6 text-center">
+          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-green-500/10">
+            <CheckCircle className="h-7 w-7 text-green-600" />
           </div>
-        )}
-      </div>
-    </div>
+          <h3 className="text-lg font-semibold text-text-primary">{t('finance.importComplete')}</h3>
+          <p className="mb-5 mt-2 text-sm text-text-secondary">
+            {importResults.failed > 0
+              ? t('finance.importSummaryFailed', { success: importResults.success, failed: importResults.failed })
+              : t('finance.importSummary', { success: importResults.success })}
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+          >
+            {t('finance.close')}
+          </button>
+        </div>
+      )}
+    </Dialog>
   );
 }

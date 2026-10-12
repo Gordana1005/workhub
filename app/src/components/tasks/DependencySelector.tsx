@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Link2, X, Search } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { Link2, X, Search, Info } from 'lucide-react';
 
 interface Task {
   id: string;
@@ -24,7 +25,16 @@ export default function DependencySelector({
   selectedDependencies,
   onChange,
 }: DependencySelectorProps) {
+  const t = useTranslations('pages.tasks');
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
+
+  const statusLabel = (status: string) => {
+    if (status === 'To Do') return t('statusToDo');
+    if (status === 'In Progress') return t('statusInProgress');
+    if (status === 'Review') return t('statusReview');
+    if (status === 'Done') return t('statusDone');
+    return status;
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [isExpanded, setIsExpanded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -80,16 +90,16 @@ export default function DependencySelector({
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <Link2 className="w-4 h-4 text-purple-400" />
-          Dependencies
+        <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+          <Link2 className="w-4 h-4 text-primary" />
+          {t('dependencies')}
         </label>
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="text-sm text-purple-400 hover:text-purple-300"
+          className="text-sm text-primary hover:text-primary/80"
         >
-          {isExpanded ? 'Collapse' : 'Manage'}
+          {isExpanded ? t('collapse') : t('manage')}
         </button>
       </div>
 
@@ -99,21 +109,22 @@ export default function DependencySelector({
           {selectedTasks.map(task => (
             <div
               key={task.id}
-              className="flex items-center justify-between p-3 bg-surface-light rounded-lg border border-white/10"
+              className="flex items-center justify-between gap-2 p-3 bg-secondary rounded-lg border border-border"
             >
-              <div className="flex items-center gap-3">
-                <Link2 className="w-4 h-4 text-gray-400" />
-                <div>
-                  <p className="text-sm font-medium">{task.title}</p>
-                  <p className="text-xs text-gray-400 capitalize">{task.status}</p>
+              <div className="flex min-w-0 items-center gap-3">
+                <Link2 className="w-4 h-4 shrink-0 text-text-secondary" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-text-primary break-words">{task.title}</p>
+                  <p className="text-xs text-text-secondary capitalize">{statusLabel(task.status)}</p>
                 </div>
               </div>
               <button
                 type="button"
+                aria-label={t('delete')}
                 onClick={() => removeDependency(task.id)}
-                className="p-1 hover:bg-white/10 rounded transition-colors"
+                className="shrink-0 p-2 hover:bg-surface-hover rounded transition-colors"
               >
-                <X className="w-4 h-4 text-gray-400" />
+                <X className="w-4 h-4 text-text-secondary" />
               </button>
             </div>
           ))}
@@ -122,25 +133,25 @@ export default function DependencySelector({
 
       {/* Add Dependencies */}
       {isExpanded && (
-        <div className="space-y-3 p-4 bg-surface-light rounded-lg border border-white/10">
+        <div className="space-y-3 p-4 bg-secondary rounded-lg border border-border">
           {/* Search */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tasks to add as dependency..."
-              className="w-full pl-10 pr-4 py-2 bg-surface rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none text-sm"
+              placeholder={t('searchDependencies')}
+              className="w-full pl-10 pr-4 py-2 bg-surface rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none text-sm"
             />
           </div>
 
           {/* Available Tasks */}
           {loading ? (
-            <div className="text-center py-4 text-sm text-gray-400">Loading tasks...</div>
+            <div className="text-center py-4 text-sm text-text-secondary">{t('loadingTasks')}</div>
           ) : filteredTasks.length === 0 ? (
-            <div className="text-center py-4 text-sm text-gray-400">
-              {searchQuery ? 'No tasks found' : 'No available tasks'}
+            <div className="text-center py-4 text-sm text-text-secondary">
+              {searchQuery ? t('noTasksFound') : t('noAvailableTasks')}
             </div>
           ) : (
             <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -149,21 +160,22 @@ export default function DependencySelector({
                   key={task.id}
                   type="button"
                   onClick={() => addDependency(task.id)}
-                  className="w-full flex items-center gap-3 p-3 bg-surface rounded-lg border border-white/10 hover:border-purple-500/50 transition-colors text-left"
+                  className="w-full flex items-center gap-3 p-3 bg-surface rounded-lg border border-border hover:border-primary/50 transition-colors text-left"
                 >
-                  <Link2 className="w-4 h-4 text-gray-400" />
+                  <Link2 className="w-4 h-4 shrink-0 text-text-secondary" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{task.title}</p>
-                    <p className="text-xs text-gray-400 capitalize">{task.status}</p>
+                    <p className="text-sm font-medium text-text-primary truncate">{task.title}</p>
+                    <p className="text-xs text-text-secondary capitalize">{statusLabel(task.status)}</p>
                   </div>
                 </button>
               ))}
             </div>
           )}
 
-          <div className="pt-3 border-t border-white/10">
-            <p className="text-xs text-gray-400">
-              ℹ️ This task will be blocked until all dependencies are completed
+          <div className="pt-3 border-t border-border">
+            <p className="flex items-start gap-1.5 text-xs text-text-secondary">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>{t('dependencyHint')}</span>
             </p>
           </div>
         </div>

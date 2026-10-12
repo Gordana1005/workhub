@@ -1,6 +1,8 @@
 'use client'
 
-import { FileText, Trash2, Edit, Calendar, User } from 'lucide-react'
+import { FileText } from 'lucide-react'
+import { useLocale, useTranslations } from 'next-intl'
+import { IconMenu } from '@/components/ui/IconMenu'
 
 interface Note {
   id: string
@@ -11,83 +13,61 @@ interface Note {
 
 interface NoteCardProps {
   note: Note
-  onEdit: (note: Note) => void
+  active?: boolean
+  onOpen: (note: Note) => void
   onDelete: (id: string) => void
-  onOpen?: (note: Note) => void
 }
 
-export default function NoteCard({ note, onEdit, onDelete, onOpen }: NoteCardProps) {
+export default function NoteCard({ note, active, onOpen, onDelete }: NoteCardProps) {
+  const t = useTranslations('pages.notes')
+  const locale = useLocale()
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-    if (diffDays === 0) return 'Today'
-    if (diffDays === 1) return 'Yesterday'
-    if (diffDays < 7) return `${diffDays} days ago`
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    if (diffDays === 0) return t('today')
+    if (diffDays === 1) return t('yesterday')
+    if (diffDays < 7) return t('daysAgo', { count: diffDays })
+    return date.toLocaleDateString(locale === 'mk' ? 'mk-MK' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
   const getPreview = (content: string) => {
-    if (!content) return 'No content'
-    // Strip HTML tags for preview
+    if (!content) return t('noContent')
     const strippedContent = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    if (!strippedContent) return t('noContent')
     return strippedContent.slice(0, 150) + (strippedContent.length > 150 ? '...' : '')
   }
 
   return (
     <div
-      className="card p-6 card-hover group cursor-pointer"
-      onClick={() => {
-        onOpen?.(note)
-        onEdit(note)
-      }}
+      className={`flex min-w-0 items-start gap-1 border-b border-border bg-surface px-2 py-2 last:border-b-0 ${
+        active ? 'ring-1 ring-inset ring-primary' : ''
+      }`}
     >
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="w-10 h-10 rounded-lg bg-gradient-blue-purple flex items-center justify-center flex-shrink-0">
-            <FileText className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-lg mb-1 truncate">{note.title}</h3>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onEdit(note)
-            }}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-blue-500/20 text-blue-400 transition-colors"
-            title="Edit note"
-          >
-            <Edit className="w-4 h-4" />
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete(note.id)
-            }}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-red-500/20 text-red-400 transition-colors"
-            title="Delete note"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      <p className="text-gray-400 text-sm mb-4 line-clamp-3">
-        {getPreview(note.content)}
-      </p>
-
-      <div className="flex items-center gap-4 text-xs text-gray-500">
-        <div className="flex items-center gap-1.5">
-          <Calendar className="w-3.5 h-3.5" />
-          <span>{formatDate(note.created_at)}</span>
-        </div>
-      </div>
+      <button
+        type="button"
+        onClick={() => onOpen(note)}
+        className="flex min-w-0 flex-1 items-start gap-3 rounded-xl px-2 py-2 text-left hover:bg-surface-hover"
+      >
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <FileText className="h-4 w-4" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-text-primary">{note.title}</span>
+          <span className="mt-1 line-clamp-2 block text-xs text-text-secondary">{getPreview(note.content)}</span>
+          <span className="mt-1.5 block text-xs text-text-muted">{formatDate(note.created_at)}</span>
+        </span>
+      </button>
+      <IconMenu
+        label={t('editNote')}
+        items={[
+          { label: t('editNote'), onClick: () => onOpen(note) },
+          { label: t('deleteNote'), onClick: () => onDelete(note.id), danger: true },
+        ]}
+      />
     </div>
   )
 }

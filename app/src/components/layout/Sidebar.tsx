@@ -58,8 +58,8 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
       )}>
         <div className="flex flex-col h-full">
             {/* Logo Area */}
-            <div className="h-16 flex items-center px-6 border-b border-white/5">
-              <span className="text-xl font-bold text-white tracking-tight">TrackWork<span className="text-primary">.</span></span>
+            <div className="h-16 flex items-center px-6 border-b border-border">
+              <span className="text-xl font-bold text-text-primary tracking-tight">TrackWork<span className="text-primary">.</span></span>
             </div>
 
             <nav className="flex-1 p-4 space-y-1 overflow-y-auto custom-scrollbar">
@@ -74,12 +74,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                     'flex items-center space-x-3 px-3 py-2 rounded-lg transition-all duration-200 group text-sm font-medium',
                     isActive
                         ? 'bg-primary/10 text-primary'  // Deel Active State
-                        : 'text-text-secondary hover:bg-surface-hover hover:text-white'
+                        : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                     ))}
                 >
                     <item.icon className={clsx(
                     'w-4 h-4 transition-colors',
-                    isActive ? 'text-primary' : 'text-text-secondary group-hover:text-white'
+                    isActive ? 'text-primary' : 'text-text-secondary group-hover:text-text-primary'
                     )} />
                     <span>{item.name}</span>
                 </Link>
@@ -88,7 +88,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             </nav>
             
             {/* Bottom Section (Profile/Logout could go here) */}
-             <div className="p-4 border-t border-white/5">
+             <div className="p-4 border-t border-border">
                 <div className="flex items-center space-x-3 text-text-muted text-xs">
                     <span>v2.0 Dark</span>
                 </div>

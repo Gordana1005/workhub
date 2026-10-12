@@ -1,6 +1,7 @@
 ﻿'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useLocale, useTranslations } from 'next-intl'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { ChevronDown, Plus, Check, Building2, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -10,6 +11,8 @@ import { clsx } from 'clsx'
 import { Badge } from '@/components/ui/Badge'
 
 export default function WorkspaceSwitcher() {
+  const t = useTranslations('pages.people')
+  const locale = useLocale()
   const {
     workspaces,
     currentWorkspace,
@@ -47,9 +50,45 @@ export default function WorkspaceSwitcher() {
     setIsOpen(false)
   }
 
+  const categoryLabel = (value: string) => {
+    switch (value) {
+      case 'personal':
+        return t('form.categories.personal')
+      case 'work':
+        return t('form.categories.work')
+      case 'client':
+        return t('form.categories.client')
+      case 'team':
+        return t('form.categories.team')
+      case 'freelance':
+        return t('form.categories.freelance')
+      case 'education':
+        return t('form.categories.education')
+      case 'other':
+        return t('form.categories.other')
+      default:
+        return value
+    }
+  }
+
+  const memberLabel = (count: number) => {
+    const mod10 = count % 10
+    const mod100 = count % 100
+    const one = mod10 === 1 && mod100 !== 11
+    const few = mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+    if (locale === 'mk') {
+      if (one) return t('switcher.memberOne', { count })
+      if (few) return t('switcher.memberFew', { count })
+      return t('switcher.memberMany', { count })
+    }
+    return count === 1
+      ? t('switcher.memberOne', { count })
+      : t('switcher.memberOther', { count })
+  }
+
   if (!mounted) {
     return (
-      <div className="w-64 h-12 bg-surface/50 rounded-xl animate-pulse" />
+      <div className="h-10 w-full max-w-full rounded-lg bg-surface-hover sm:w-60" />
     )
   }
 
@@ -58,7 +97,7 @@ export default function WorkspaceSwitcher() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         disabled={loading}
-        className="w-full min-w-[240px] max-w-[280px] px-4 py-2 bg-surface hover:bg-surface-hover border border-border rounded-lg transition-all duration-200 flex items-center justify-between group disabled:opacity-50 disabled:cursor-not-allowed"
+        className="flex w-full min-w-0 max-w-full items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 transition-all duration-200 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-[280px]"
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {loading ? (
@@ -78,11 +117,11 @@ export default function WorkspaceSwitcher() {
           
           <div className="flex-1 min-w-0 text-left">
             <div className="font-medium text-text-primary text-sm truncate">
-              {currentWorkspace?.name || 'Select Workspace'}
+              {currentWorkspace?.name || t('switcher.select')}
             </div>
             {currentWorkspace?.category && (
               <div className="text-xs text-text-secondary truncate">
-                {currentWorkspace.category}
+                {categoryLabel(currentWorkspace.category)}
               </div>
             )}
           </div>
@@ -105,7 +144,7 @@ export default function WorkspaceSwitcher() {
             {/* Header */}
             <div className="px-4 py-2 border-b border-border">
               <div className="text-xs font-medium text-text-muted uppercase tracking-wider">
-                Workspaces
+                {t('switcher.title')}
               </div>
             </div>
 
@@ -114,7 +153,7 @@ export default function WorkspaceSwitcher() {
               {workspaces.length === 0 ? (
                 <div className="px-4 py-8 text-center">
                   <Building2 className="w-10 h-10 text-text-muted mx-auto mb-2" />
-                  <p className="text-text-secondary text-sm">No workspaces</p>
+                  <p className="text-text-secondary text-sm">{t('switcher.empty')}</p>
                 </div>
               ) : (
                 <div className="py-1">
@@ -145,12 +184,12 @@ export default function WorkspaceSwitcher() {
                               {workspace.name}
                             </span>
                             {workspace.userRole === 'admin' && (
-                              <Badge variant="blue" size="sm" className="px-1.5 py-0">Admin</Badge>
+                              <Badge variant="blue" size="sm" className="px-1.5 py-0">{t('switcher.admin')}</Badge>
                             )}
                           </div>
                           {workspace.memberCount && (
                             <div className="text-xs text-text-muted mt-0.5">
-                              {workspace.memberCount} member{workspace.memberCount !== 1 ? 's' : ''}
+                              {memberLabel(workspace.memberCount)}
                             </div>
                           )}
                         </div>
@@ -170,13 +209,13 @@ export default function WorkspaceSwitcher() {
             <div className="border-t border-border bg-background/50 p-2 space-y-1">
               <Link
                 href="/dashboard/workspaces"
-                className="w-full px-3 py-2 flex items-center gap-2 text-text-secondary hover:text-white hover:bg-surface-hover rounded-md transition-colors"
+                className="w-full px-3 py-2 flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors"
                 onClick={() => setIsOpen(false)}
               >
                 <div className="w-6 h-6 rounded flex items-center justify-center bg-surface border border-border">
                   <Building2 className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-xs font-medium">Manage all</span>
+                <span className="text-xs font-medium">{t('switcher.manageAll')}</span>
               </Link>
               
               <Link
@@ -187,7 +226,7 @@ export default function WorkspaceSwitcher() {
                 <div className="w-6 h-6 rounded flex items-center justify-center border border-primary/20">
                   <Plus className="w-3.5 h-3.5" />
                 </div>
-                <span className="text-xs font-medium">Add new workspace</span>
+                <span className="text-xs font-medium">{t('switcher.addNew')}</span>
               </Link>
             </div>
           </motion.div>

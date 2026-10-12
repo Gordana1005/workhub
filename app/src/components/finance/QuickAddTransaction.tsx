@@ -2,9 +2,29 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { parseNaturalLanguageTransaction } from '@/lib/finance-parser';
-import { Sparkles, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
+import { useTranslations } from 'next-intl';
+import { useLocaleSwitch } from '@/i18n/LocaleProvider';
+
+const FINANCE_CATEGORY_KEYS: Record<string, string> = {
+  'Food & Dining': 'finance.catFoodDining',
+  Transportation: 'finance.catTransportation',
+  Shopping: 'finance.catShopping',
+  Entertainment: 'finance.catEntertainment',
+  'Bills & Utilities': 'finance.catBillsUtilities',
+  Healthcare: 'finance.catHealthcare',
+  Education: 'finance.catEducation',
+  Travel: 'finance.catTravel',
+  Business: 'finance.catBusiness',
+  'Other Expense': 'finance.catOtherExpense',
+  Salary: 'finance.catSalary',
+  Freelance: 'finance.catFreelance',
+  Investment: 'finance.catInvestment',
+  'Business Income': 'finance.catBusinessIncome',
+  'Other Income': 'finance.catOtherIncome',
+};
 
 interface ParsedTransaction {
   amount: number;
@@ -20,31 +40,38 @@ interface QuickAddTransactionProps {
 }
 
 export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransactionProps) {
+  const t = useTranslations('pages.tools');
+  const { locale } = useLocaleSwitch();
   const [input, setInput] = useState('');
   const [preview, setPreview] = useState<ParsedTransaction | null>(null);
   const [manualType, setManualType] = useState<'income' | 'expense'>('expense');
   const [accounts, setAccounts] = useState<any[]>([]);
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState(accountId || '');
   const [categories, setCategories] = useState<any[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { currentWorkspace } = useWorkspaceStore();
 
   const loadAccounts = useCallback(async () => {
-    if (!currentWorkspace?.id) return;
-    
+    if (!currentWorkspace?.id) {
+      setAccountsLoaded(true);
+      return;
+    }
+
     const { data } = await supabase
       .from('finance_accounts')
       .select('*')
       .eq('workspace_id', currentWorkspace.id)
       .eq('is_active', true)
       .order('name');
-    
+
     if (data) {
       setAccounts(data);
       if (data.length > 0 && !selectedAccountId) {
         setSelectedAccountId(data[0].id);
       }
     }
+    setAccountsLoaded(true);
   }, [currentWorkspace?.id, selectedAccountId]);
 
   const loadCategories = useCallback(async () => {
@@ -63,6 +90,8 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
     if (currentWorkspace?.id) {
       loadAccounts();
       loadCategories();
+    } else {
+      setAccountsLoaded(true);
     }
   }, [currentWorkspace?.id, loadAccounts, loadCategories]);
 
@@ -77,12 +106,12 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
     }
   };
 
-  // Update preview when manual type changes
   useEffect(() => {
-    if (preview) {
-      setPreview({ ...preview, type: manualType });
-    }
-  }, [manualType, preview]);
+    setPreview((current) => {
+      if (!current || current.type === manualType) return current;
+      return { ...current, type: manualType };
+    });
+  }, [manualType]);
 
   const handleSubmit = async () => {
     if (!preview || !currentWorkspace?.id || !selectedAccountId) return;
@@ -115,34 +144,33 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
       onAdd();
     } catch (error) {
       console.error('Failed to add transaction:', error);
-      alert('Failed to add transaction. Please try again.');
+      alert(t('finance.addTransactionFailed'));
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  if (!accountsLoaded) {
+    return <p className="text-sm text-text-secondary">{t('finance.loading')}</p>;
+  }
+
   if (accounts.length === 0) {
     return (
       <div className="text-center py-8">
-        <p className="text-slate-400 mb-4">You need to create an account first</p>
-        <p className="text-sm text-slate-500">Close this dialog and create an account to start tracking transactions</p>
+        <p className="text-text-secondary mb-4">{t('finance.needAccount')}</p>
+        <p className="text-sm text-text-secondary">{t('finance.needAccountHint')}</p>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="flex items-center gap-2 mb-4">
-        <Sparkles className="w-5 h-5 text-blue-500" />
-        <h3 className="text-lg font-semibold text-white">Quick Add with AI</h3>
-      </div>
-
+    <div className="min-w-0">
       <div className="mb-4">
-        <label className="block text-sm text-text-secondary mb-2">Account</label>
+        <label className="block text-sm text-text-secondary mb-2">{t('finance.account')}</label>
         <select
           value={selectedAccountId}
           onChange={(e) => setSelectedAccountId(e.target.value)}
-          className="w-full px-4 py-2 bg-surface border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-primary/40"
+          className="block w-full min-w-0 px-3 py-2.5 bg-secondary border border-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
         >
           {accounts.map(account => (
             <option key={account.id} value={account.id}>
@@ -153,7 +181,7 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm text-text-secondary mb-2">Transaction Type</label>
+        <label className="block text-sm text-text-secondary mb-2">{t('finance.transactionType')}</label>
         <div className="flex gap-2">
           <button
             type="button"
@@ -161,10 +189,10 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
             className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
               manualType === 'expense'
                 ? 'bg-red-600 text-white'
-                : 'bg-surface text-text-secondary hover:bg-surface-hover'
+                : 'border border-border bg-secondary text-text-secondary hover:bg-surface-hover'
             }`}
           >
-            Expense
+            {t('finance.expense')}
           </button>
           <button
             type="button"
@@ -172,77 +200,82 @@ export default function QuickAddTransaction({ accountId, onAdd }: QuickAddTransa
             className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors ${
               manualType === 'income'
                 ? 'bg-green-600 text-white'
-                : 'bg-surface text-text-secondary hover:bg-surface-hover'
+                : 'border border-border bg-secondary text-text-secondary hover:bg-surface-hover'
             }`}
           >
-            Income
+            {t('finance.income')}
           </button>
         </div>
       </div>
 
       <div className="mb-4">
-        <label className="block text-sm text-text-secondary mb-2">Describe your transaction</label>
+        <label className="block text-sm text-text-secondary mb-2">{t('finance.describeTransaction')}</label>
         <input
           type="text"
           value={input}
           onChange={(e) => handleInputChange(e.target.value)}
-          placeholder="e.g., 'Spent $50 on groceries yesterday'"
-          className="w-full px-4 py-3 bg-surface border border-white/10 rounded-xl text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
+          placeholder={t('finance.describePlaceholder')}
+          className="block w-full min-w-0 px-3 py-3 bg-secondary border border-border rounded-xl text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
         />
         <p className="text-xs text-text-muted mt-2">
-          Try: "Spent $50 on groceries", "Earned $500 from freelance", "Coffee $5"
+          {t('finance.describeHint')}
         </p>
       </div>
 
       {preview && (
-        <div className="bg-surface border border-white/10 rounded-xl p-4 mb-4">
+        <div className="bg-surface-hover border border-border rounded-xl p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-text-secondary">Preview</span>
+            <span className="text-sm font-medium text-text-secondary">{t('finance.preview')}</span>
             <button
+              type="button"
+              aria-label={t('finance.cancel')}
               onClick={() => {
                 setInput('');
                 setPreview(null);
               }}
-              className="text-text-muted hover:text-text-secondary"
+              className="p-1 text-text-muted hover:text-text-secondary"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
           
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 gap-3 text-sm lg:grid-cols-2">
             <div>
-              <span className="text-slate-400">Amount:</span>
-              <span className="ml-2 text-white font-medium">${preview.amount.toFixed(2)}</span>
+              <span className="text-text-secondary">{t('finance.previewAmount')}</span>
+              <span className="ml-2 text-text-primary font-medium">${preview.amount.toFixed(2)}</span>
             </div>
             <div>
-              <span className="text-slate-400">Type:</span>
-              <span className={`ml-2 font-medium ${preview.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
-                {preview.type === 'income' ? 'Income' : 'Expense'}
+              <span className="text-text-secondary">{t('finance.previewType')}</span>
+              <span className={`ml-2 font-medium ${preview.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                {preview.type === 'income' ? t('finance.income') : t('finance.expense')}
               </span>
             </div>
             <div>
-              <span className="text-slate-400">Category:</span>
-              <span className="ml-2 text-white">{preview.category || 'Uncategorized'}</span>
+              <span className="text-text-secondary">{t('finance.previewCategory')}</span>
+              <span className="ml-2 text-text-primary">{preview.category ? (FINANCE_CATEGORY_KEYS[preview.category] ? t(FINANCE_CATEGORY_KEYS[preview.category]) : preview.category) : t('finance.uncategorized')}</span>
             </div>
             <div>
-              <span className="text-slate-400">Date:</span>
-              <span className="ml-2 text-white">{preview.date.toLocaleDateString()}</span>
+              <span className="text-text-secondary">{t('finance.previewDate')}</span>
+              <span className="ml-2 text-text-primary">{preview.date.toLocaleDateString(locale === 'mk' ? 'mk-MK' : 'en-US')}</span>
             </div>
-            <div className="col-span-2">
-              <span className="text-slate-400">Description:</span>
-              <span className="ml-2 text-white">{preview.description}</span>
+            <div className="lg:col-span-2">
+              <span className="text-text-secondary">{t('finance.previewDescription')}</span>
+              <span className="ml-2 text-text-primary">{preview.description}</span>
             </div>
           </div>
         </div>
       )}
 
-      <button
-        onClick={handleSubmit}
-        disabled={!preview || isSubmitting || !selectedAccountId}
-        className="w-full py-3 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors"
-      >
-        {isSubmitting ? 'Adding...' : 'Add Transaction'}
-      </button>
+      <div className="sticky bottom-0 -mx-4 -mb-4 border-t border-border bg-surface px-4 py-3">
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!preview || isSubmitting || !selectedAccountId}
+          className="w-full py-3 bg-primary hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors"
+        >
+          {isSubmitting ? t('finance.adding') : t('finance.addTransaction')}
+        </button>
+      </div>
     </div>
   );
 }

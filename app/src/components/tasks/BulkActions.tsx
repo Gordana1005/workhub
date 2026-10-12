@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { CheckSquare, Trash2, Tag, User, FolderInput, X } from 'lucide-react';
 
 interface BulkActionsProps {
@@ -22,31 +23,40 @@ export default function BulkActions({
   onBulkAssign,
   onBulkMove
 }: BulkActionsProps) {
+  const t = useTranslations('pages.tasks');
   const [showPriorityMenu, setShowPriorityMenu] = useState(false);
+
+  const priorityLabel = (priority: string) => {
+    if (priority === 'low') return t('priorityLow');
+    if (priority === 'medium') return t('priorityMedium');
+    if (priority === 'high') return t('priorityHigh');
+    if (priority === 'urgent') return t('priorityUrgent');
+    return priority;
+  };
 
   if (selectedTasks.length === 0) return null;
 
   return (
-    <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40">
-      <div className="card px-6 py-4 flex items-center gap-4 shadow-2xl animate-in slide-in-from-bottom-4">
+    <div className="fixed inset-x-3 bottom-20 z-50 lg:inset-x-auto lg:bottom-8 lg:left-1/2 lg:-translate-x-1/2">
+      <div className="card flex flex-wrap items-center gap-3 px-4 py-3 shadow-2xl animate-in slide-in-from-bottom-4 lg:flex-nowrap lg:gap-4 lg:px-6 lg:py-4">
         <div className="flex items-center gap-2">
-          <CheckSquare className="w-5 h-5 text-purple-400" />
+          <CheckSquare className="w-5 h-5 text-primary" />
           <span className="font-semibold">
-            {selectedTasks.length} task{selectedTasks.length !== 1 ? 's' : ''} selected
+            {t('tasksSelected', { count: selectedTasks.length })}
           </span>
         </div>
 
-        <div className="h-6 w-px bg-white/10" />
+        <div className="hidden h-6 w-px bg-border lg:block" />
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* Complete Button */}
           <button
             onClick={onBulkComplete}
-            className="px-4 py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 rounded-lg transition-colors flex items-center gap-2"
-            title="Mark as complete"
+            className="px-4 py-2 bg-success/10 hover:bg-success/20 text-success rounded-lg transition-colors flex items-center gap-2"
+            title={t('markComplete')}
           >
             <CheckSquare className="w-4 h-4" />
-            Complete
+            {t('complete')}
           </button>
 
           {/* Priority Button */}
@@ -54,15 +64,15 @@ export default function BulkActions({
             <div className="relative">
               <button
                 onClick={() => setShowPriorityMenu(!showPriorityMenu)}
-                className="px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 rounded-lg transition-colors flex items-center gap-2"
-                title="Change priority"
+                className="px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition-colors flex items-center gap-2"
+                title={t('changePriority')}
               >
                 <Tag className="w-4 h-4" />
-                Priority
+                {t('priority')}
               </button>
               
               {showPriorityMenu && (
-                <div className="absolute bottom-full mb-2 left-0 card min-w-[150px] shadow-xl">
+                <div className="absolute bottom-full mb-2 left-0 card min-w-[150px] shadow-xl text-text-primary">
                   {['urgent', 'high', 'medium', 'low'].map((priority) => (
                     <button
                       key={priority}
@@ -70,9 +80,9 @@ export default function BulkActions({
                         onBulkChangePriority(priority);
                         setShowPriorityMenu(false);
                       }}
-                      className="w-full px-4 py-2 text-left hover:bg-white/5 transition-colors capitalize"
+                      className="w-full px-4 py-2 text-left hover:bg-surface-hover transition-colors capitalize"
                     >
-                      {priority}
+                      {priorityLabel(priority)}
                     </button>
                   ))}
                 </div>
@@ -83,18 +93,19 @@ export default function BulkActions({
           {/* Delete Button */}
           <button
             onClick={onBulkDelete}
-            className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg transition-colors flex items-center gap-2"
-            title="Delete tasks"
+            className="px-4 py-2 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg transition-colors flex items-center gap-2"
+            title={t('deleteTasks')}
           >
             <Trash2 className="w-4 h-4" />
-            Delete
+            {t('delete')}
           </button>
 
           {/* Clear Selection */}
           <button
             onClick={onClearSelection}
-            className="p-2 hover:bg-white/5 rounded-lg transition-colors"
-            title="Clear selection"
+            className="p-2 text-text-secondary hover:bg-surface-hover rounded-lg transition-colors"
+            title={t('clearSelection')}
+            aria-label={t('clearSelection')}
           >
             <X className="w-4 h-4" />
           </button>

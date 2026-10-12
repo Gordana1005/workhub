@@ -1,7 +1,10 @@
 'use client';
 
 import { useMemo, useRef, useState } from 'react';
-import { format, eachMonthOfInterval, eachWeekOfInterval, startOfMonth, endOfMonth, startOfWeek, endOfWeek, differenceInDays, addDays, isSameDay } from 'date-fns';
+import { format, eachMonthOfInterval, eachWeekOfInterval, differenceInDays } from 'date-fns';
+import { enUS, mk } from 'date-fns/locale';
+import { useLocale, useTranslations } from 'next-intl';
+import { Button } from '@/components/ui/Button';
 
 export interface Plan {
   start_date: string;
@@ -29,121 +32,107 @@ interface GanttTimelineProps {
 }
 
 export default function GanttTimeline({ plan, milestones, onMilestoneClick }: GanttTimelineProps) {
+  const t = useTranslations('pages.plans');
+  const locale = useLocale();
+  const dateLocale = locale === 'mk' ? mk : enUS;
   const [viewMode, setViewMode] = useState<'weeks' | 'months'>('weeks');
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const startDate = useMemo(() => new Date(plan.start_date), [plan.start_date]);
   const endDate = useMemo(() => new Date(plan.end_date), [plan.end_date]);
 
-  // Generate time periods
   const timePeriods = useMemo(() => {
+    const end = endDate < startDate ? startDate : endDate;
     if (viewMode === 'months') {
-      return eachMonthOfInterval({ start: startDate, end: endDate });
-    } else {
-      return eachWeekOfInterval({ start: startDate, end: endDate });
+      return eachMonthOfInterval({ start: startDate, end });
     }
+    return eachWeekOfInterval({ start: startDate, end });
   }, [startDate, endDate, viewMode]);
 
-  const totalDays = differenceInDays(endDate, startDate);
-  const dayWidth = 40; // pixels per day in week view
-  const monthWidth = 120; // pixels per month
+  const dayWidth = 40;
+  const monthWidth = 120;
+  const periodWidth = viewMode === 'weeks' ? dayWidth * 7 : monthWidth;
+  const timelineWidth = timePeriods.length * periodWidth;
 
   const getPositionForDate = (date: Date) => {
     const daysFromStart = differenceInDays(date, startDate);
     if (viewMode === 'weeks') {
-      return (daysFromStart / 7) * (dayWidth * 7);
-    } else {
-      // Approximate for months view
-      return (daysFromStart / 30) * monthWidth;
+      return (daysFromStart / 7) * periodWidth;
     }
+    return (daysFromStart / 30) * monthWidth;
   };
 
   const todayPosition = getPositionForDate(new Date());
 
   return (
-    <div className="space-y-4">
-      {/* View Mode Toggle */}
-      <div className="flex items-center justify-between">
+    <div className="w-full min-w-0 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <button
+          <Button
+            type="button"
+            size="sm"
+            variant={viewMode === 'weeks' ? 'primary' : 'secondary'}
             onClick={() => setViewMode('weeks')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              viewMode === 'weeks'
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:text-white'
-            }`}
           >
-            Weeks
-          </button>
-          <button
+            {t('weeks')}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={viewMode === 'months' ? 'primary' : 'secondary'}
             onClick={() => setViewMode('months')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              viewMode === 'months'
-                ? 'bg-blue-600 text-white'
-                : 'bg-slate-800 text-slate-400 hover:text-white'
-            }`}
           >
-            Months
-          </button>
+            {t('months')}
+          </Button>
         </div>
 
-        <div className="text-sm text-slate-400">
-          {format(startDate, 'MMM d, yyyy')} - {format(endDate, 'MMM d, yyyy')}
-        </div>
+        <p className="text-sm text-text-secondary">
+          {format(startDate, 'MMM d, yyyy', { locale: dateLocale })} – {format(endDate, 'MMM d, yyyy', { locale: dateLocale })}
+        </p>
       </div>
 
-      {/* Timeline Container */}
       <div
         ref={scrollRef}
-        className="overflow-x-auto overflow-y-hidden"
-        style={{ maxHeight: '400px' }}
+        className="w-full min-w-0 overflow-x-auto overscroll-x-contain"
       >
-        <div className="relative" style={{ minWidth: `${timePeriods.length * (viewMode === 'weeks' ? dayWidth * 7 : monthWidth)}px` }}>
-          {/* Time Header */}
-          <div className="flex border-b border-slate-700 mb-4 pb-2">
-            {timePeriods.map((period, i) => (
+        <div className="relative" style={{ width: `${timelineWidth}px`, minWidth: `${timelineWidth}px` }}>
+          <div className="mb-4 flex border-b border-border pb-2">
+            {timePeriods.map((period, index) => (
               <div
-                key={i}
-                className="text-sm text-slate-400 font-medium text-center"
-                style={{ 
-                  width: viewMode === 'weeks' ? `${dayWidth * 7}px` : `${monthWidth}px`,
-                  minWidth: viewMode === 'weeks' ? `${dayWidth * 7}px` : `${monthWidth}px`
-                }}
+                key={period.toISOString()}
+                className="text-center text-sm font-medium text-text-secondary"
+                style={{ width: `${periodWidth}px`, minWidth: `${periodWidth}px` }}
               >
                 {viewMode === 'weeks'
-                  ? `Week ${i + 1}`
-                  : format(period, 'MMM yyyy')}
+                  ? t('week', { number: index + 1 })
+                  : format(period, 'MMM yyyy', { locale: dateLocale })}
               </div>
             ))}
           </div>
 
-          {/* Today Marker */}
-          {todayPosition >= 0 && todayPosition <= timePeriods.length * (viewMode === 'weeks' ? dayWidth * 7 : monthWidth) && (
+          {todayPosition >= 0 && todayPosition <= timelineWidth ? (
             <div
-              className="absolute top-8 bottom-0 w-0.5 bg-blue-500 z-10"
+              className="absolute bottom-0 top-8 z-10 w-0.5 bg-primary"
               style={{ left: `${todayPosition}px` }}
             >
-              <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-blue-500 font-medium whitespace-nowrap">
-                Today
+              <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-medium text-primary">
+                {t('today')}
               </div>
             </div>
-          )}
+          ) : null}
 
-          {/* Milestones */}
           <div className="space-y-3">
-            {milestones.map((milestone, index) => {
+            {milestones.map((milestone) => {
               const milestoneDate = new Date(milestone.target_date);
               const position = getPositionForDate(milestoneDate);
               const isOverdue = milestoneDate < new Date() && !milestone.is_completed;
 
               return (
                 <div key={milestone.id} className="relative h-12">
-                  {/* Background Track */}
-                  <div className="absolute inset-0 bg-slate-800 rounded-lg" />
+                  <div className="absolute inset-0 rounded-lg bg-surface-hover" />
 
-                  {/* Progress Bar */}
                   <div
-                    className="absolute inset-0 rounded-lg transition-all"
+                    className="absolute inset-y-0 left-0 rounded-lg"
                     style={{
                       width: `${milestone.completion_percentage}%`,
                       backgroundColor: milestone.is_completed
@@ -155,38 +144,32 @@ export default function GanttTimeline({ plan, milestones, onMilestoneClick }: Ga
                     }}
                   />
 
-                  {/* Milestone Marker */}
                   <div
-                    className="absolute top-1/2 -translate-y-1/2 cursor-pointer group"
+                    className="group absolute top-1/2 -translate-y-1/2 cursor-pointer"
                     style={{ left: `${position}px` }}
                     onClick={() => onMilestoneClick?.(milestone)}
                   >
                     <div
-                      className={`w-4 h-4 rotate-45 transition-all group-hover:scale-125 ${
+                      className={`h-4 w-4 rotate-45 ring-2 ring-surface ${
                         milestone.is_completed
                           ? 'bg-green-500'
                           : isOverdue
                           ? 'bg-red-500'
-                          : 'bg-blue-500'
+                          : 'bg-primary'
                       }`}
-                      style={{
-                        boxShadow: '0 0 0 4px rgba(0, 0, 0, 0.5)',
-                      }}
                     />
 
-                    {/* Tooltip */}
-                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-slate-950 border border-slate-700 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                      <div className="text-sm font-medium text-white mb-1">
+                    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-surface px-3 py-2 opacity-0 transition-opacity group-hover:opacity-100">
+                      <div className="mb-1 text-sm font-medium text-text-primary">
                         {milestone.name}
                       </div>
-                      <div className="text-xs text-slate-400">
-                        {format(milestoneDate, 'MMM d, yyyy')} • {milestone.completion_percentage}%
+                      <div className="text-xs text-text-secondary">
+                        {format(milestoneDate, 'MMM d, yyyy', { locale: dateLocale })} · {milestone.completion_percentage}%
                       </div>
                     </div>
                   </div>
 
-                  {/* Milestone Name */}
-                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-white font-medium pointer-events-none z-10">
+                  <div className="pointer-events-none absolute left-3 top-1/2 z-10 max-w-[40%] -translate-y-1/2 truncate text-sm font-medium text-text-primary">
                     {milestone.name}
                   </div>
                 </div>
@@ -194,36 +177,34 @@ export default function GanttTimeline({ plan, milestones, onMilestoneClick }: Ga
             })}
           </div>
 
-          {/* Grid Lines */}
-          <div className="absolute inset-0 pointer-events-none">
-            {timePeriods.map((_, i) => (
+          <div className="pointer-events-none absolute inset-0">
+            {timePeriods.map((period, index) => (
               <div
-                key={i}
-                className="absolute top-0 bottom-0 w-px bg-slate-800"
-                style={{ left: `${i * (viewMode === 'weeks' ? dayWidth * 7 : monthWidth)}px` }}
+                key={`${period.toISOString()}-line`}
+                className="absolute bottom-0 top-0 w-px bg-border"
+                style={{ left: `${index * periodWidth}px` }}
               />
             ))}
           </div>
         </div>
       </div>
 
-      {/* Legend */}
-      <div className="flex items-center gap-6 text-sm text-slate-400">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-text-secondary">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-blue-500 rounded-sm" />
-          In Progress
+          <div className="h-3 w-3 rounded-sm bg-primary" />
+          {t('inProgress')}
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-green-500 rounded-sm" />
-          Completed
+          <div className="h-3 w-3 rounded-sm bg-green-500" />
+          {t('legendCompleted')}
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-red-500 rounded-sm" />
-          Overdue
+          <div className="h-3 w-3 rounded-sm bg-red-500" />
+          {t('overdue')}
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-0.5 h-4 bg-blue-500" />
-          Today
+          <div className="h-4 w-0.5 bg-primary" />
+          {t('today')}
         </div>
       </div>
     </div>

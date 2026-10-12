@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Plus, Tag as TagIcon } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useTranslations } from 'next-intl';
 
 interface Tag {
   id: string;
@@ -28,12 +30,43 @@ const PRESET_COLORS = [
 ];
 
 export default function TagSelector({ workspaceId, selectedTags, onChange }: TagSelectorProps) {
+  const t = useTranslations('pages.notes');
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState(PRESET_COLORS[0]);
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const [menuBox, setMenuBox] = useState({ top: 0, left: 0, width: 288, maxHeight: 420, full: false });
+
+  const placeMenu = useCallback(() => {
+    const rect = anchorRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    if (window.innerWidth < 640) {
+      setMenuBox({ top: 0, left: 0, width: window.innerWidth, maxHeight: window.innerHeight, full: true });
+      return;
+    }
+    const width = Math.min(288, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    const maxHeight = Math.min(420, window.innerHeight - 16);
+    let top = rect.bottom + 4;
+    if (top + maxHeight > window.innerHeight - 8) {
+      top = Math.max(8, rect.top - maxHeight - 4);
+    }
+    setMenuBox({ top, left, width, maxHeight, full: false });
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    placeMenu();
+    window.addEventListener('resize', placeMenu);
+    window.addEventListener('scroll', placeMenu, true);
+    return () => {
+      window.removeEventListener('resize', placeMenu);
+      window.removeEventListener('scroll', placeMenu, true);
+    };
+  }, [isOpen, placeMenu]);
 
   const loadTags = useCallback(async () => {
     const { data, error } = await supabase
@@ -104,35 +137,68 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
           >
             {tag.name}
             <button
+              type="button"
               onClick={() => removeTag(tag.id)}
-              className="hover:bg-white/20 rounded p-0.5 transition-colors"
+              className="rounded p-0.5 transition-colors hover:bg-white/20"
+              aria-label={t('removeTag')}
             >
               <X className="w-3 h-3" />
             </button>
           </span>
         ))}
         <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium border border-slate-700 hover:border-slate-600 text-slate-400 hover:text-slate-300 transition-colors"
+          ref={anchorRef}
+          onClick={() => {
+            if (!isOpen) placeMenu();
+            setIsOpen(!isOpen);
+          }}
+          type="button"
+          className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
         >
           <TagIcon className="w-3 h-3" />
-          Add Tag
+          {t('addTag')}
         </button>
       </div>
 
-      {/* Tag Selector Dropdown */}
-      {isOpen && (
-        <div className="absolute z-50 mt-1 w-72 bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden">
+      {isOpen && typeof document !== 'undefined'
+        ? createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-[80]"
+              onClick={() => {
+                setIsOpen(false);
+                setIsCreating(false);
+                setSearchQuery('');
+              }}
+            />
+            <div
+              className={`fixed z-[80] max-w-full overflow-y-auto border-border bg-surface text-text-primary shadow-lg ${
+                menuBox.full ? 'h-[100dvh]' : 'rounded-xl border'
+              }`}
+              style={{ top: menuBox.top, left: menuBox.left, width: menuBox.width, maxHeight: menuBox.maxHeight }}
+            >
           {/* Search */}
-          <div className="p-3 border-b border-slate-700">
+          <div className="flex items-center gap-2 p-3 border-b border-border">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tags..."
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+              placeholder={t('searchTags')}
+              className="w-full min-w-0 flex-1 px-3 py-2 bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary"
               autoFocus
             />
+            <button
+              type="button"
+              onClick={() => {
+                setIsOpen(false);
+                setIsCreating(false);
+                setSearchQuery('');
+              }}
+              className="shrink-0 rounded-lg p-2 text-text-secondary hover:bg-surface-hover sm:hidden"
+              aria-label={t('close')}
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Tag List */}
@@ -141,39 +207,41 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
               filteredTags.map(tag => (
                 <button
                   key={tag.id}
+                  type="button"
                   onClick={() => {
                     toggleTag(tag);
                     setSearchQuery('');
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-700 transition-colors text-left"
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-text-primary transition-colors hover:bg-surface-hover"
                 >
                   <div
                     className="w-3 h-3 rounded-full flex-shrink-0"
                     style={{ backgroundColor: tag.color }}
                   />
-                  <span className="text-sm text-white">{tag.name}</span>
+                  <span className="text-sm text-text-primary">{tag.name}</span>
                 </button>
               ))
             ) : searchQuery ? (
-              <div className="px-3 py-2 text-sm text-slate-500 text-center">
-                No tags found
+              <div className="px-3 py-2 text-sm text-text-secondary text-center">
+                {t('noTagsFound')}
               </div>
             ) : (
-              <div className="px-3 py-2 text-sm text-slate-500 text-center">
-                No more tags available
+              <div className="px-3 py-2 text-sm text-text-secondary text-center">
+                {t('noMoreTags')}
               </div>
             )}
           </div>
 
           {/* Create New Tag */}
-          <div className="border-t border-slate-700 p-3">
+          <div className="border-t border-border p-3">
             {!isCreating ? (
               <button
                 onClick={() => setIsCreating(true)}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium text-white transition-colors"
+                type="button"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90"
               >
                 <Plus className="w-4 h-4" />
-                Create New Tag
+                {t('createNewTag')}
               </button>
             ) : (
               <div className="space-y-2">
@@ -185,19 +253,21 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
                     if (e.key === 'Enter') createTag();
                     if (e.key === 'Escape') setIsCreating(false);
                   }}
-                  placeholder="Tag name..."
-                  className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  placeholder={t('tagNamePlaceholder')}
+                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary"
                   autoFocus
                 />
                 
                 {/* Color Picker */}
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1">
                   {PRESET_COLORS.map(color => (
                     <button
                       key={color}
                       onClick={() => setNewTagColor(color)}
-                      className={`w-6 h-6 rounded-full transition-transform ${
-                        newTagColor === color ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-800 scale-110' : ''
+                      type="button"
+                      aria-label={color}
+                      className={`h-6 w-6 rounded-full transition-transform ${
+                        newTagColor === color ? 'scale-110 ring-2 ring-primary ring-offset-2 ring-offset-surface' : ''
                       }`}
                       style={{ backgroundColor: color }}
                     />
@@ -208,37 +278,30 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
                   <button
                     onClick={createTag}
                     disabled={!newTagName.trim()}
-                    className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 rounded-lg text-sm font-medium text-white transition-colors"
+                    type="button"
+                    className="flex-1 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:bg-surface-hover disabled:text-text-muted"
                   >
-                    Create
+                    {t('create')}
                   </button>
                   <button
                     onClick={() => {
                       setIsCreating(false);
                       setNewTagName('');
                     }}
-                    className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium text-white transition-colors"
+                    type="button"
+                    className="rounded-lg border border-border bg-secondary px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover"
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                 </div>
               </div>
             )}
           </div>
-        </div>
-      )}
-
-      {/* Backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-40"
-          onClick={() => {
-            setIsOpen(false);
-            setIsCreating(false);
-            setSearchQuery('');
-          }}
-        />
-      )}
+            </div>
+          </>,
+          document.body,
+        )
+        : null}
     </div>
   );
 }

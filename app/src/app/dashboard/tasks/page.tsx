@@ -1,16 +1,19 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useLocale, useTranslations } from 'next-intl'
 import dynamic from 'next/dynamic'
-import { motion, AnimatePresence } from 'framer-motion'
+import { AnimatePresence } from 'framer-motion'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
-import { supabase } from '@/lib/supabase'
-import { Plus, Search, CheckCircle, Circle, User, Calendar, List, LayoutGrid, CalendarDays, FileText } from 'lucide-react'
+import { Plus, Search, List, LayoutGrid, CalendarDays } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Card } from '@/components/ui/Card'
+import { Dialog } from '@/components/ui/Dialog'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { IconMenu } from '@/components/ui/IconMenu'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { TaskRow } from '@/components/ui/TaskRow'
 import { LoadingSkeleton } from '@/components/LoadingSkeleton'
 import { useDebounce } from '@/hooks/useDebounce'
-import BulkActions from '@/components/tasks/BulkActions'
 import TaskDetailModal from '@/components/tasks/TaskDetailModal'
 import TemplateSelector from '@/components/tasks/TemplateSelector'
 import { Task } from '@/components/tasks/types'
@@ -34,6 +37,8 @@ const CalendarView = dynamic(() => import('@/components/tasks/CalendarView'), {
 })
 
 export default function TasksPage() {
+  const t = useTranslations('pages.tasks')
+  const locale = useLocale()
   const { currentWorkspace } = useWorkspaceStore()
   const [tasks, setTasks] = useState<DashboardTask[]>([])
   const [projects, setProjects] = useState<any[]>([])
@@ -57,6 +62,7 @@ export default function TasksPage() {
   const [viewMode, setViewMode] = useState<'list' | 'board' | 'calendar'>('list')
   const [selectedTasks, setSelectedTasks] = useState<string[]>([])
   const [isMobile, setIsMobile] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
 
   // Debounce search query for better performance
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -120,7 +126,7 @@ export default function TasksPage() {
       
       const members = data.members?.map((m: any) => ({
         id: m.profiles?.id || m.user_id,
-        username: m.profiles?.username || 'unknown',
+        username: m.profiles?.username || t('unknownUser'),
         email: m.profiles?.email || ''
       })) || []
       
@@ -128,7 +134,7 @@ export default function TasksPage() {
     } catch (error) {
       console.error('Error loading team members:', error)
     }
-  }, [currentWorkspace])
+  }, [currentWorkspace, t])
 
   // Load data when workspace changes
   useEffect(() => {
@@ -139,9 +145,9 @@ export default function TasksPage() {
     }
   }, [currentWorkspace, loadTasks, loadProjects, loadTeamMembers])
 
-  // Track mobile viewport and disable board on small screens
+  // Below lg, force list when the board is selected and do not offer the board.
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 767px)')
+    const media = window.matchMedia('(max-width: 1023px)')
     const handler = (e: MediaQueryListEvent | MediaQueryList) => {
       const mobile = e.matches
       setIsMobile(mobile)
@@ -184,14 +190,33 @@ export default function TasksPage() {
     }
   }
 
-  const getPriorityColor = (priority: string) => {
-    const colors = {
-      urgent: 'bg-red-500/20 text-red-400 border-red-500/30',
-      high: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-      medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-      low: 'bg-green-500/20 text-green-400 border-green-500/30'
+  const priorityLabel = (priority: string) => {
+    if (priority === 'low') return t('priorityLow')
+    if (priority === 'medium') return t('priorityMedium')
+    if (priority === 'high') return t('priorityHigh')
+    if (priority === 'urgent') return t('priorityUrgent')
+    return priority
+  }
+
+  const filterLabel = (value: string) => {
+    if (value === 'all') return t('all')
+    if (value === 'active') return t('active')
+    if (value === 'completed') return t('completed')
+    if (value === 'overdue') return t('overdue')
+    return value
+  }
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm(t('confirmDeleteTask'))) return
+    try {
+      const response = await fetch(`/api/tasks?id=${taskId}`, { method: 'DELETE' })
+      if (response.ok) {
+        setSelectedTasks(prev => prev.filter(id => id !== taskId))
+        loadTasks()
+      }
+    } catch (error) {
+      console.error('Error deleting task:', error)
     }
-    return colors[priority as keyof typeof colors] || colors.medium
   }
 
   // Bulk action handlers
@@ -226,7 +251,7 @@ export default function TasksPage() {
   }
 
   const handleBulkDelete = async () => {
-    if (!confirm(`Delete ${selectedTasks.length} tasks? This cannot be undone.`)) return
+    if (!confirm(t('confirmBulkDelete', { count: selectedTasks.length }))) return
     
     try {
       await fetch(`/api/tasks?bulkIds=${selectedTasks.join(',')}`, {
@@ -276,196 +301,210 @@ export default function TasksPage() {
     .filter((task) => !selectedProjectFilter || task.project_id === selectedProjectFilter)
     .filter((task) => !selectedAssigneeFilter || task.assignee_id === selectedAssigneeFilter)
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-3xl md:text-4xl font-bold text-white">Tasks</h1>
-        <p className="text-text-secondary">Manage and track all your tasks</p>
-      </div>
+  const fieldClass =
+    'w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-text-primary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
 
-      {/* Actions Bar */}
-      <Card className="bg-surface/70 border-white/5 backdrop-blur-md p-4 md:p-6 space-y-4">
-        <div className="flex flex-col md:flex-row gap-3 md:gap-4 md:items-center md:justify-between">
-          <div className="flex-1 w-full md:w-auto">
-            <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-text-muted" />
-              <input
-                type="text"
-                placeholder="Search tasks..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-4 py-3 bg-surface/80 border border-white/10 rounded-xl text-white placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40"
-              />
-            </div>
-          </div>
-          
-          <div className="flex flex-wrap gap-2 sm:gap-3 justify-end w-full md:w-auto">
-            <button 
-              onClick={() => setShowTemplateSelector(true)}
-              className="px-4 py-3 bg-surface/80 border border-white/10 rounded-xl text-text-secondary hover:text-white hover:border-primary/40 transition-colors flex items-center gap-2"
-            >
-              <FileText className="w-5 h-5" />
-              From Template
-            </button>
-            
-            <Button 
+  const taskDetail = (task: DashboardTask) =>
+    [
+      priorityLabel(task.priority),
+      task.project?.name,
+      task.assignee?.username,
+      task.due_date ? new Date(task.due_date).toLocaleDateString(locale === 'mk' ? 'mk' : 'en-US') : null,
+    ].filter(Boolean).join(' · ')
+
+  const renderFilters = (className: string) => (
+    <div className={className}>
+      <label className="block min-w-0 flex-1 text-sm text-text-secondary">
+        {t('filterProject')}
+        <select
+          value={selectedProjectFilter}
+          onChange={(e) => setSelectedProjectFilter(e.target.value)}
+          className={`${fieldClass} mt-1.5`}
+        >
+          <option value="">{t('all')}</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </label>
+      <label className="block min-w-0 flex-1 text-sm text-text-secondary">
+        {t('filterAssignee')}
+        <select
+          value={selectedAssigneeFilter}
+          onChange={(e) => setSelectedAssigneeFilter(e.target.value)}
+          className={`${fieldClass} mt-1.5`}
+        >
+          <option value="">{t('all')}</option>
+          {teamMembers.map((m) => (
+            <option key={m.id} value={m.id}>{m.username}</option>
+          ))}
+        </select>
+      </label>
+      <label className="block min-w-0 flex-1 text-sm text-text-secondary">
+        {t('status')}
+        <select
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          className={`${fieldClass} mt-1.5`}
+        >
+          {['all', 'active', 'completed', 'overdue'].map((value) => (
+            <option key={value} value={value}>{filterLabel(value)}</option>
+          ))}
+        </select>
+      </label>
+    </div>
+  )
+
+  return (
+    <div className="min-w-0 max-w-full space-y-6 overflow-x-hidden">
+      <PageHeader
+        title={t('title')}
+        description={t('subtitle')}
+        action={
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              aria-label={t('newTask')}
               onClick={() => {
                 setTemplateData(null)
                 setShowCreateDialog(true)
               }}
-              className="px-6 py-3 bg-gradient-to-r from-primary to-primary/70 text-white rounded-xl hover:shadow-lg hover:shadow-primary/30 transition-all flex items-center gap-2"
+              className="gap-2"
             >
-              <Plus className="w-5 h-5" />
-              New Task
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">{t('newTask')}</span>
             </Button>
+            <IconMenu
+              label={t('fromTemplate')}
+              items={[{ label: t('fromTemplate'), onClick: () => setShowTemplateSelector(true) }]}
+            />
           </div>
-        </div>
+        }
+      />
 
-        {/* View Switcher */}
-        <div className="flex flex-wrap gap-2 mt-2 md:mt-4">
-          <button
-            onClick={() => setViewMode('list')}
-            className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-              viewMode === 'list'
-                ? 'bg-primary text-white'
-                : 'bg-surface/60 text-text-secondary hover:bg-surface-hover'
-            }`}
-          >
-            <List className="w-4 h-4" />
-            List
-          </button>
-          {!isMobile && (
-            <button
-              onClick={() => setViewMode('board')}
-              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                viewMode === 'board'
-                  ? 'bg-primary text-white'
-                  : 'bg-surface/60 text-text-secondary hover:bg-surface-hover'
-              }`}
-            >
-              <LayoutGrid className="w-4 h-4" />
-              Board
-            </button>
-          )}
-          <button
-            onClick={() => setViewMode('calendar')}
-            className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-              viewMode === 'calendar'
-                ? 'bg-primary text-white'
-                : 'bg-surface/60 text-text-secondary hover:bg-surface-hover'
-            }`}
-          >
-            <CalendarDays className="w-4 h-4" />
-            Calendar
-          </button>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+          <input
+            type="search"
+            placeholder={t('searchTasks')}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className={`${fieldClass} pl-9`}
+          />
         </div>
-
-        {/* Quick assignment selectors */}
-        <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-text-secondary">
-          <div className="flex items-center gap-2 bg-surface/80 border border-white/10 rounded-lg px-3 py-2">
-            <span className="text-xs uppercase tracking-wide text-text-muted">Filter Project</span>
-            <select
-              value={selectedProjectFilter}
-              onChange={(e) => setSelectedProjectFilter(e.target.value)}
-              className="bg-[var(--bg-secondary)] text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 border border-[var(--border)] rounded-md px-2 py-1 appearance-none"
-            >
-              <option value="">All</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex rounded-lg border border-border bg-surface p-0.5" role="group">
+            {([
+              { mode: 'list', label: t('list'), Icon: List },
+              { mode: 'board', label: t('board'), Icon: LayoutGrid },
+              { mode: 'calendar', label: t('calendar'), Icon: CalendarDays },
+            ] as const)
+              .filter((item) => !(item.mode === 'board' && isMobile))
+              .map(({ mode, label, Icon }) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={viewMode === mode}
+                  onClick={() => setViewMode(mode)}
+                  className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
+                    viewMode === mode
+                      ? 'bg-primary/10 text-primary'
+                      : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="hidden sm:inline">{label}</span>
+                  <span className="sr-only sm:hidden">{label}</span>
+                </button>
               ))}
-            </select>
           </div>
-
-          <div className="flex items-center gap-2 bg-surface/80 border border-white/10 rounded-lg px-3 py-2">
-            <span className="text-xs uppercase tracking-wide text-text-muted">Filter Assignee</span>
-            <select
-              value={selectedAssigneeFilter}
-              onChange={(e) => setSelectedAssigneeFilter(e.target.value)}
-              className="bg-[var(--bg-secondary)] text-white text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 border border-[var(--border)] rounded-md px-2 py-1 appearance-none"
-            >
-              <option value="">All</option>
-              {teamMembers.map((m) => (
-                <option key={m.id} value={m.id}>{m.username}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Filter Tabs */}
-        <div className="flex flex-wrap gap-2">
-          {['all', 'active', 'completed', 'overdue'].map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`px-4 py-2 rounded-lg capitalize transition-colors ${
-                filter === f
-                  ? 'bg-primary text-white'
-                  : 'bg-surface/60 text-text-secondary hover:bg-surface-hover'
-              }`}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-      </Card>
-
-      {/* Bulk Actions */}
-      {selectedTasks.length > 0 && (
-        <BulkActions
-          selectedTasks={selectedTasks}
-          onClearSelection={() => setSelectedTasks([])}
-          onBulkComplete={handleBulkComplete}
-          onBulkDelete={handleBulkDelete}
-          onBulkChangePriority={handleBulkPriority}
-        />
-      )}
-
-      {/* Tasks Content - View Mode Conditional */}
-      {loading ? (
-        <div className="bg-surface/70 backdrop-blur-md border border-white/5 rounded-2xl p-12 text-center">
-          <div className="w-20 h-20 bg-surface/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <div className="animate-spin w-10 h-10 border-4 border-primary border-t-transparent rounded-full"></div>
-          </div>
-          <h3 className="text-xl font-semibold text-white mb-2">Loading tasks...</h3>
-        </div>
-      ) : tasks.length === 0 ? (
-        <div className="bg-surface/70 backdrop-blur-md border border-white/5 rounded-2xl p-12 text-center">
-          <div className="w-20 h-20 bg-surface/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-10 h-10 text-text-muted" />
-          </div>
-          <h3 className="text-xl font-semibold text-white mb-2">No tasks yet</h3>
-          <p className="text-text-secondary mb-6">Create your first task to get started</p>
-          <Button 
-            onClick={() => setShowCreateDialog(true)}
-            className="px-6 py-3 bg-gradient-to-r from-primary to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2"
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="lg:hidden"
+            onClick={() => setFiltersOpen(true)}
           >
-            <Plus className="w-5 h-5" />
-            Create Task
+            {t('filters')}
           </Button>
         </div>
-      ) : viewMode === 'board' ? (
-        <KanbanBoard 
-          tasks={filteredTasks} 
-          onTaskUpdate={async (taskId, updates) => {
-            const extraUpdates: any = {};
-            if (updates.status === 'Done') extraUpdates.is_completed = true;
-            else if (updates.status) extraUpdates.is_completed = false;
+      </div>
 
-            await fetch('/api/tasks', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: taskId, ...updates, ...extraUpdates })
-            })
-            loadTasks()
-          }}
+      <div className="hidden lg:block">
+        {renderFilters('flex items-end gap-3')}
+      </div>
+
+      {selectedTasks.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2">
+          <span className="text-sm font-medium text-text-primary">
+            {t('tasksSelected', { count: selectedTasks.length })}
+          </span>
+          <Button type="button" size="sm" variant="secondary" onClick={handleBulkComplete}>
+            {t('complete')}
+          </Button>
+          <select
+            aria-label={t('changePriority')}
+            defaultValue=""
+            onChange={(e) => {
+              if (!e.target.value) return
+              handleBulkPriority(e.target.value)
+              e.target.value = ''
+            }}
+            className="h-8 rounded-lg border border-border bg-secondary px-2 text-xs text-text-primary"
+          >
+            <option value="">{t('changePriority')}</option>
+            <option value="urgent">{t('priorityUrgent')}</option>
+            <option value="high">{t('priorityHigh')}</option>
+            <option value="medium">{t('priorityMedium')}</option>
+            <option value="low">{t('priorityLow')}</option>
+          </select>
+          <Button type="button" size="sm" variant="danger" onClick={handleBulkDelete}>
+            {t('delete')}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedTasks([])}>
+            {t('clearSelection')}
+          </Button>
+        </div>
+      )}
+
+      {loading ? (
+        <p className="py-12 text-center text-sm text-text-muted">{t('loadingTasks')}</p>
+      ) : tasks.length === 0 ? (
+        <EmptyState
+          title={t('noTasksYet')}
+          body={t('createFirstTask')}
         />
+      ) : viewMode === 'board' && !isMobile ? (
+        <div className="min-w-0 max-w-full">
+          <KanbanBoard
+            tasks={filteredTasks}
+            onTaskClick={(boardTask) => {
+              const originalTask = filteredTasks.find(item => item.id === boardTask.id)
+              if (originalTask) {
+                setEditingTask(originalTask)
+                setShowEditDialog(true)
+              }
+            }}
+            onTaskUpdate={async (taskId, updates) => {
+              const extraUpdates: any = {}
+              if (updates.status === 'Done') extraUpdates.is_completed = true
+              else if (updates.status) extraUpdates.is_completed = false
+
+              await fetch('/api/tasks', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: taskId, ...updates, ...extraUpdates })
+              })
+              loadTasks()
+            }}
+          />
+        </div>
       ) : viewMode === 'calendar' ? (
-        <Card className="bg-surface/70 border-white/5 backdrop-blur-md p-2 md:p-4">
-          <CalendarView 
-            tasks={filteredTasks} 
+        <div className="max-w-full overflow-x-auto">
+          <CalendarView
+            tasks={filteredTasks}
             onTaskClick={(calendarTask) => {
-              // Find the original task from filteredTasks
               const originalTask = filteredTasks.find(t => t.id === calendarTask.id)
               if (originalTask) {
                 setEditingTask(originalTask)
@@ -473,120 +512,68 @@ export default function TasksPage() {
               }
             }}
           />
-        </Card>
+        </div>
+      ) : filteredTasks.length === 0 ? (
+        <EmptyState title={t('noTasksFound')} />
       ) : (
-        <div className="space-y-3">
-          {/* Select All Checkbox */}
-          {filteredTasks.length > 0 && (
-            <div className="bg-surface/70 backdrop-blur-md border border-white/5 rounded-xl p-4 flex items-center gap-3">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2">
+            <input
+              type="checkbox"
+              checked={selectedTasks.length === filteredTasks.length && filteredTasks.length > 0}
+              onChange={handleSelectAll}
+              aria-label={t('selectAll')}
+              className="h-4 w-4 shrink-0 accent-primary"
+            />
+            <span className="text-sm text-text-secondary">
+              {selectedTasks.length > 0
+                ? t('selectedOf', { count: selectedTasks.length, total: filteredTasks.length })
+                : t('selectAll')}
+            </span>
+          </div>
+
+          {filteredTasks.map((task) => (
+            <div key={task.id} className="flex items-center gap-2">
               <input
                 type="checkbox"
-                checked={selectedTasks.length === filteredTasks.length}
-                onChange={handleSelectAll}
-                className="w-5 h-5 rounded border-white/20 bg-surface text-primary focus:ring-2 focus:ring-primary/40"
-              />
-              <span className="text-text-secondary text-sm">
-                {selectedTasks.length > 0 
-                  ? `${selectedTasks.length} of ${filteredTasks.length} selected` 
-                  : 'Select all'}
-              </span>
-              </div>
-            )}
-
-            {filteredTasks.map((task, index) => (
-              <motion.div
-                key={task.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2, delay: index * 0.02 }}
-                layout
-                onClick={() => {
-                  setEditingTask(task)
-                  setShowEditDialog(true)
+                checked={selectedTasks.includes(task.id)}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedTasks([...selectedTasks, task.id])
+                  } else {
+                    setSelectedTasks(selectedTasks.filter(id => id !== task.id))
+                  }
                 }}
-                className="bg-surface/70 backdrop-blur-md border border-white/5 hover:border-primary/40 rounded-xl p-5 transition-all group cursor-pointer"
-                style={{ borderLeft: `4px solid ${task.project?.color || '#94a3b8'}` }}
-              >
-                <div className="flex items-start gap-4">
-                  {/* Checkbox for bulk selection */}
-                  <input
-                    type="checkbox"
-                    checked={selectedTasks.includes(task.id)}
-                    onChange={(e) => {
-                      e.stopPropagation()
-                      if (e.target.checked) {
-                        setSelectedTasks([...selectedTasks, task.id])
-                      } else {
-                        setSelectedTasks(selectedTasks.filter(id => id !== task.id))
-                      }
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                    className="mt-1 w-5 h-5 rounded border-white/20 bg-surface text-primary focus:ring-2 focus:ring-primary/40"
-                  />
+                aria-label={task.title}
+                className="h-4 w-4 shrink-0 accent-primary"
+              />
+              <div className="min-w-0 flex-1">
+                <TaskRow
+                  title={task.title}
+                  detail={taskDetail(task)}
+                  done={!!task.is_completed}
+                  completeLabel={t('markComplete')}
+                  deleteLabel={t('delete')}
+                  onOpen={() => {
+                    setEditingTask(task)
+                    setShowEditDialog(true)
+                  }}
+                  onToggle={() => toggleTaskComplete(task.id, !!task.is_completed)}
+                  onDelete={() => handleDeleteTask(task.id)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
-                  <motion.button 
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      toggleTaskComplete(task.id, !!task.is_completed)
-                    }}
-                    className="mt-1 flex-shrink-0"
-                  >
-                    {task.is_completed ? (
-                      <CheckCircle className="w-6 h-6 text-green-500 hover:text-green-400 transition-colors" />
-                    ) : (
-                      <Circle className="w-6 h-6 text-gray-500 group-hover:text-primary transition-colors" />
-                    )}
-                  </motion.button>
-
-                  <div className="flex-1">
-                    <h3 className={`text-lg font-semibold mb-2 ${task.is_completed ? 'text-text-muted line-through' : 'text-white'}`}>
-                      {task.title}
-                    </h3>
-                    
-                    {task.description && (
-                      <p className="text-text-secondary mb-3 line-clamp-2">{task.description}</p>
-                    )}
-
-                    <div className="flex flex-wrap gap-3 items-center">
-                      <span className={`px-3 py-1 rounded-lg text-xs font-medium border ${getPriorityColor(task.priority)}`}>
-                        {task.priority}
-                      </span>
-
-                      {task.due_date && (
-                        <div className="flex items-center gap-1 text-gray-400 text-sm">
-                          <Calendar className="w-4 h-4" />
-                          {new Date(task.due_date).toLocaleDateString()}
-                        </div>
-                      )}
-
-                      {task.assignee && (
-                        <div className="flex items-center gap-1 text-gray-400 text-sm">
-                          <User className="w-4 h-4" />
-                          {task.assignee.username}
-                        </div>
-                      )}
-
-                      {task.project && (
-                        <div
-                          className="px-2 py-1 rounded text-xs border"
-                          style={{
-                            borderColor: task.project.color || '#94a3b8',
-                            color: task.project.color || '#94a3b8'
-                          }}
-                        >
-                          {task.project.name}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        )}
+      <Dialog
+        open={filtersOpen}
+        title={t('filters')}
+        onClose={() => setFiltersOpen(false)}
+      >
+        {renderFilters('space-y-4')}
+      </Dialog>
 
       {/* Template Selector */}
       <AnimatePresence>

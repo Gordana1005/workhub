@@ -1,11 +1,18 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
+import { useParams } from 'next/navigation'
+import { useLocale, useTranslations } from 'next-intl'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, Calendar, Users, CheckCircle, Circle, Clock, Target, TrendingUp, Plus, Filter, ArrowUpDown, Tag, X, UserPlus, Edit2, Save, XCircle } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { Dialog } from '@/components/ui/Dialog'
+import { EmptyState } from '@/components/ui/EmptyState'
+import { IconMenu } from '@/components/ui/IconMenu'
+import { PageHeader } from '@/components/ui/PageHeader'
+import { TaskRow } from '@/components/ui/TaskRow'
 import ProjectBudgetCard from '@/components/finance/ProjectBudgetCard'
 
 interface Project {
@@ -51,10 +58,44 @@ interface Category {
   color: string
 }
 
+const fieldClass =
+  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+
 export default function ProjectDetailPage() {
+  const t = useTranslations('pages.projects')
+  const locale = useLocale()
+  const statusLabel = (s: string) => {
+    const map: Record<string, string> = {
+      active: t('status.active'),
+      completed: t('status.completed'),
+      planning: t('status.planning'),
+      archived: t('status.archived'),
+      on_hold: t('status.onHold'),
+      'on-hold': t('status.onHold'),
+      in_progress: t('status.inProgress'),
+      'in-progress': t('status.inProgress'),
+    }
+    return map[s] ?? s.replace(/[-_]/g, ' ')
+  }
+  const priorityLabel = (p: string) => {
+    const map: Record<string, string> = {
+      low: t('priority.low'),
+      medium: t('priority.medium'),
+      high: t('priority.high'),
+      urgent: t('priority.urgent'),
+    }
+    return map[p] ?? p
+  }
+  const roleLabel = (role: string) => {
+    const map: Record<string, string> = {
+      member: t('roles.member'),
+      admin: t('roles.admin'),
+      owner: t('roles.owner'),
+    }
+    return map[role] ?? role
+  }
   const CATEGORY_COLORS = ['#f97316', '#22c55e', '#3b82f6', '#a855f7', '#e11d48', '#14b8a6', '#f59e0b']
   const params = useParams()
-  const router = useRouter()
   const { currentWorkspace } = useWorkspaceStore()
   const [project, setProject] = useState<Project | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
@@ -66,6 +107,7 @@ export default function ProjectDetailPage() {
   const [showCreateTaskDialog, setShowCreateTaskDialog] = useState(false)
   const [showAddMemberDialog, setShowAddMemberDialog] = useState(false)
   const [showCreateCategoryDialog, setShowCreateCategoryDialog] = useState(false)
+  const [tab, setTab] = useState<'tasks' | 'people' | 'money'>('tasks')
 
   // Project editing state
   const [isEditingProject, setIsEditingProject] = useState(false)
@@ -173,13 +215,6 @@ export default function ProjectDetailPage() {
     return found || CATEGORY_COLORS[0]
   }
 
-  const categoryColorMap = useMemo(() => {
-    return categories.reduce<Record<string, string>>((acc, cat) => {
-      if (cat.name) acc[cat.name] = cat.color
-      return acc
-    }, {})
-  }, [categories])
-
   const handleCreateTask = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!currentWorkspace || !project) return
@@ -203,7 +238,7 @@ export default function ProjectDetailPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
-        throw new Error(data.error || 'Failed to create task')
+        throw new Error(data.error || t('createTaskFailed'))
       }
 
       setShowCreateTaskDialog(false)
@@ -240,7 +275,7 @@ export default function ProjectDetailPage() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
-        throw new Error(data.error || 'Failed to create category')
+        throw new Error(data.error || t('createCategoryFailed'))
       }
 
       setCategories((prev) => [
@@ -312,14 +347,14 @@ export default function ProjectDetailPage() {
       loadProjectData()
     } catch (error) {
       console.error('Error adding member:', error)
-      alert(`Failed to add member: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      alert(t('addMemberFailed', { error: error instanceof Error ? error.message : t('unknownError') }))
     }
   }
 
   const handleRemoveProjectMember = async (userId: string) => {
     if (!project) return
 
-    if (!confirm('Are you sure you want to remove this member from the project?')) return
+    if (!confirm(t('removeMemberConfirm'))) return
 
     try {
       const { error } = await supabase
@@ -333,7 +368,7 @@ export default function ProjectDetailPage() {
       loadProjectData()
     } catch (error) {
       console.error('Error removing member:', error)
-      alert(`Failed to remove member: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      alert(t('removeMemberFailed', { error: error instanceof Error ? error.message : t('unknownError') }))
     }
   }
 
@@ -408,745 +443,589 @@ export default function ProjectDetailPage() {
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to update project')
+        throw new Error(errorData.error || t('updateFailedShort'))
       }
 
       setIsEditingProject(false)
       await loadProjectData()
-      alert('Project updated successfully!')
+      alert(t('updated'))
     } catch (error) {
       console.error('Error updating project:', error)
-      alert(`Failed to update project: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      alert(t('updateFailed', { error: error instanceof Error ? error.message : t('unknownError') }))
     }
   }
 
-  const getPriorityColor = (priority: string) => {
-    const colors = {
-      urgent: 'bg-red-500/20 text-red-400 border-red-500/30',
-      high: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-      medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-      low: 'bg-green-500/20 text-green-400 border-green-500/30'
-    }
-    return colors[priority as keyof typeof colors] || colors.medium
+  const openNewCategory = () => {
+    setNewCategoryColor(getNextCategoryColor())
+    setShowCreateCategoryDialog(true)
+  }
+
+  const closeAddMember = () => {
+    setShowAddMemberDialog(false)
+    setSelectedMemberToAdd('')
+  }
+
+  const closeCreateCategory = () => {
+    setShowCreateCategoryDialog(false)
+    setNewCategoryName('')
+    setNewCategoryColor(getNextCategoryColor())
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-12 text-center">
-            <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <div className="animate-spin w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full"></div>
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Loading project...</h3>
-          </div>
-        </div>
-      </div>
-    )
+    return <p className="py-12 text-center text-sm text-text-muted">{t('loadingProject')}</p>
   }
 
   if (!project) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
-        <div className="max-w-7xl mx-auto">
-          <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-12 text-center">
-            <div className="w-20 h-20 bg-slate-700/50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Target className="w-10 h-10 text-gray-500" />
-            </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Project not found</h3>
-            <p className="text-gray-400 mb-6">The project you're looking for doesn't exist or you don't have access to it.</p>
-            <Button
-              onClick={() => router.push('/dashboard/projects')}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              Back to Projects
-            </Button>
-          </div>
-        </div>
-      </div>
+      <EmptyState
+        title={t('notFoundTitle')}
+        body={t('notFoundBody')}
+        action={
+          <Link href="/dashboard/projects" className="text-sm font-medium text-primary">
+            {t('backToProjects')}
+          </Link>
+        }
+      />
     )
   }
 
-  const totalTasks = tasks.length
-  const completedTasks = tasks.filter(t => t.is_completed).length
-  const completionPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0
-  const overdueTasks = tasks.filter(t => !t.is_completed && t.due_date && new Date(t.due_date) < new Date()).length
+  const descriptionLine =
+    project.description?.split('\n').map((line) => line.trim()).find(Boolean) || statusLabel(project.status)
+
+  const tabs = [
+    { id: 'tasks' as const, label: t('tasksTab') },
+    { id: 'people' as const, label: t('peopleTab') },
+    { id: 'money' as const, label: t('moneyTab') },
+  ]
+
+  const taskDetail = (task: Task) =>
+    [
+      priorityLabel(task.priority),
+      task.category,
+      task.due_date ? new Date(task.due_date).toLocaleDateString(locale) : null,
+      task.assignee?.username,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+
+  const renderFilters = (compact: boolean) => (
+    <div className={compact ? 'flex max-w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto' : 'space-y-4'}>
+      <label className={compact ? 'w-40 shrink-0' : 'block'}>
+        <span className={compact ? 'sr-only' : 'mb-1.5 block text-sm text-text-secondary'}>{t('category')}</span>
+        <select
+          value={selectedCategory}
+          onChange={(e) => setSelectedCategory(e.target.value)}
+          className={fieldClass}
+          aria-label={t('category')}
+        >
+          <option value="all">{t('allCategories')}</option>
+          {categories.map((cat) => (
+            <option key={cat.id} value={cat.name}>{cat.name}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className={compact ? 'w-40 shrink-0' : 'block'}>
+        <span className={compact ? 'sr-only' : 'mb-1.5 block text-sm text-text-secondary'}>{t('priorityField')}</span>
+        <select
+          value={selectedPriority}
+          onChange={(e) => setSelectedPriority(e.target.value)}
+          className={fieldClass}
+          aria-label={t('priorityField')}
+        >
+          <option value="all">{t('allPriorities')}</option>
+          <option value="urgent">{t('priority.urgent')}</option>
+          <option value="high">{t('priority.high')}</option>
+          <option value="medium">{t('priority.medium')}</option>
+          <option value="low">{t('priority.low')}</option>
+        </select>
+      </label>
+
+      <label className={compact ? 'w-40 shrink-0' : 'block'}>
+        <span className={compact ? 'sr-only' : 'mb-1.5 block text-sm text-text-secondary'}>{t('sortBy')}</span>
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'date' | 'priority' | 'title')}
+          className={fieldClass}
+          aria-label={t('sortBy')}
+        >
+          <option value="date">{t('dueDate')}</option>
+          <option value="priority">{t('priorityField')}</option>
+          <option value="title">{t('titleAz')}</option>
+        </select>
+      </label>
+
+      <button
+        type="button"
+        onClick={openNewCategory}
+        className="shrink-0 whitespace-nowrap text-sm font-medium text-primary"
+      >
+        {t('newCategory')}
+      </button>
+    </div>
+  )
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <Button
-            onClick={() => router.push('/dashboard/projects')}
-            className="mb-4 px-4 py-2 bg-slate-800/50 text-gray-300 rounded-xl hover:bg-slate-700/50 transition-colors inline-flex items-center gap-2"
+    <div className="min-w-0 max-w-full space-y-5">
+      <Link
+        href="/dashboard/projects"
+        className="inline-flex max-w-full items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary"
+      >
+        <ArrowLeft className="h-4 w-4 shrink-0" />
+        <span className="truncate">{t('backToProjects')}</span>
+      </Link>
+
+      <PageHeader
+        title={project.name}
+        description={descriptionLine}
+        action={
+          currentUserId ? (
+            <IconMenu
+              label={t('editProject')}
+              items={[{ label: t('editProject'), onClick: handleStartEditingProject }]}
+            />
+          ) : null
+        }
+      />
+
+      <div className="flex max-w-full flex-wrap gap-2">
+        {tabs.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={tab === item.id}
+            onClick={() => setTab(item.id)}
+            className={`max-w-full rounded-lg px-3 py-1.5 text-sm font-medium ${
+              tab === item.id
+                ? 'bg-primary text-white'
+                : 'border border-border bg-surface text-text-secondary'
+            }`}
           >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Projects
-          </Button>
-
-          <div className="flex items-start gap-4 mb-4">
-            <div
-              className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
-              style={{ backgroundColor: project.color || '#667eea' }}
-            >
-              {project.name.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1">
-              {isEditingProject ? (
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={editProjectData.name}
-                    onChange={(e) => setEditProjectData({ ...editProjectData, name: e.target.value })}
-                    className="w-full text-3xl font-bold bg-slate-800/50 text-white border border-slate-600 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Project name"
-                  />
-                  <textarea
-                    value={editProjectData.description}
-                    onChange={(e) => setEditProjectData({ ...editProjectData, description: e.target.value })}
-                    className="w-full bg-slate-800/50 text-gray-300 border border-slate-600 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg resize-none"
-                    placeholder="Project description"
-                    rows={2}
-                  />
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleSaveProject}
-                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg inline-flex items-center gap-2 text-sm font-medium"
-                    >
-                      <Save className="w-4 h-4" />
-                      Save Changes
-                    </button>
-                    <button
-                      onClick={handleCancelEditingProject}
-                      className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg inline-flex items-center gap-2 text-sm font-medium"
-                    >
-                      <XCircle className="w-4 h-4" />
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-3">
-                    <h1 className="text-4xl font-bold text-white">{project.name}</h1>
-                    {currentUserId && (
-                      <button
-                        onClick={handleStartEditingProject}
-                        className="p-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-lg transition-colors"
-                        title="Edit project"
-                      >
-                        <Edit2 className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-gray-400 text-lg mt-1">{project.description || 'No description'}</p>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Project Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <Target className="w-8 h-8 text-blue-500" />
-                <div>
-                  <p className="text-gray-400 text-sm">Total Tasks</p>
-                  <p className="text-2xl font-bold text-white">{totalTasks}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="w-8 h-8 text-green-500" />
-                <div>
-                  <p className="text-gray-400 text-sm">Completed</p>
-                  <p className="text-2xl font-bold text-white">{completedTasks}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <TrendingUp className="w-8 h-8 text-purple-500" />
-                <div>
-                  <p className="text-gray-400 text-sm">Completion</p>
-                  <p className="text-2xl font-bold text-white">{completionPercentage}%</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4">
-              <div className="flex items-center gap-3">
-                <Clock className="w-8 h-8 text-red-500" />
-                <div>
-                  <p className="text-gray-400 text-sm">Overdue</p>
-                  <p className="text-2xl font-bold text-white">{overdueTasks}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Project Budget Card */}
-        {project && (
-          <div className="mb-8">
-            <ProjectBudgetCard projectId={project.id} />
-          </div>
-        )}
-
-        {/* Project Details */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="lg:col-span-2 space-y-6">
-            {/* Description */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Description</h2>
-              {project.description ? (
-                <p className="text-gray-300 leading-relaxed">{project.description}</p>
-              ) : (
-                <p className="text-gray-500 italic">No description provided</p>
-              )}
-            </div>
-
-            {/* Tasks */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-semibold text-white">Tasks</h2>
-                <div className="flex gap-3">
-                  <Button
-                    onClick={() => setShowFilters(!showFilters)}
-                    className={`px-4 py-2 rounded-xl inline-flex items-center gap-2 transition-all ${
-                      showFilters 
-                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white' 
-                        : 'bg-slate-700 text-gray-300 hover:bg-slate-600'
-                    }`}
-                  >
-                    <Filter className="w-4 h-4" />
-                    Filters
-                  </Button>
-                  <Button
-                    onClick={() => setShowCreateTaskDialog(true)}
-                    className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Task
-                  </Button>
-                </div>
-              </div>
-
-              {/* Filters Panel */}
-              {showFilters && (
-                <div className="mb-6 p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Category</label>
-                      <select
-                        value={selectedCategory}
-                        onChange={(e) => setSelectedCategory(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="all">All Categories</option>
-                        {categories.map(cat => (
-                          <option key={cat.id} value={cat.name}>{cat.name}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Priority</label>
-                      <select
-                        value={selectedPriority}
-                        onChange={(e) => setSelectedPriority(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="all">All Priorities</option>
-                        <option value="urgent">Urgent</option>
-                        <option value="high">High</option>
-                        <option value="medium">Medium</option>
-                        <option value="low">Low</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Sort By</label>
-                      <select
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as 'date' | 'priority' | 'title')}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="date">Due Date</option>
-                        <option value="priority">Priority</option>
-                        <option value="title">Title (A-Z)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {(selectedCategory !== 'all' || selectedPriority !== 'all') && (
-                    <div className="mt-3 flex items-center gap-2">
-                      <span className="text-sm text-gray-400">Active filters:</span>
-                      {selectedCategory !== 'all' && (
-                        <button
-                          onClick={() => setSelectedCategory('all')}
-                          className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-lg text-sm flex items-center gap-2 hover:bg-blue-500/30"
-                        >
-                          {selectedCategory}
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                      {selectedPriority !== 'all' && (
-                        <button
-                          onClick={() => setSelectedPriority('all')}
-                          className="px-3 py-1 bg-orange-500/20 text-orange-400 rounded-lg text-sm flex items-center gap-2 hover:bg-orange-500/30"
-                        >
-                          {selectedPriority}
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {filteredTasks.length === 0 ? (
-                <div className="text-center py-8">
-                  <CheckCircle className="w-12 h-12 text-gray-500 mx-auto mb-4" />
-                  <p className="text-gray-400">
-                    {tasks.length === 0 ? 'No tasks yet' : 'No tasks match your filters'}
-                  </p>
-                  <Button
-                    onClick={() => setShowCreateTaskDialog(true)}
-                    className="mt-4 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Create First Task
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {filteredTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className="bg-slate-900/50 border border-slate-700/50 rounded-xl p-4 hover:bg-slate-900/70 transition-all"
-                    >
-                      <div className="flex items-start gap-4">
-                        <button 
-                          onClick={() => toggleTaskComplete(task.id, task.is_completed)}
-                          className="flex-shrink-0 mt-1"
-                        >
-                          {task.is_completed ? (
-                            <CheckCircle className="w-6 h-6 text-green-500 hover:text-green-400 transition-colors" />
-                          ) : (
-                            <Circle className="w-6 h-6 text-gray-500 hover:text-purple-500 transition-colors" />
-                          )}
-                        </button>
-
-                        <div className="flex-1">
-                          <h3 className={`text-lg font-semibold mb-2 ${task.is_completed ? 'text-gray-500 line-through' : 'text-white'}`}>
-                            {task.title}
-                          </h3>
-
-                          {task.description && (
-                            <p className="text-gray-400 mb-3">{task.description}</p>
-                          )}
-
-                          <div className="flex flex-wrap gap-3 items-center">
-                            <span className={`px-3 py-1 rounded-lg text-xs font-medium border ${getPriorityColor(task.priority)}`}>
-                              {task.priority}
-                            </span>
-
-                            {task.category && (
-                              <span
-                                className="px-3 py-1 rounded-lg text-xs font-medium border flex items-center gap-1"
-                                style={{
-                                  backgroundColor: `${categoryColorMap[task.category] || 'rgba(148, 163, 184, 0.15)'}`,
-                                  color: '#e2e8f0',
-                                  borderColor: 'rgba(255,255,255,0.16)'
-                                }}
-                              >
-                                <Tag className="w-3 h-3" />
-                                {task.category}
-                              </span>
-                            )}
-
-                            {task.due_date && (
-                              <div className="flex items-center gap-1 text-gray-400 text-sm">
-                                <Calendar className="w-4 h-4" />
-                                {new Date(task.due_date).toLocaleDateString()}
-                              </div>
-                            )}
-
-                            {task.assignee && (
-                              <div className="flex items-center gap-1 text-gray-400 text-sm">
-                                <Users className="w-4 h-4" />
-                                {task.assignee.username}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Project Info */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6">
-              <h2 className="text-xl font-semibold text-white mb-4">Project Info</h2>
-              <div className="space-y-4">
-                <div>
-                  <p className="text-gray-400 text-sm mb-1">Status</p>
-                  {isEditingProject ? (
-                    <select
-                      value={editProjectData.status}
-                      onChange={(e) => setEditProjectData({ ...editProjectData, status: e.target.value })}
-                      className="w-full bg-slate-800/50 text-white border border-slate-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    >
-                      <option value="active">Active</option>
-                      <option value="planning">Planning</option>
-                      <option value="on_hold">On Hold</option>
-                      <option value="completed">Completed</option>
-                      <option value="archived">Archived</option>
-                    </select>
-                  ) : (
-                    <span className={`inline-block px-3 py-1 rounded-lg text-xs font-medium capitalize ${
-                      project.status === 'active' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                      project.status === 'completed' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' :
-                      'bg-gray-500/20 text-gray-400 border border-gray-500/30'
-                    }`}>
-                      {project.status.replace('_', ' ')}
-                    </span>
-                  )}
-                </div>
-
-                <div>
-                  <p className="text-gray-400 text-sm">Created</p>
-                  <p className="text-white">{new Date(project.created_at).toLocaleDateString()} at {new Date(project.created_at).toLocaleTimeString()}</p>
-                </div>
-
-                {project.creator && (
-                  <div>
-                    <p className="text-gray-400 text-sm">Created by</p>
-                    <p className="text-white">{project.creator.username}</p>
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-gray-400 text-sm mb-1">Start Date</p>
-                  {isEditingProject ? (
-                    <input
-                      type="date"
-                      value={editProjectData.start_date}
-                      onChange={(e) => setEditProjectData({ ...editProjectData, start_date: e.target.value })}
-                      className="w-full bg-slate-800/50 text-white border border-slate-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  ) : (
-                    <p className="text-white">{project.start_date ? new Date(project.start_date).toLocaleDateString() : 'Not set'}</p>
-                  )}
-                </div>
-
-                <div>
-                  <p className="text-gray-400 text-sm mb-1">End Date</p>
-                  {isEditingProject ? (
-                    <input
-                      type="date"
-                      value={editProjectData.end_date}
-                      onChange={(e) => setEditProjectData({ ...editProjectData, end_date: e.target.value })}
-                      className="w-full bg-slate-800/50 text-white border border-slate-600 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  ) : (
-                    <p className="text-white">{project.end_date ? new Date(project.end_date).toLocaleDateString() : 'Not set'}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Team Members */}
-            <div className="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-2xl p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold text-white">Project Team</h2>
-                <Button
-                  onClick={() => setShowAddMemberDialog(true)}
-                  className="px-3 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg inline-flex items-center gap-2 text-sm"
-                >
-                  <UserPlus className="w-4 h-4" />
-                  Add Member
-                </Button>
-              </div>
-              {projectMembers.length === 0 ? (
-                <p className="text-gray-500 italic">No team members assigned yet</p>
-              ) : (
-                <div className="space-y-3">
-                  {projectMembers.map((member) => (
-                    <div key={member.id} className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700/50 hover:bg-slate-900/70 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-medium">
-                          {member.username?.charAt(0).toUpperCase() || 'U'}
-                        </div>
-                        <div>
-                          <p className="text-gray-300 font-medium">{member.username || 'Unknown User'}</p>
-                          <p className="text-xs text-gray-500 capitalize">{member.role}</p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleRemoveProjectMember(member.id)}
-                        className="p-2 text-red-400 hover:bg-red-500/20 rounded-lg transition-colors"
-                        title="Remove from project"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Create Task Dialog */}
-        {showCreateTaskDialog && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <h2 className="text-2xl font-bold text-white mb-6">Create New Task</h2>
-
-              <form onSubmit={handleCreateTask} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Task Title *</label>
-                  <input
-                    type="text"
-                    value={taskFormData.title}
-                    onChange={(e) => setTaskFormData({...taskFormData, title: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter task title..."
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Description</label>
-                  <textarea
-                    rows={4}
-                    value={taskFormData.description}
-                    onChange={(e) => setTaskFormData({...taskFormData, description: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="Enter task description..."
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Priority</label>
-                    <select
-                      value={taskFormData.priority}
-                      onChange={(e) => setTaskFormData({...taskFormData, priority: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="urgent">Urgent</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Due Date</label>
-                    <input
-                      type="date"
-                      value={taskFormData.due_date}
-                      onChange={(e) => setTaskFormData({...taskFormData, due_date: e.target.value})}
-                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Assignee (Optional)</label>
-                  <select
-                    value={taskFormData.assignee_id}
-                    onChange={(e) => setTaskFormData({...taskFormData, assignee_id: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Unassigned</option>
-                    {members.map((member) => (
-                      <option key={member.id} value={member.id}>{member.username || 'Unknown User'}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-300">Category (Optional)</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewCategoryColor(getNextCategoryColor())
-                        setShowCreateCategoryDialog(true)
-                      }}
-                      className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                    >
-                      <Plus className="w-3 h-3" />
-                      New Category
-                    </button>
-                  </div>
-                  <select
-                    value={taskFormData.category}
-                    onChange={(e) => setTaskFormData({...taskFormData, category: e.target.value})}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">No Category</option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.name}>{category.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    type="button"
-                    onClick={() => setShowCreateTaskDialog(false)}
-                    className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg"
-                  >
-                    Create Task
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Add Member Dialog */}
-        {showAddMemberDialog && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
-              <h2 className="text-2xl font-bold text-white mb-6">Add Team Member</h2>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Select Member</label>
-                  <select
-                    value={selectedMemberToAdd}
-                    onChange={(e) => setSelectedMemberToAdd(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Choose a member...</option>
-                    {members
-                      .filter(m => !projectMembers.find(pm => pm.id === m.id))
-                      .map((member) => (
-                        <option key={member.id} value={member.id}>{member.username || 'Unknown User'}</option>
-                      ))}
-                  </select>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setShowAddMemberDialog(false)
-                      setSelectedMemberToAdd('')
-                    }}
-                    className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleAddMemberToProject}
-                    disabled={!selectedMemberToAdd}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Add Member
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Create Category Dialog */}
-        {showCreateCategoryDialog && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
-              <h2 className="text-2xl font-bold text-white mb-6">Create New Category</h2>
-
-              <form onSubmit={handleCreateCategory} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Category Name *</label>
-                  <input
-                    type="text"
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., SEO Optimization, Bug Fix..."
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Color</label>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {CATEGORY_COLORS.map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        onClick={() => setNewCategoryColor(color)}
-                        className={`w-8 h-8 rounded-full border ${newCategoryColor === color ? 'ring-2 ring-white' : 'border-white/20'}`}
-                        style={{ backgroundColor: color }}
-                        title={color}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex gap-3 items-center">
-                    <input
-                      type="color"
-                      value={newCategoryColor}
-                      onChange={(e) => setNewCategoryColor(e.target.value)}
-                      className="w-16 h-12 bg-slate-900/50 border border-slate-700 rounded-xl cursor-pointer"
-                    />
-                    <input
-                      type="text"
-                      value={newCategoryColor}
-                      onChange={(e) => setNewCategoryColor(e.target.value)}
-                      className="flex-1 px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="#667eea"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      setShowCreateCategoryDialog(false)
-                      setNewCategoryName('')
-                      setNewCategoryColor(getNextCategoryColor())
-                    }}
-                    className="flex-1 px-6 py-3 bg-slate-700 text-white rounded-xl hover:bg-slate-600"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl hover:shadow-lg"
-                  >
-                    Create Category
-                  </Button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+            {item.label}
+          </button>
+        ))}
       </div>
+
+      {tab === 'tasks' && (
+        <div className="min-w-0 space-y-3">
+          <form onSubmit={handleCreateTask} className="flex min-w-0 gap-2">
+            <input
+              type="text"
+              required
+              value={taskFormData.title}
+              onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
+              placeholder={t('taskTitlePlaceholder')}
+              aria-label={t('taskTitle')}
+              className={`${fieldClass} min-w-0 flex-1`}
+            />
+            <Button type="submit" className="shrink-0" disabled={!taskFormData.title.trim()}>
+              {t('addTask')}
+            </Button>
+          </form>
+
+          <div className="flex items-center gap-2">
+            <Button type="button" variant="secondary" size="sm" className="lg:hidden" onClick={() => setShowFilters(true)}>
+              {t('filters')}
+            </Button>
+            <div className="ml-auto">
+              <IconMenu
+                label={t('createTask')}
+                items={[{ label: t('createTask'), onClick: () => setShowCreateTaskDialog(true) }]}
+              />
+            </div>
+          </div>
+
+          <div className="hidden min-w-0 max-w-full lg:block">
+            {renderFilters(true)}
+          </div>
+
+          {(selectedCategory !== 'all' || selectedPriority !== 'all') && (
+            <div className="flex max-w-full flex-wrap items-center gap-2">
+              <span className="text-sm text-text-secondary">{t('activeFilters')}</span>
+              {selectedCategory !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('all')}
+                  className="inline-flex max-w-full items-center gap-1 rounded-lg border border-border bg-background px-2 py-1 text-xs text-text-secondary"
+                >
+                  <span className="truncate">{selectedCategory}</span>
+                  <X className="h-3 w-3 shrink-0" />
+                </button>
+              )}
+              {selectedPriority !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPriority('all')}
+                  className="inline-flex max-w-full items-center gap-1 rounded-lg border border-border bg-background px-2 py-1 text-xs text-text-secondary"
+                >
+                  <span className="truncate">{priorityLabel(selectedPriority)}</span>
+                  <X className="h-3 w-3 shrink-0" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {filteredTasks.length === 0 ? (
+            <EmptyState title={tasks.length === 0 ? t('noTasks') : t('noTasksMatch')} />
+          ) : (
+            <div className="space-y-2">
+              {filteredTasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  title={task.title}
+                  detail={taskDetail(task)}
+                  done={task.is_completed}
+                  completeLabel={task.is_completed ? t('markIncomplete') : t('markComplete')}
+                  deleteLabel={t('deleteTask')}
+                  onToggle={() => toggleTaskComplete(task.id, task.is_completed)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'people' && (
+        <div className="min-w-0 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="min-w-0 truncate text-base font-semibold text-text-primary">{t('projectTeam')}</h2>
+            <Button type="button" className="shrink-0" onClick={() => setShowAddMemberDialog(true)}>
+              {t('addMember')}
+            </Button>
+          </div>
+          {projectMembers.length === 0 ? (
+            <EmptyState title={t('noMembers')} />
+          ) : (
+            <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+              {projectMembers.map((member) => (
+                <li key={member.id} className="flex items-center gap-3 px-3 py-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-sm font-medium text-primary">
+                    {(member.username || t('unknownUser')).charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-text-primary">
+                      {member.username || t('unknownUser')}
+                    </p>
+                    <p className="truncate text-xs text-text-muted">{roleLabel(member.role)}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="shrink-0"
+                    aria-label={t('removeMember')}
+                    title={t('removeMember')}
+                    onClick={() => handleRemoveProjectMember(member.id)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {tab === 'money' && (
+        <div className="min-w-0 max-w-full">
+          <ProjectBudgetCard projectId={project.id} />
+        </div>
+      )}
+
+      <Dialog
+        open={isEditingProject}
+        title={t('editProjectTitle')}
+        onClose={handleCancelEditingProject}
+        size="lg"
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={handleCancelEditingProject}>
+              {t('cancel')}
+            </Button>
+            <Button type="submit" form="edit-project-form" className="w-full sm:flex-1">
+              {t('saveChanges')}
+            </Button>
+          </div>
+        }
+      >
+        <form
+          id="edit-project-form"
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault()
+            handleSaveProject()
+          }}
+        >
+          <label className="block text-sm text-text-secondary">
+            {t('projectName')}
+            <input
+              required
+              value={editProjectData.name}
+              onChange={(e) => setEditProjectData({ ...editProjectData, name: e.target.value })}
+              className={`${fieldClass} mt-1.5`}
+              placeholder={t('namePlaceholder')}
+            />
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('description')}
+            <textarea
+              rows={3}
+              value={editProjectData.description}
+              onChange={(e) => setEditProjectData({ ...editProjectData, description: e.target.value })}
+              className={`${fieldClass} mt-1.5`}
+              placeholder={t('descriptionShortPlaceholder')}
+            />
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('statusField')}
+            <select
+              value={editProjectData.status}
+              onChange={(e) => setEditProjectData({ ...editProjectData, status: e.target.value })}
+              className={`${fieldClass} mt-1.5`}
+            >
+              <option value="active">{t('status.active')}</option>
+              <option value="planning">{t('status.planning')}</option>
+              <option value="on_hold">{t('status.onHold')}</option>
+              <option value="completed">{t('status.completed')}</option>
+              <option value="archived">{t('status.archived')}</option>
+            </select>
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('startDate')}
+            <input
+              type="date"
+              value={editProjectData.start_date ? editProjectData.start_date.split('T')[0] : ''}
+              onChange={(e) => setEditProjectData({ ...editProjectData, start_date: e.target.value })}
+              className={`${fieldClass} mt-1.5`}
+            />
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('endDate')}
+            <input
+              type="date"
+              value={editProjectData.end_date ? editProjectData.end_date.split('T')[0] : ''}
+              onChange={(e) => setEditProjectData({ ...editProjectData, end_date: e.target.value })}
+              className={`${fieldClass} mt-1.5`}
+            />
+          </label>
+          <div className="space-y-1 border-t border-border pt-3 text-sm text-text-secondary">
+            <p>
+              {t('created')}: {t('createdStamp', {
+                date: new Date(project.created_at).toLocaleDateString(locale),
+                time: new Date(project.created_at).toLocaleTimeString(locale),
+              })}
+            </p>
+            {project.creator ? (
+              <p>{t('createdBy')}: {project.creator.username}</p>
+            ) : null}
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={showFilters}
+        title={t('filters')}
+        onClose={() => setShowFilters(false)}
+        footer={
+          <Button type="button" variant="secondary" className="w-full" onClick={() => setShowFilters(false)}>
+            {t('close')}
+          </Button>
+        }
+      >
+        {renderFilters(false)}
+      </Dialog>
+
+      <Dialog
+        open={showCreateTaskDialog}
+        title={t('createTaskTitle')}
+        onClose={() => setShowCreateTaskDialog(false)}
+        size="lg"
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={() => setShowCreateTaskDialog(false)}>
+              {t('cancel')}
+            </Button>
+            <Button type="submit" form="create-task-form" className="w-full sm:flex-1">
+              {t('createTask')}
+            </Button>
+          </div>
+        }
+      >
+        <form id="create-task-form" onSubmit={handleCreateTask} className="space-y-4">
+          <label className="block text-sm text-text-secondary">
+            {t('taskTitle')}
+            <input
+              type="text"
+              required
+              value={taskFormData.title}
+              onChange={(e) => setTaskFormData({ ...taskFormData, title: e.target.value })}
+              className={`${fieldClass} mt-1.5`}
+              placeholder={t('taskTitlePlaceholder')}
+            />
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('description')}
+            <textarea
+              rows={4}
+              value={taskFormData.description}
+              onChange={(e) => setTaskFormData({ ...taskFormData, description: e.target.value })}
+              className={`${fieldClass} mt-1.5`}
+              placeholder={t('taskDescriptionPlaceholder')}
+            />
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('priorityField')}
+            <select
+              value={taskFormData.priority}
+              onChange={(e) => setTaskFormData({ ...taskFormData, priority: e.target.value })}
+              className={`${fieldClass} mt-1.5`}
+            >
+              <option value="low">{t('priority.low')}</option>
+              <option value="medium">{t('priority.medium')}</option>
+              <option value="high">{t('priority.high')}</option>
+              <option value="urgent">{t('priority.urgent')}</option>
+            </select>
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('dueDate')}
+            <input
+              type="date"
+              value={taskFormData.due_date}
+              onChange={(e) => setTaskFormData({ ...taskFormData, due_date: e.target.value })}
+              className={`${fieldClass} mt-1.5`}
+            />
+          </label>
+          <label className="block text-sm text-text-secondary">
+            {t('assigneeOptional')}
+            <select
+              value={taskFormData.assignee_id}
+              onChange={(e) => setTaskFormData({ ...taskFormData, assignee_id: e.target.value })}
+              className={`${fieldClass} mt-1.5`}
+            >
+              <option value="">{t('unassigned')}</option>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>{member.username || t('unknownUser')}</option>
+              ))}
+            </select>
+          </label>
+          <div>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-sm text-text-secondary">{t('categoryOptional')}</span>
+              <button type="button" onClick={openNewCategory} className="shrink-0 text-xs font-medium text-primary">
+                {t('newCategory')}
+              </button>
+            </div>
+            <select
+              value={taskFormData.category}
+              onChange={(e) => setTaskFormData({ ...taskFormData, category: e.target.value })}
+              className={fieldClass}
+            >
+              <option value="">{t('noCategory')}</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.name}>{category.name}</option>
+              ))}
+            </select>
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={showAddMemberDialog}
+        title={t('addMemberTitle')}
+        onClose={closeAddMember}
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={closeAddMember}>
+              {t('cancel')}
+            </Button>
+            <Button
+              type="button"
+              className="w-full sm:flex-1"
+              disabled={!selectedMemberToAdd}
+              onClick={handleAddMemberToProject}
+            >
+              {t('addMember')}
+            </Button>
+          </div>
+        }
+      >
+        <label className="block text-sm text-text-secondary">
+          {t('selectMember')}
+          <select
+            value={selectedMemberToAdd}
+            onChange={(e) => setSelectedMemberToAdd(e.target.value)}
+            className={`${fieldClass} mt-1.5`}
+          >
+            <option value="">{t('chooseMember')}</option>
+            {members
+              .filter((member) => !projectMembers.find((projectMember) => projectMember.id === member.id))
+              .map((member) => (
+                <option key={member.id} value={member.id}>{member.username || t('unknownUser')}</option>
+              ))}
+          </select>
+        </label>
+      </Dialog>
+
+      <Dialog
+        open={showCreateCategoryDialog}
+        title={t('createCategoryTitle')}
+        onClose={closeCreateCategory}
+        footer={
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="button" variant="secondary" className="w-full sm:flex-1" onClick={closeCreateCategory}>
+              {t('cancel')}
+            </Button>
+            <Button type="submit" form="create-category-form" className="w-full sm:flex-1">
+              {t('createCategory')}
+            </Button>
+          </div>
+        }
+      >
+        <form id="create-category-form" onSubmit={handleCreateCategory} className="space-y-4">
+          <label className="block text-sm text-text-secondary">
+            {t('categoryName')}
+            <input
+              type="text"
+              required
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              className={`${fieldClass} mt-1.5`}
+              placeholder={t('categoryNamePlaceholder')}
+            />
+          </label>
+          <div>
+            <p className="mb-2 text-sm text-text-secondary">{t('color')}</p>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {CATEGORY_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setNewCategoryColor(color)}
+                  aria-label={color}
+                  className={`h-8 w-8 rounded-full border border-border ${newCategoryColor === color ? 'ring-2 ring-primary ring-offset-2 ring-offset-surface' : ''}`}
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
+            <div className="flex min-w-0 items-center gap-2">
+              <input
+                type="color"
+                value={newCategoryColor}
+                onChange={(e) => setNewCategoryColor(e.target.value)}
+                className="h-10 w-12 shrink-0 cursor-pointer rounded-lg border border-border bg-secondary"
+                aria-label={t('color')}
+              />
+              <input
+                type="text"
+                value={newCategoryColor}
+                onChange={(e) => setNewCategoryColor(e.target.value)}
+                className={`${fieldClass} min-w-0 flex-1`}
+                placeholder="#667eea"
+              />
+            </div>
+          </div>
+        </form>
+      </Dialog>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Filter, X, ChevronDown } from 'lucide-react';
 
 export interface TaskFilters {
@@ -25,6 +26,7 @@ export default function AdvancedFilter({
   categories = [],
   assignees = []
 }: AdvancedFilterProps) {
+  const t = useTranslations('pages.tasks');
   const [isExpanded, setIsExpanded] = useState(false);
 
   const updateFilter = (key: keyof TaskFilters, value: any) => {
@@ -55,14 +57,14 @@ export default function AdvancedFilter({
           type="text"
           value={filters.search}
           onChange={(e) => updateFilter('search', e.target.value)}
-          placeholder="Search tasks..."
-          className="w-full px-4 py-2.5 pl-10 bg-surface-light rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
+          placeholder={t('searchTasks')}
+          className="w-full px-4 py-2.5 pl-10 bg-secondary rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none"
         />
-        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
         {filters.search && (
           <button
             onClick={() => updateFilter('search', '')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-white/10 rounded"
+            type="button" aria-label={t('clearAll')} className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-text-secondary hover:bg-surface-hover"
           >
             <X className="w-4 h-4" />
           </button>
@@ -72,14 +74,14 @@ export default function AdvancedFilter({
       {/* Toggle Advanced Filters */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors"
+        className="flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary transition-colors"
       >
         <Filter className="w-4 h-4" />
-        Advanced Filters
+        {t('advancedFilters')}
         <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
         {hasActiveFilters && (
-          <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded-full text-xs">
-            Active
+          <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full text-xs">
+            {t('filtersActive')}
           </span>
         )}
       </button>
@@ -88,13 +90,13 @@ export default function AdvancedFilter({
       {isExpanded && (
         <div className="card space-y-4 animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold">Filter Tasks</h3>
+            <h3 className="font-semibold">{t('filterTasks')}</h3>
             {hasActiveFilters && (
               <button
                 onClick={clearFilters}
-                className="text-sm text-purple-400 hover:text-purple-300"
+                className="text-sm text-primary hover:text-primary/80"
               >
-                Clear All
+                {t('clearAll')}
               </button>
             )}
           </div>
@@ -102,60 +104,60 @@ export default function AdvancedFilter({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* Status Filter */}
             <div>
-              <label className="block text-sm font-medium mb-2">Status</label>
+              <label className="block text-sm font-medium mb-2">{t('status')}</label>
               <select
                 value={filters.status}
                 onChange={(e) => updateFilter('status', e.target.value)}
-                className="w-full px-3 py-2 bg-surface-light rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
+                className="w-full px-3 py-2 bg-secondary rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none"
               >
-                <option value="all">All Tasks</option>
-                <option value="active">Active</option>
-                <option value="completed">Completed</option>
+                <option value="all">{t('allTasks')}</option>
+                <option value="active">{t('active')}</option>
+                <option value="completed">{t('completed')}</option>
               </select>
             </div>
 
             {/* Priority Filter */}
             <div>
-              <label className="block text-sm font-medium mb-2">Priority</label>
+              <label className="block text-sm font-medium mb-2">{t('priority')}</label>
               <select
                 value={filters.priority}
                 onChange={(e) => updateFilter('priority', e.target.value)}
-                className="w-full px-3 py-2 bg-surface-light rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
+                className="w-full px-3 py-2 bg-secondary rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none"
               >
-                <option value="all">All Priorities</option>
-                <option value="urgent">Urgent</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
+                <option value="all">{t('allPriorities')}</option>
+                <option value="urgent">{t('priorityUrgent')}</option>
+                <option value="high">{t('priorityHigh')}</option>
+                <option value="medium">{t('priorityMedium')}</option>
+                <option value="low">{t('priorityLow')}</option>
               </select>
             </div>
 
             {/* Date Range Filter */}
             <div>
-              <label className="block text-sm font-medium mb-2">Due Date</label>
+              <label className="block text-sm font-medium mb-2">{t('dueDate')}</label>
               <select
                 value={filters.dateRange}
                 onChange={(e) => updateFilter('dateRange', e.target.value)}
-                className="w-full px-3 py-2 bg-surface-light rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
+                className="w-full px-3 py-2 bg-secondary rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none"
               >
-                <option value="all">All Dates</option>
-                <option value="overdue">Overdue</option>
-                <option value="today">Due Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
+                <option value="all">{t('allDates')}</option>
+                <option value="overdue">{t('overdue')}</option>
+                <option value="today">{t('dueToday')}</option>
+                <option value="week">{t('thisWeek')}</option>
+                <option value="month">{t('thisMonth')}</option>
               </select>
             </div>
 
             {/* Category Filter */}
             {categories.length > 0 && (
               <div>
-                <label className="block text-sm font-medium mb-2">Category</label>
+                <label className="block text-sm font-medium mb-2">{t('category')}</label>
                 <select
                   value={filters.category}
                   onChange={(e) => updateFilter('category', e.target.value)}
-                  className="w-full px-3 py-2 bg-surface-light rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-secondary rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none"
                 >
-                  <option value="all">All Categories</option>
+                  <option value="all">{t('allCategories')}</option>
                   {categories.map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
@@ -166,13 +168,13 @@ export default function AdvancedFilter({
             {/* Assignee Filter */}
             {assignees.length > 0 && (
               <div>
-                <label className="block text-sm font-medium mb-2">Assigned To</label>
+                <label className="block text-sm font-medium mb-2">{t('assignedTo')}</label>
                 <select
                   value={filters.assignee}
                   onChange={(e) => updateFilter('assignee', e.target.value)}
-                  className="w-full px-3 py-2 bg-surface-light rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-secondary rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none"
                 >
-                  <option value="all">All Members</option>
+                  <option value="all">{t('allMembers')}</option>
                   {assignees.map(user => (
                     <option key={user.id} value={user.id}>{user.name}</option>
                   ))}

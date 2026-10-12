@@ -3,51 +3,70 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
-  
-  /* Deel Design System (Dark Mode) */
-  --bg-primary: #15171A;
-  --bg-secondary: #0F1114;
-  --bg-tertiary: #1C1E23;
-  
-  --surface: #1C1E23;
-  --surface-hover: #252830;
-  
-  --border: #0891b2;
-  --border-light: #0891b2;
-  
-  --text-primary: #FFFFFF;
-  --text-secondary: #A3A7B0;
-  --text-muted: #6B7280;
-  
-  /* Deel Brand Colors */
+  color-scheme: light;
+
+  --bg-primary: #F6F7F9;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #EEF1F6;
+
+  --surface: #FFFFFF;
+  --surface-hover: #F3F5F8;
+
+  --border: #E2E6EE;
+  --border-light: #E2E6EE;
+
+  --text-primary: #16181D;
+  --text-secondary: #5C6570;
+  --text-muted: #8B939E;
+
   --brand-blue: #2C5AF6;
   --brand-green: #02B075;
   --brand-orange: #F59F0B;
   --brand-red: #E11D48;
-  
-  --accent-purple: var(--brand-blue); /* Mapping legacy to new brand */
+
+  --accent-purple: var(--brand-blue);
   --accent-blue: var(--brand-blue);
   --accent-green: var(--brand-green);
   --accent-orange: var(--brand-orange);
   --accent-red: var(--brand-red);
-  
-  /* Gradients - Flattened for Deel Style */
+
   --gradient-primary: var(--brand-blue);
   --gradient-blue-purple: var(--brand-blue);
-  
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6);
-  
-  --radius-sm: 0.5rem;   /* 8px */
-  --radius-md: 0.75rem;  /* 12px */
-  --radius-lg: 1rem;     /* 16px */
-  
+
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 16px 40px rgba(16, 24, 40, 0.1);
+  --shadow-xl: 0 24px 48px rgba(16, 24, 40, 0.12);
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --bg-primary: #12141A;
+  --bg-secondary: #0E1014;
+  --bg-tertiary: #1C1F27;
+
+  --surface: #1A1D25;
+  --surface-hover: #242833;
+
+  --border: #2C3140;
+  --border-light: #2C3140;
+
+  --text-primary: #F4F6FB;
+  --text-secondary: #B4BCC8;
+  --text-muted: #8B939E;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.4);
 }
 
 html {
@@ -105,9 +124,9 @@ select {
   }
   
   .input-field {
-    @apply bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg px-4 py-2.5 text-white;
+    @apply bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg px-4 py-2.5 text-[var(--text-primary)];
     @apply focus:border-[var(--brand-blue)] focus:ring-1 focus:ring-[var(--brand-blue)] outline-none;
-    @apply transition-all duration-200 placeholder-gray-600;
+    @apply transition-all duration-200 placeholder:text-[var(--text-muted)];
   }
   
   .stat-card {

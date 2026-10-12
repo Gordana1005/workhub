@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import { Repeat, X } from 'lucide-react';
 
 export interface RecurrencePattern {
@@ -16,9 +17,11 @@ interface RecurrenceSelectorProps {
   onChange: (pattern: RecurrencePattern | null) => void;
 }
 
-const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const weekdayKeys = ['weekdaySun', 'weekdayMon', 'weekdayTue', 'weekdayWed', 'weekdayThu', 'weekdayFri', 'weekdaySat'];
 
 export default function RecurrenceSelector({ value, onChange }: RecurrenceSelectorProps) {
+  const t = useTranslations('pages.tasks');
+  const locale = useLocale();
   const [isEnabled, setIsEnabled] = useState(!!value);
   const [pattern, setPattern] = useState<RecurrencePattern>(
     value || {
@@ -57,15 +60,18 @@ export default function RecurrenceSelector({ value, onChange }: RecurrenceSelect
     <div className="space-y-4">
       {/* Enable/Disable Toggle */}
       <div className="flex items-center justify-between">
-        <label className="flex items-center gap-2 text-sm font-medium">
-          <Repeat className="w-4 h-4 text-purple-400" />
-          Recurring Task
+        <label className="flex items-center gap-2 text-sm font-medium text-text-primary">
+          <Repeat className="w-4 h-4 text-primary" />
+          {t('recurringTask')}
         </label>
         <button
           type="button"
+          role="switch"
+          aria-checked={isEnabled}
+          aria-label={t('recurringTask')}
           onClick={() => handleToggle(!isEnabled)}
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            isEnabled ? 'bg-purple-600' : 'bg-gray-600'
+            isEnabled ? 'bg-primary' : 'bg-text-muted'
           }`}
         >
           <span
@@ -77,30 +83,31 @@ export default function RecurrenceSelector({ value, onChange }: RecurrenceSelect
       </div>
 
       {isEnabled && (
-        <div className="space-y-4 p-4 bg-surface-light rounded-lg border border-white/10">
+        <div className="space-y-4 p-4 bg-secondary rounded-lg border border-border">
           {/* Recurrence Type */}
           <div>
-            <label className="block text-sm font-medium mb-2">Repeat</label>
+            <label className="block text-sm font-medium text-text-primary mb-2">{t('repeat')}</label>
             <select
               value={pattern.type}
               onChange={(e) => updatePattern({ type: e.target.value as any })}
-              className="w-full px-3 py-2 bg-surface rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-surface rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none"
             >
-              <option value="daily">Daily</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="yearly">Yearly</option>
-              <option value="custom">Custom</option>
+              <option value="daily">{t('repeatDaily')}</option>
+              <option value="weekly">{t('repeatWeekly')}</option>
+              <option value="monthly">{t('repeatMonthly')}</option>
+              <option value="yearly">{t('repeatYearly')}</option>
+              <option value="custom">{t('repeatCustom')}</option>
             </select>
           </div>
 
           {/* Interval */}
           <div>
-            <label className="block text-sm font-medium mb-2">
-              Every {pattern.interval} {pattern.type === 'daily' && 'day(s)'}
-              {pattern.type === 'weekly' && 'week(s)'}
-              {pattern.type === 'monthly' && 'month(s)'}
-              {pattern.type === 'yearly' && 'year(s)'}
+            <label className="block text-sm font-medium text-text-primary mb-2">
+              {pattern.type === 'daily' && t('everyDays', { count: pattern.interval })}
+              {pattern.type === 'weekly' && t('everyWeeks', { count: pattern.interval })}
+              {pattern.type === 'monthly' && t('everyMonths', { count: pattern.interval })}
+              {pattern.type === 'yearly' && t('everyYears', { count: pattern.interval })}
+              {pattern.type === 'custom' && t('everyCustom', { count: pattern.interval })}
             </label>
             <input
               type="number"
@@ -108,27 +115,27 @@ export default function RecurrenceSelector({ value, onChange }: RecurrenceSelect
               max="365"
               value={pattern.interval}
               onChange={(e) => updatePattern({ interval: parseInt(e.target.value) || 1 })}
-              className="w-full px-3 py-2 bg-surface rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-surface rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none"
             />
           </div>
 
           {/* Weekly: Select Days */}
           {pattern.type === 'weekly' && (
             <div>
-              <label className="block text-sm font-medium mb-2">Repeat on</label>
-              <div className="flex gap-2">
-                {weekDays.map((day, idx) => (
+              <label className="block text-sm font-medium text-text-primary mb-2">{t('repeatOn')}</label>
+              <div className="flex gap-1 sm:gap-2">
+                {weekdayKeys.map((day, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => toggleWeekDay(idx)}
-                    className={`flex-1 px-3 py-2 rounded-lg border transition-colors ${
+                    className={`min-w-0 flex-1 px-1 py-2 text-xs sm:px-3 sm:text-sm rounded-lg border transition-colors ${
                       pattern.weekDays?.includes(idx)
-                        ? 'border-purple-500 bg-purple-500/20 text-purple-400'
-                        : 'border-white/10 hover:border-white/20'
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border text-text-primary hover:border-primary'
                     }`}
                   >
-                    {day}
+                    {t(day)}
                   </button>
                 ))}
               </div>
@@ -138,35 +145,35 @@ export default function RecurrenceSelector({ value, onChange }: RecurrenceSelect
           {/* Monthly: Select Day of Month */}
           {pattern.type === 'monthly' && (
             <div>
-              <label className="block text-sm font-medium mb-2">Day of month</label>
+              <label className="block text-sm font-medium text-text-primary mb-2">{t('dayOfMonth')}</label>
               <input
                 type="number"
                 min="1"
                 max="31"
                 value={pattern.monthDay || 1}
                 onChange={(e) => updatePattern({ monthDay: parseInt(e.target.value) || 1 })}
-                className="w-full px-3 py-2 bg-surface rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
+                className="w-full px-3 py-2 bg-surface rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none"
               />
             </div>
           )}
 
           {/* End Date */}
           <div>
-            <label className="block text-sm font-medium mb-2">End date (optional)</label>
+            <label className="block text-sm font-medium text-text-primary mb-2">{t('endDateOptional')}</label>
             <input
               type="date"
               value={pattern.endDate ? new Date(pattern.endDate).toISOString().split('T')[0] : ''}
               onChange={(e) =>
                 updatePattern({ endDate: e.target.value ? new Date(e.target.value) : null })
               }
-              className="w-full px-3 py-2 bg-surface rounded-lg border border-white/10 focus:border-purple-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-surface rounded-lg border border-border text-text-primary focus:border-primary focus:outline-none"
             />
           </div>
 
           {/* Summary */}
-          <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
-            <p className="text-sm text-gray-300">
-              {getRecurrenceSummary(pattern)}
+          <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+            <p className="text-sm text-text-secondary">
+              {getRecurrenceSummary(pattern, t, locale)}
             </p>
           </div>
         </div>
@@ -175,30 +182,46 @@ export default function RecurrenceSelector({ value, onChange }: RecurrenceSelect
   );
 }
 
-function getRecurrenceSummary(pattern: RecurrencePattern): string {
-  let summary = 'Repeats ';
+function getRecurrenceSummary(
+  pattern: RecurrencePattern,
+  t: (key: string, values?: Record<string, string | number>) => string,
+  locale: string
+): string {
+  let when: string;
 
   if (pattern.interval === 1) {
-    summary += pattern.type;
+    if (pattern.type === 'daily') when = t('summaryDaily');
+    else if (pattern.type === 'weekly') when = t('summaryWeekly');
+    else if (pattern.type === 'monthly') when = t('summaryMonthly');
+    else if (pattern.type === 'yearly') when = t('summaryYearly');
+    else when = t('summaryCustom');
+  } else if (pattern.type === 'daily') {
+    when = t('summaryEveryDays', { count: pattern.interval });
+  } else if (pattern.type === 'weekly') {
+    when = t('summaryEveryWeeks', { count: pattern.interval });
+  } else if (pattern.type === 'monthly') {
+    when = t('summaryEveryMonths', { count: pattern.interval });
+  } else if (pattern.type === 'yearly') {
+    when = t('summaryEveryYears', { count: pattern.interval });
   } else {
-    summary += `every ${pattern.interval} `;
-    if (pattern.type === 'daily') summary += 'days';
-    else if (pattern.type === 'weekly') summary += 'weeks';
-    else if (pattern.type === 'monthly') summary += 'months';
-    else if (pattern.type === 'yearly') summary += 'years';
+    when = t('summaryEveryCustom', { count: pattern.interval });
   }
 
+  let summary = t('summaryBase', { when });
+
   if (pattern.type === 'weekly' && pattern.weekDays && pattern.weekDays.length > 0) {
-    const days = pattern.weekDays.map(d => weekDays[d]).join(', ');
-    summary += ` on ${days}`;
+    const days = pattern.weekDays.map(d => t(weekdayKeys[d])).join(', ');
+    summary += t('summaryOnDays', { days });
   }
 
   if (pattern.type === 'monthly' && pattern.monthDay) {
-    summary += ` on day ${pattern.monthDay}`;
+    summary += t('summaryOnDay', { day: pattern.monthDay });
   }
 
   if (pattern.endDate) {
-    summary += ` until ${new Date(pattern.endDate).toLocaleDateString()}`;
+    summary += t('summaryUntil', {
+      date: new Date(pattern.endDate).toLocaleDateString(locale === 'mk' ? 'mk' : 'en-US'),
+    });
   }
 
   return summary;

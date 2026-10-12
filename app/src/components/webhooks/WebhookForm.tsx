@@ -1,34 +1,46 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { X, Save, AlertCircle, Check } from 'lucide-react'
+import { useTranslations } from 'next-intl'
+import { Button } from '@/components/ui/Button'
+import { Dialog } from '@/components/ui/Dialog'
 
 interface WebhookFormProps {
-  webhook?: any
+  webhook?: {
+    id: string
+    name?: string
+    url?: string
+    description?: string | null
+    events?: string[]
+    verify_ssl?: boolean
+  } | null
   workspaceId: string
   onClose: () => void
 }
 
 const AVAILABLE_EVENTS = [
-  { value: 'task.created', label: 'Task Created', description: 'When a new task is created' },
-  { value: 'task.updated', label: 'Task Updated', description: 'When a task is modified' },
-  { value: 'task.completed', label: 'Task Completed', description: 'When a task is marked as complete' },
-  { value: 'task.deleted', label: 'Task Deleted', description: 'When a task is deleted' },
-  { value: 'project.created', label: 'Project Created', description: 'When a new project is created' },
-  { value: 'project.updated', label: 'Project Updated', description: 'When a project is modified' },
-  { value: 'project.deleted', label: 'Project Deleted', description: 'When a project is deleted' },
-  { value: 'comment.created', label: 'Comment Created', description: 'When a comment is added' },
-  { value: 'time_entry.created', label: 'Time Entry Created', description: 'When time is tracked' }
-]
+  { value: 'task.created', labelKey: 'webhooks.eventTaskCreated', descriptionKey: 'webhooks.eventTaskCreatedHelp' },
+  { value: 'task.updated', labelKey: 'webhooks.eventTaskUpdated', descriptionKey: 'webhooks.eventTaskUpdatedHelp' },
+  { value: 'task.completed', labelKey: 'webhooks.eventTaskCompleted', descriptionKey: 'webhooks.eventTaskCompletedHelp' },
+  { value: 'task.deleted', labelKey: 'webhooks.eventTaskDeleted', descriptionKey: 'webhooks.eventTaskDeletedHelp' },
+  { value: 'project.created', labelKey: 'webhooks.eventProjectCreated', descriptionKey: 'webhooks.eventProjectCreatedHelp' },
+  { value: 'project.updated', labelKey: 'webhooks.eventProjectUpdated', descriptionKey: 'webhooks.eventProjectUpdatedHelp' },
+  { value: 'project.deleted', labelKey: 'webhooks.eventProjectDeleted', descriptionKey: 'webhooks.eventProjectDeletedHelp' },
+  { value: 'comment.created', labelKey: 'webhooks.eventCommentCreated', descriptionKey: 'webhooks.eventCommentCreatedHelp' },
+  { value: 'time_entry.created', labelKey: 'webhooks.eventTimeCreated', descriptionKey: 'webhooks.eventTimeCreatedHelp' },
+] as const
+
+const fieldClass =
+  'w-full max-w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
 
 export default function WebhookForm({ webhook, workspaceId, onClose }: WebhookFormProps) {
+  const t = useTranslations('pages.tools')
   const [formData, setFormData] = useState({
     name: '',
     url: '',
     description: '',
     events: [] as string[],
-    verify_ssl: true
+    verify_ssl: true,
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -40,35 +52,34 @@ export default function WebhookForm({ webhook, workspaceId, onClose }: WebhookFo
         url: webhook.url || '',
         description: webhook.description || '',
         events: webhook.events || [],
-        verify_ssl: webhook.verify_ssl !== false
+        verify_ssl: webhook.verify_ssl !== false,
       })
     }
   }, [webhook])
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault()
     setError(null)
 
-    // Validation
     if (!formData.name.trim()) {
-      setError('Name is required')
+      setError(t('webhooks.nameRequired'))
       return
     }
 
     if (!formData.url.trim()) {
-      setError('URL is required')
+      setError(t('webhooks.urlRequired'))
       return
     }
 
     try {
       new URL(formData.url)
     } catch {
-      setError('Invalid URL format')
+      setError(t('webhooks.invalidUrl'))
       return
     }
 
     if (formData.events.length === 0) {
-      setError('Select at least one event')
+      setError(t('webhooks.selectEvent'))
       return
     }
 
@@ -76,201 +87,137 @@ export default function WebhookForm({ webhook, workspaceId, onClose }: WebhookFo
 
     try {
       const method = webhook ? 'PATCH' : 'POST'
-      const body = webhook
-        ? { webhook_id: webhook.id, ...formData }
-        : { workspace_id: workspaceId, ...formData }
+      const body = webhook ? { webhook_id: webhook.id, ...formData } : { workspace_id: workspaceId, ...formData }
 
       const response = await fetch('/api/webhooks', {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to save webhook')
+        throw new Error(data.error || t('webhooks.saveFailed'))
       }
 
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save webhook')
+      setError(err instanceof Error ? err.message : t('webhooks.saveFailed'))
     } finally {
       setLoading(false)
     }
   }
 
   const toggleEvent = (eventValue: string) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       events: prev.events.includes(eventValue)
-        ? prev.events.filter(e => e !== eventValue)
-        : [...prev.events, eventValue]
+        ? prev.events.filter((item) => item !== eventValue)
+        : [...prev.events, eventValue],
     }))
   }
 
+  const requestClose = () => {
+    if (!loading) onClose()
+  }
+
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-slate-800 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-slate-700">
-            <h2 className="text-xl font-bold text-white">
-              {webhook ? 'Edit Webhook' : 'Create Webhook'}
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
+    <Dialog
+      open
+      title={webhook ? t('webhooks.edit') : t('webhooks.createTitle')}
+      onClose={requestClose}
+      size="lg"
+      footer={
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" className="flex-1" onClick={requestClose} disabled={loading}>
+            {t('webhooks.cancel')}
+          </Button>
+          <Button type="submit" form="webhook-form" className="flex-1" disabled={loading}>
+            {loading ? t('webhooks.saving') : webhook ? t('webhooks.saveChanges') : t('webhooks.create')}
+          </Button>
+        </div>
+      }
+    >
+      <form id="webhook-form" onSubmit={handleSubmit} className="space-y-4">
+        {error ? (
+          <p className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary">{error}</p>
+        ) : null}
+
+        <label className="block text-sm text-text-secondary">
+          {t('webhooks.name')}
+          <input
+            type="text"
+            value={formData.name}
+            onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+            placeholder={t('webhooks.namePlaceholder')}
+            className={`${fieldClass} mt-1.5`}
+          />
+        </label>
+
+        <label className="block text-sm text-text-secondary">
+          {t('webhooks.url')}
+          <input
+            type="url"
+            value={formData.url}
+            onChange={(event) => setFormData({ ...formData, url: event.target.value })}
+            placeholder="https://example.com/webhook"
+            className={`${fieldClass} mt-1.5`}
+          />
+          <span className="mt-1 block text-xs text-text-secondary">{t('webhooks.urlHint')}</span>
+        </label>
+
+        <label className="block text-sm text-text-secondary">
+          {t('webhooks.description')}
+          <textarea
+            value={formData.description}
+            onChange={(event) => setFormData({ ...formData, description: event.target.value })}
+            placeholder={t('webhooks.descriptionPlaceholder')}
+            rows={2}
+            className={`${fieldClass} mt-1.5 resize-none`}
+          />
+        </label>
+
+        <fieldset className="space-y-2">
+          <legend className="text-sm text-text-secondary">{t('webhooks.events')}</legend>
+          {AVAILABLE_EVENTS.map((event) => (
+            <label
+              key={event.value}
+              className="flex items-start gap-3 rounded-xl border border-border bg-surface px-3 py-2"
             >
-              <X className="w-5 h-5 text-slate-400" />
-            </button>
-          </div>
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-140px)] space-y-4">
-            {error && (
-              <div className="flex items-start gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                <span className="text-sm text-red-400">{error}</span>
-              </div>
-            )}
-
-            {/* Name */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Name <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Slack Notifications"
-                className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* URL */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Webhook URL <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="url"
-                value={formData.url}
-                onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                placeholder="https://example.com/webhook"
-                className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <p className="text-xs text-slate-500 mt-1">
-                POST requests will be sent to this URL
-              </p>
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">
-                Description
-              </label>
-              <textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Optional description"
-                rows={2}
-                className="w-full px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-              />
-            </div>
-
-            {/* Events */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-3">
-                Events <span className="text-red-400">*</span>
-              </label>
-              <div className="space-y-2">
-                {AVAILABLE_EVENTS.map((event) => (
-                  <label
-                    key={event.value}
-                    className="flex items-start gap-3 p-3 bg-slate-900 border border-slate-700 rounded-lg hover:border-slate-600 cursor-pointer transition-colors"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.events.includes(event.value)}
-                      onChange={() => toggleEvent(event.value)}
-                      className="mt-1 w-4 h-4 rounded border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0"
-                    />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-white">{event.label}</span>
-                        {formData.events.includes(event.value) && (
-                          <Check className="w-4 h-4 text-green-400" />
-                        )}
-                      </div>
-                      <p className="text-xs text-slate-500">{event.description}</p>
-                    </div>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            {/* Verify SSL */}
-            <div className="flex items-center gap-3 p-3 bg-slate-900 border border-slate-700 rounded-lg">
               <input
                 type="checkbox"
-                id="verify_ssl"
-                checked={formData.verify_ssl}
-                onChange={(e) => setFormData({ ...formData, verify_ssl: e.target.checked })}
-                className="w-4 h-4 rounded border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0"
+                checked={formData.events.includes(event.value)}
+                onChange={() => toggleEvent(event.value)}
+                className="mt-1 h-4 w-4 rounded border-border"
               />
-              <label htmlFor="verify_ssl" className="flex-1 cursor-pointer">
-                <span className="text-sm font-medium text-white block">Verify SSL Certificate</span>
-                <span className="text-xs text-slate-500">Recommended for security (uncheck for local development)</span>
-              </label>
-            </div>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-text-primary">{t(event.labelKey)}</span>
+                <span className="block text-xs text-text-secondary">{t(event.descriptionKey)}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
 
-            {/* Security Info */}
-            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-              <p className="text-sm text-slate-300">
-                <strong className="text-white">Security:</strong> All webhook payloads are signed with HMAC-SHA256.
-                Verify the <code className="px-1 py-0.5 bg-slate-900 text-green-400 rounded text-xs">X-Webhook-Signature</code> header
-                using your secret key to ensure authenticity.
-              </p>
-            </div>
-          </form>
+        <label className="flex items-start gap-3 rounded-xl border border-border bg-surface px-3 py-2">
+          <input
+            type="checkbox"
+            checked={formData.verify_ssl}
+            onChange={(event) => setFormData({ ...formData, verify_ssl: event.target.checked })}
+            className="mt-1 h-4 w-4 rounded border-border"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-text-primary">{t('webhooks.verifySsl')}</span>
+            <span className="block text-xs text-text-secondary">{t('webhooks.verifySslHint')}</span>
+          </span>
+        </label>
 
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-3 p-6 border-t border-slate-700">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loading}
-              className="px-4 py-2 text-slate-300 hover:text-white transition-colors disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  {webhook ? 'Save Changes' : 'Create Webhook'}
-                </>
-              )}
-            </button>
-          </div>
-        </motion.div>
-      </div>
-    </AnimatePresence>
+        <p className="break-words text-sm text-text-secondary">
+          <strong className="font-medium text-text-primary">{t('webhooks.securityLabel')}</strong> {t('webhooks.securityBefore')}{' '}
+          <code className="break-all rounded bg-secondary px-1 py-0.5 text-xs text-text-primary">X-Webhook-Signature</code>{' '}
+          {t('webhooks.securityAfter')}
+        </p>
+      </form>
+    </Dialog>
   )
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { motion } from 'framer-motion'
 import { X, Plus, Trash2 } from 'lucide-react'
 
@@ -33,6 +34,7 @@ export default function TemplateEditor({
   onClose,
   onSave
 }: TemplateEditorProps) {
+  const t = useTranslations('pages.tasks')
   const [formData, setFormData] = useState<TaskTemplate>({
     name: template?.name || '',
     description: template?.description || '',
@@ -113,14 +115,14 @@ export default function TemplateEditor({
       })
 
       if (!response.ok) {
-        throw new Error('Failed to save template')
+        throw new Error(t('saveTemplateFailed'))
       }
 
       onSave()
       onClose()
     } catch (error) {
       console.error('Error saving template:', error)
-      alert('Failed to save template')
+      alert(t('saveTemplateFailed'))
     } finally {
       setSaving(false)
     }
@@ -132,129 +134,132 @@ export default function TemplateEditor({
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.2 }}
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 sm:items-center sm:p-4"
     >
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 20 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
-        className="bg-slate-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto"
+        className="bg-surface shadow-xl w-full max-w-3xl h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:rounded-xl flex flex-col overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-800">
-          <h2 className="text-2xl font-bold text-white">
-            {template?.id ? 'Edit Template' : 'Create Template'}
+        <div className="flex shrink-0 items-center justify-between gap-3 p-4 sm:p-6 border-b border-border">
+          <h2 className="min-w-0 text-lg font-bold text-text-primary sm:text-2xl">
+            {template?.id ? t('editTemplate') : t('createTemplate')}
           </h2>
           <button
+            type="button"
+            aria-label={t('close')}
             onClick={onClose}
-            className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+            className="shrink-0 p-2 hover:bg-surface-hover rounded-lg transition-colors"
           >
-            <X className="w-5 h-5 text-slate-400" />
+            <X className="w-5 h-5 text-text-secondary" />
           </button>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
           {/* Template Info */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-white">Template Information</h3>
+            <h3 className="text-lg font-semibold text-text-primary">{t('templateInformation')}</h3>
             
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Template Name *
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                {t('templateName')}
               </label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-text-primary"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Template Description
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                {t('templateDescription')}
               </label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-text-primary"
                 rows={2}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Template Category
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                {t('templateCategory')}
               </label>
               <input
                 type="text"
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                placeholder="e.g., Development, Marketing, Design"
+                className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-text-primary"
+                placeholder={t('templateCategoryExample')}
               />
             </div>
           </div>
 
           {/* Task Defaults */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-white">Task Defaults</h3>
+            <h3 className="text-lg font-semibold text-text-primary">{t('taskDefaults')}</h3>
             
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Default Title
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                {t('defaultTitle')}
               </label>
               <input
                 type="text"
                 value={formData.template_data.title}
                 onChange={(e) => handleTemplateDataChange('title', e.target.value)}
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                placeholder="Task title or prefix"
+                className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-text-primary"
+                placeholder={t('defaultTitlePlaceholder')}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Default Description
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                {t('defaultDescription')}
               </label>
               <textarea
                 value={formData.template_data.description}
                 onChange={(e) => handleTemplateDataChange('description', e.target.value)}
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-text-primary"
                 rows={4}
-                placeholder="Include headings, checklists, etc."
+                placeholder={t('defaultDescriptionPlaceholder')}
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Default Priority
+                <label className="block text-sm font-medium text-text-secondary mb-2">
+                  {t('defaultPriority')}
                 </label>
                 <select
                   value={formData.template_data.priority}
                   onChange={(e) => handleTemplateDataChange('priority', e.target.value)}
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                  className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-text-primary"
                 >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
+                  <option value="low">{t('priorityLow')}</option>
+                  <option value="medium">{t('priorityMedium')}</option>
+                  <option value="high">{t('priorityHigh')}</option>
+                  <option value="urgent">{t('priorityUrgent')}</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-2">
-                  Estimated Hours
+                <label className="block text-sm font-medium text-text-secondary mb-2">
+                  {t('estimatedHours')}
                 </label>
                 <input
                   type="number"
                   value={formData.template_data.estimated_hours}
                   onChange={(e) => handleTemplateDataChange('estimated_hours', parseFloat(e.target.value) || 0)}
-                  className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                  className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-text-primary"
                   min="0"
                   step="0.5"
                 />
@@ -262,21 +267,21 @@ export default function TemplateEditor({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Default Category
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                {t('defaultCategory')}
               </label>
               <input
                 type="text"
                 value={formData.template_data.category}
                 onChange={(e) => handleTemplateDataChange('category', e.target.value)}
-                className="w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
+                className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-text-primary"
               />
             </div>
 
             {/* Tags */}
             <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                Default Tags
+              <label className="block text-sm font-medium text-text-secondary mb-2">
+                {t('defaultTags')}
               </label>
               <div className="flex gap-2 mb-2">
                 <input
@@ -284,13 +289,14 @@ export default function TemplateEditor({
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
-                  className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white"
-                  placeholder="Add tag and press Enter"
+                  className="min-w-0 flex-1 px-4 py-2 bg-secondary border border-border rounded-lg text-text-primary"
+                  placeholder={t('addTagPlaceholder')}
                 />
                 <button
                   type="button"
                   onClick={addTag}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+                  aria-label={t('addTagPlaceholder')}
+                  className="shrink-0 px-4 py-2 bg-primary hover:bg-primary/90 rounded-lg transition-colors text-white"
                 >
                   <Plus className="w-5 h-5" />
                 </button>
@@ -299,13 +305,14 @@ export default function TemplateEditor({
                 {formData.template_data.tags.map((tag) => (
                   <span
                     key={tag}
-                    className="px-3 py-1 bg-slate-800 rounded-full text-sm flex items-center gap-2"
+                    className="px-3 py-1 bg-surface-hover text-text-primary rounded-full text-sm flex items-center gap-2"
                   >
                     {tag}
                     <button
                       type="button"
                       onClick={() => removeTag(tag)}
-                      className="hover:text-red-400"
+                      aria-label={t('delete')}
+                      className="hover:text-danger"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -317,43 +324,44 @@ export default function TemplateEditor({
             {/* Subtasks */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-slate-300">
-                  Default Subtasks
+                <label className="block text-sm font-medium text-text-secondary">
+                  {t('defaultSubtasks')}
                 </label>
                 <button
                   type="button"
                   onClick={addSubtask}
-                  className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm flex items-center gap-1 transition-colors"
+                  className="px-3 py-1 bg-primary hover:bg-primary/90 rounded-lg text-sm flex items-center gap-1 transition-colors text-white"
                 >
                   <Plus className="w-4 h-4" />
-                  Add Subtask
+                  {t('addSubtaskButton')}
                 </button>
               </div>
               <div className="space-y-3">
                 {formData.template_data.subtasks.map((subtask, index) => (
-                  <div key={index} className="p-3 bg-slate-800 rounded-lg space-y-2">
+                  <div key={index} className="p-3 bg-surface-hover rounded-lg space-y-2">
                     <div className="flex gap-2">
                       <input
                         type="text"
                         value={subtask.title}
                         onChange={(e) => updateSubtask(index, 'title', e.target.value)}
-                        className="flex-1 px-3 py-1 bg-slate-900 border border-slate-700 rounded text-white text-sm"
-                        placeholder="Subtask title"
+                        className="min-w-0 flex-1 px-3 py-1 bg-surface border border-border rounded text-text-primary text-sm"
+                        placeholder={t('subtaskTitle')}
                       />
                       <button
                         type="button"
                         onClick={() => removeSubtask(index)}
-                        className="p-1 hover:bg-slate-700 rounded transition-colors"
+                        aria-label={t('delete')}
+                        className="shrink-0 p-2 hover:bg-surface-hover rounded transition-colors"
                       >
-                        <Trash2 className="w-4 h-4 text-red-400" />
+                        <Trash2 className="w-4 h-4 text-danger" />
                       </button>
                     </div>
                     <textarea
                       value={subtask.description}
                       onChange={(e) => updateSubtask(index, 'description', e.target.value)}
-                      className="w-full px-3 py-1 bg-slate-900 border border-slate-700 rounded text-white text-sm"
+                      className="w-full px-3 py-1 bg-surface border border-border rounded text-text-primary text-sm"
                       rows={2}
-                      placeholder="Subtask description (optional)"
+                      placeholder={t('subtaskDescriptionOptional')}
                     />
                   </div>
                 ))}
@@ -361,21 +369,23 @@ export default function TemplateEditor({
             </div>
           </div>
 
+          </div>
+
           {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+          <div className="flex shrink-0 justify-end gap-3 border-t border-border bg-surface p-4 sm:px-6">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
+              className="px-6 py-2 bg-secondary text-text-primary hover:bg-surface-hover rounded-lg transition-colors border border-border"
             >
-              Cancel
+              {t('cancel')}
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
+              className="px-6 py-2 bg-primary hover:bg-primary/90 rounded-lg transition-colors disabled:opacity-50 text-white"
             >
-              {saving ? 'Saving...' : template?.id ? 'Update Template' : 'Create Template'}
+              {saving ? t('saving') : template?.id ? t('updateTemplate') : t('createTemplate')}
             </button>
           </div>
         </form>

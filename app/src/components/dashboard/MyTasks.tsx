@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { CheckCircle, Circle, Clock } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { useTranslations } from 'next-intl'
 import TaskDetailModal from '@/components/tasks/TaskDetailModal'
 
 interface Task {
@@ -23,6 +24,7 @@ interface Task {
 
 
 export default function MyTasks() {
+  const t = useTranslations('pages.home')
   const { currentWorkspace } = useWorkspaceStore();
   const queryClient = useQueryClient();
   const [userId, setUserId] = useState<string | null>(null);
@@ -103,21 +105,21 @@ export default function MyTasks() {
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
-      case 'urgent': return 'text-red-600'
-      case 'high': return 'text-blue-600'
-      case 'medium': return 'text-yellow-600'
-      case 'low': return 'text-green-600'
-      default: return 'text-gray-600'
+      case 'urgent': return 'text-danger'
+      case 'high': return 'text-warning'
+      case 'medium': return 'text-primary'
+      case 'low': return 'text-success'
+      default: return 'text-text-secondary'
     }
   }
 
   if (isLoading) {
     return (
-      <div className="p-6 bg-surface shadow-neumorphic dark:shadow-neumorphic-dark rounded-lg">
-        <h3 className="text-lg font-semibold mb-4">My Tasks</h3>
+      <div className="p-6 bg-surface border border-border rounded-xl">
+        <h3 className="text-lg font-semibold mb-4 text-text-primary">{t('myTasks')}</h3>
         <div className="animate-pulse space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div key={i} className="h-16 bg-surface-hover rounded"></div>
           ))}
         </div>
       </div>
@@ -126,8 +128,8 @@ export default function MyTasks() {
 
   return (
     <>
-      <div className="p-6 bg-surface shadow-neumorphic dark:shadow-neumorphic-dark rounded-lg">
-        <h3 className="text-lg font-semibold mb-4 text-text-primary">My Tasks</h3>
+      <div className="p-6 bg-surface border border-border rounded-xl">
+        <h3 className="text-lg font-semibold mb-4 text-text-primary">{t('myTasks')}</h3>
 
         {tasks && tasks.length > 0 ? (
           <div className="space-y-3">
@@ -135,13 +137,13 @@ export default function MyTasks() {
               <div
                 key={task.id}
                 onClick={() => handleTaskClick(task)}
-                className="p-4 bg-surface shadow-neumorphic-inset dark:shadow-neumorphic-dark-inset rounded-md hover:shadow-neumorphic dark:hover:shadow-neumorphic-dark transition-all duration-200 border-l-4 cursor-pointer"
+                className="p-4 bg-surface border border-border border-l-4 rounded-lg hover:bg-surface-hover transition-colors duration-200 cursor-pointer"
                 style={{ borderColor: task.project?.color || '#6366f1' }}
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h4 className="font-medium text-text-primary">{task.title}</h4>
-                    <p className="text-sm text-text-secondary mt-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h4 className="break-words font-medium text-text-primary">{task.title}</h4>
+                    <p className="text-sm text-text-secondary mt-1 truncate">
                       {task.project?.name}
                     </p>
                     {task.due_date && (
@@ -152,14 +154,14 @@ export default function MyTasks() {
                     )}
                   </div>
 
-                  <div className="flex items-center space-x-2">
-                    <span className={`text-xs font-medium px-2 py-1 rounded-full ${getPriorityColor(task.priority)} bg-opacity-20`}>
-                      {task.priority}
+                  <div className="flex shrink-0 items-center space-x-2">
+                    <span className={`text-xs font-medium px-2 py-1 rounded-full bg-surface-hover ${getPriorityColor(task.priority)}`}>
+                      {t(`priority.${task.priority}`)}
                     </span>
                     {task.is_completed ? (
-                      <CheckCircle className="w-5 h-5 text-green-600" />
+                      <CheckCircle className="w-5 h-5 text-success" />
                     ) : (
-                      <Circle className="w-5 h-5 text-gray-400" />
+                      <Circle className="w-5 h-5 text-text-secondary" />
                     )}
                   </div>
                 </div>
@@ -168,8 +170,8 @@ export default function MyTasks() {
           </div>
         ) : (
           <div className="text-center py-8 text-text-secondary">
-            <CheckCircle className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-            <p>No tasks assigned to you</p>
+            <CheckCircle className="w-12 h-12 mx-auto mb-4 text-text-secondary" />
+            <p>{t('noTasksAssigned')}</p>
           </div>
         )}
       </div>

@@ -2,21 +2,32 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Plus, Calendar, CheckCircle2, Circle, Edit, Trash } from 'lucide-react';
+import { ArrowLeft, Plus, CheckCircle2, Circle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { format, differenceInDays, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
+import { enUS, mk } from 'date-fns/locale';
 import GanttTimeline from '@/components/plans/GanttTimeline';
 import MilestoneEditor from '@/components/plans/MilestoneEditor';
+import { useLocale, useTranslations } from 'next-intl';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { IconMenu } from '@/components/ui/IconMenu';
 
 interface Plan {
   id: string;
   name: string;
-  description: string;
-  goal: string;
+  description: string | null;
+  goal: string | null;
   start_date: string;
   end_date: string;
   status: 'draft' | 'active' | 'completed' | 'cancelled';
   color: string;
+}
+
+interface LinkedTask {
+  id: string;
+  title: string;
+  is_completed: boolean;
 }
 
 interface Milestone {
@@ -29,11 +40,24 @@ interface Milestone {
   is_completed: boolean;
   completed_at: string | null;
   order_index: number;
-  task_count?: number;
+  tasks: LinkedTask[];
+}
+
+function asTasks(value: unknown): LinkedTask[] {
+  if (!value) return [];
+  const list = Array.isArray(value) ? value : [value];
+  return list.filter((task): task is LinkedTask => {
+    if (!task || typeof task !== 'object') return false;
+    return 'id' in task && 'title' in task;
+  });
 }
 
 export default function PlanDetailPage() {
+  const t = useTranslations('pages.plans');
+  const locale = useLocale();
+  const dateLocale = locale === 'mk' ? mk : enUS;
   const params = useParams();
+  const planId = Array.isArray(params.id) ? params.id[0] : params.id;
   const router = useRouter();
   const [plan, setPlan] = useState<Plan | null>(null);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
@@ -42,281 +66,248 @@ export default function PlanDetailPage() {
   const [loading, setLoading] = useState(true);
 
   const loadPlan = useCallback(async () => {
+    if (!planId) return;
     const { data } = await supabase
       .from('plans')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', planId)
       .single();
 
     if (data) setPlan(data);
     setLoading(false);
-  }, [params.id]);
+  }, [planId]);
 
   const loadMilestones = useCallback(async () => {
+    if (!planId) return;
     const { data } = await supabase
       .from('plan_milestones')
-      .select(`
-        *,
-        task_count:milestone_tasks(count)
-      `)
-      .eq('plan_id', params.id)
+      .select('*')
+      .eq('plan_id', planId)
       .order('order_index');
 
-    if (data) {
-      setMilestones(data.map(m => ({
-        ...m,
-        task_count: m.task_count?.[0]?.count || 0
-      })));
+    if (!data) {
+      setMilestones([]);
+      return;
     }
-  }, [params.id]);
+
+    const ids = data.map((row) => row.id as string);
+    const tasksByMilestone = new Map<string, LinkedTask[]>();
+
+    if (ids.length > 0) {
+      const { data: links } = await supabase
+        .from('milestone_tasks')
+        .select('milestone_id, tasks!inner(id, title, is_completed)')
+        .in('milestone_id', ids);
+
+      for (const link of links ?? []) {
+        const milestoneId = link.milestone_id as string;
+        const list = tasksByMilestone.get(milestoneId) ?? [];
+        list.push(...asTasks(link.tasks));
+        tasksByMilestone.set(milestoneId, list);
+      }
+    }
+
+    setMilestones(
+      data.map((row) => ({
+        id: row.id,
+        plan_id: row.plan_id,
+        name: row.name,
+        description: row.description || '',
+        target_date: row.target_date,
+        completion_percentage: row.completion_percentage ?? 0,
+        is_completed: Boolean(row.is_completed),
+        completed_at: row.completed_at,
+        order_index: row.order_index ?? 0,
+        tasks: tasksByMilestone.get(row.id) ?? [],
+      }))
+    );
+  }, [planId]);
 
   useEffect(() => {
-    if (params.id) {
-      loadPlan();
-      loadMilestones();
+    if (!planId) {
+      setLoading(false);
+      return;
     }
-  }, [params.id, loadPlan, loadMilestones]);
+    loadPlan();
+    loadMilestones();
+  }, [planId, loadPlan, loadMilestones]);
 
   const deleteMilestone = async (id: string) => {
-    if (!confirm('Delete this milestone?')) return;
+    if (!confirm(t('deleteConfirm'))) return;
 
     await supabase.from('plan_milestones').delete().eq('id', id);
     loadMilestones();
   };
 
-  const getStatusColor = (status: Plan['status']) => {
-    switch (status) {
-      case 'active': return 'bg-green-500/10 text-green-500 border-green-500/20';
-      case 'completed': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
-      case 'draft': return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
-      case 'cancelled': return 'bg-red-500/10 text-red-500 border-red-500/20';
-    }
+  const openMilestone = (milestone: Milestone | null) => {
+    setEditingMilestone(milestone);
+    setShowMilestoneModal(true);
+  };
+
+  const closeMilestone = () => {
+    setShowMilestoneModal(false);
+    setEditingMilestone(null);
   };
 
   if (loading) {
     return (
-      <div className="p-8">
-        <div className="animate-pulse">
-          <div className="h-8 bg-slate-800 rounded w-1/3 mb-4" />
-          <div className="h-4 bg-slate-800 rounded w-1/2 mb-8" />
-          <div className="h-64 bg-slate-800 rounded" />
-        </div>
+      <div className="min-w-0 space-y-4">
+        <div className="h-8 w-1/3 animate-pulse rounded-lg bg-surface-hover" />
+        <div className="h-4 w-2/3 animate-pulse rounded-lg bg-surface-hover" />
+        <div className="h-28 animate-pulse rounded-2xl bg-surface-hover" />
       </div>
     );
   }
 
   if (!plan) {
     return (
-      <div className="p-8">
-        <div className="text-center py-16">
-          <h2 className="text-2xl font-bold text-white mb-2">Plan not found</h2>
-          <button
-            onClick={() => router.push('/dashboard/plans')}
-            className="text-blue-400 hover:text-blue-300"
-          >
-            Back to Plans
-          </button>
-        </div>
+      <div className="min-w-0 py-16 text-center">
+        <h2 className="mb-3 text-xl font-semibold text-text-primary">{t('notFound')}</h2>
+        <Button type="button" variant="ghost" onClick={() => router.push('/dashboard/plans')}>
+          {t('back')}
+        </Button>
       </div>
     );
   }
 
   const daysRemaining = differenceInDays(new Date(plan.end_date), new Date());
   const overallProgress = milestones.length > 0
-    ? Math.round(milestones.reduce((sum, m) => sum + m.completion_percentage, 0) / milestones.length)
+    ? Math.round(milestones.reduce((sum, milestone) => sum + milestone.completion_percentage, 0) / milestones.length)
     : 0;
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <button
-          onClick={() => router.push('/dashboard/plans')}
-          className="flex items-center gap-2 text-slate-400 hover:text-white mb-4 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to Plans
-        </button>
+    <div className="min-w-0 max-w-full space-y-6">
+      <button
+        type="button"
+        onClick={() => router.push('/dashboard/plans')}
+        className="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-text-primary"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        {t('back')}
+      </button>
 
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4 flex-1">
-            <div
-              className="w-4 h-4 rounded-full flex-shrink-0"
-              style={{ backgroundColor: plan.color }}
-            />
-            <div>
-              <h1 className="text-3xl font-bold text-white mb-2">{plan.name}</h1>
-              {plan.description && (
-                <p className="text-slate-400">{plan.description}</p>
-              )}
-            </div>
-          </div>
-
-          <span className={`px-4 py-2 rounded-xl text-sm font-medium border ${getStatusColor(plan.status)}`}>
-            {plan.status}
-          </span>
+      <div className="min-w-0">
+        <div className="flex items-start gap-3">
+          <div
+            className="mt-2 h-3 w-3 shrink-0 rounded-full"
+            style={{ backgroundColor: plan.color || '#3b82f6' }}
+          />
+          <h1 className="min-w-0 flex-1 break-words text-2xl font-semibold tracking-tight text-text-primary">
+            {plan.name}
+          </h1>
         </div>
-
-        {plan.goal && (
-          <div className="mt-4 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
-            <div className="flex items-center gap-2 text-sm text-slate-400 mb-1">
-              <Calendar className="w-4 h-4" />
-              Strategic Goal
-            </div>
-            <p className="text-white">{plan.goal}</p>
-          </div>
-        )}
+        {plan.description ? (
+          <p className="mt-2 text-sm text-text-secondary">{plan.description}</p>
+        ) : null}
+        {plan.goal ? (
+          <p className="mt-3 text-sm text-text-primary">
+            <span className="text-text-secondary">{t('goal')}: </span>
+            {plan.goal}
+          </p>
+        ) : null}
+        <p className="mt-2 text-sm text-text-secondary">
+          {format(new Date(plan.start_date), 'MMM d', { locale: dateLocale })}
+          {' – '}
+          {format(new Date(plan.end_date), 'MMM d, yyyy', { locale: dateLocale })}
+          {'. '}
+          {t(`status.${plan.status}`)}
+          {'. '}
+          {t('overallProgress')}: {overallProgress}%. {t('daysLeft', { count: Math.max(daysRemaining, 0) })}.
+        </p>
       </div>
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-4 gap-6 mb-8">
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div className="text-slate-400 text-sm mb-1">Timeline</div>
-          <div className="text-white font-semibold">
-            {format(new Date(plan.start_date), 'MMM d')} - {format(new Date(plan.end_date), 'MMM d, yyyy')}
-          </div>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div className="text-slate-400 text-sm mb-1">Days Remaining</div>
-          <div className="text-white font-semibold text-2xl">
-            {daysRemaining > 0 ? daysRemaining : 0}
-          </div>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div className="text-slate-400 text-sm mb-1">Milestones</div>
-          <div className="text-white font-semibold text-2xl">
-            {milestones.filter(m => m.is_completed).length}/{milestones.length}
-          </div>
-        </div>
-
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-          <div className="text-slate-400 text-sm mb-1">Overall Progress</div>
-          <div className="text-white font-semibold text-2xl">{overallProgress}%</div>
-        </div>
-      </div>
-
-      {/* Gantt Timeline */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 mb-8">
-        <h2 className="text-xl font-bold text-white mb-6">Timeline</h2>
-        <GanttTimeline
-          plan={plan}
-          milestones={milestones}
-          onMilestoneClick={(milestone: any) => {
-            setEditingMilestone(milestone);
-            setShowMilestoneModal(true);
-          }}
-        />
-      </div>
-
-      {/* Milestones List */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-bold text-white">Milestones</h2>
-          <button
-            onClick={() => {
-              setEditingMilestone(null);
-              setShowMilestoneModal(true);
+      <div className="hidden min-w-0 lg:block">
+        <div className="min-w-0 max-w-full overflow-x-auto rounded-2xl border border-border bg-surface p-4">
+          <h2 className="mb-4 text-base font-semibold text-text-primary">{t('timeline')}</h2>
+          <GanttTimeline
+            plan={plan}
+            milestones={milestones}
+            onMilestoneClick={(milestone) => {
+              const current = milestones.find((item) => item.id === milestone.id);
+              if (current) openMilestone(current);
             }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            Add Milestone
-          </button>
+          />
+        </div>
+      </div>
+
+      <section className="min-w-0 space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-text-primary">{t('milestones')}</h2>
+          <Button type="button" onClick={() => openMilestone(null)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            {t('addMilestone')}
+          </Button>
         </div>
 
         {milestones.length === 0 ? (
-          <div className="text-center py-12">
-            <Calendar className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-            <p className="text-slate-400 mb-4">No milestones yet</p>
-            <button
-              onClick={() => setShowMilestoneModal(true)}
-              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-colors"
-            >
-              Create First Milestone
-            </button>
-          </div>
+          <EmptyState title={t('noMilestones')} />
         ) : (
           <div className="space-y-3">
-            {milestones.map((milestone) => (
-              <div
-                key={milestone.id}
-                className="flex items-center gap-4 p-4 bg-slate-800/50 rounded-xl hover:bg-slate-800 transition-colors group"
-              >
-                <div className="flex-shrink-0">
-                  {milestone.is_completed ? (
-                    <CheckCircle2 className="w-6 h-6 text-green-500" />
-                  ) : (
-                    <Circle className="w-6 h-6 text-slate-600" />
-                  )}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold text-white">{milestone.name}</h3>
-                    <span className="text-sm text-slate-400">
-                      {format(new Date(milestone.target_date), 'MMM d, yyyy')}
-                    </span>
-                  </div>
-
-                  {milestone.description && (
-                    <p className="text-sm text-slate-400 mb-2">{milestone.description}</p>
-                  )}
-
-                  <div className="flex items-center gap-4">
-                    <div className="flex-1 max-w-xs">
-                      <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-600 rounded-full transition-all"
-                          style={{ width: `${milestone.completion_percentage}%` }}
-                        />
-                      </div>
+            {milestones.map((milestone) => {
+              const overdue = !milestone.is_completed && new Date(milestone.target_date) < new Date();
+              return (
+                <article key={milestone.id} className="min-w-0 rounded-2xl border border-border bg-surface p-4">
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="break-words text-base font-semibold text-text-primary">{milestone.name}</h3>
+                      <p className="mt-1 text-sm text-text-secondary">
+                        {format(new Date(milestone.target_date), 'MMM d, yyyy', { locale: dateLocale })}
+                        {milestone.is_completed ? ` · ${t('legendCompleted')}` : ''}
+                        {overdue ? ` · ${t('overdue')}` : ''}
+                      </p>
                     </div>
-                    <span className="text-sm text-slate-400">
-                      {milestone.completion_percentage}% • {milestone.task_count || 0} tasks
-                    </span>
+                    <IconMenu
+                      label={t('editMilestone')}
+                      items={[
+                        { label: t('editMilestone'), onClick: () => openMilestone(milestone) },
+                        { label: t('deleteMilestone'), onClick: () => deleteMilestone(milestone.id), danger: true },
+                      ]}
+                    />
                   </div>
-                </div>
 
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button
-                    onClick={() => {
-                      setEditingMilestone(milestone);
-                      setShowMilestoneModal(true);
-                    }}
-                    className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                  >
-                    <Edit className="w-4 h-4 text-slate-400" />
-                  </button>
-                  <button
-                    onClick={() => deleteMilestone(milestone.id)}
-                    className="p-2 hover:bg-slate-700 rounded-lg transition-colors"
-                  >
-                    <Trash className="w-4 h-4 text-red-400" />
-                  </button>
-                </div>
-              </div>
-            ))}
+                  {milestone.description ? (
+                    <p className="mt-2 line-clamp-2 text-sm text-text-secondary">{milestone.description}</p>
+                  ) : null}
+
+                  <div className="mt-3 space-y-1.5">
+                    {milestone.tasks.length === 0 ? (
+                      <p className="text-sm text-text-secondary">{t('noLinkedTasks')}</p>
+                    ) : (
+                      milestone.tasks.map((task) => (
+                        <div key={task.id} className="flex min-w-0 items-center gap-2">
+                          {task.is_completed ? (
+                            <CheckCircle2 className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />
+                          ) : (
+                            <Circle className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden />
+                          )}
+                          <span className={`min-w-0 truncate text-sm ${task.is_completed ? 'text-text-secondary line-through' : 'text-text-primary'}`}>
+                            {task.title}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
-      </div>
+      </section>
 
-      {showMilestoneModal && (
+      {showMilestoneModal && plan ? (
         <MilestoneEditor
           planId={plan.id}
           milestone={editingMilestone}
           onClose={() => {
-            setShowMilestoneModal(false);
-            setEditingMilestone(null);
+            closeMilestone();
+            loadMilestones();
           }}
           onSave={() => {
-            setShowMilestoneModal(false);
-            setEditingMilestone(null);
+            closeMilestone();
             loadMilestones();
           }}
         />
-      )}
+      ) : null}
     </div>
   );
 }

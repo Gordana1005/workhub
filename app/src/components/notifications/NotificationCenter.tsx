@@ -1,8 +1,13 @@
+'use client'
+
 import { useState, useEffect, useCallback } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Check, CheckCheck, Trash2, X, Clock, User, MessageSquare, CheckCircle, AlertCircle } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { useTranslations } from 'next-intl'
+import { Bell, CheckCheck, Trash2, X, Clock, User, MessageSquare, CheckCircle, AlertCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
+import { enUS, mk } from 'date-fns/locale'
+import { useLocaleSwitch } from '@/i18n/LocaleProvider'
 import { useRouter } from 'next/navigation'
 
 interface Notification {
@@ -28,7 +33,10 @@ interface NotificationCenterProps {
   workspaceId: string
 }
 
-export default function NotificationCenter({ isOpen, onClose, workspaceId }: NotificationCenterProps) {
+export default function NotificationCenter({ isOpen, onClose }: NotificationCenterProps) {
+  const t = useTranslations('pages.tools')
+  const { locale } = useLocaleSwitch()
+  const dateLocale = locale === 'mk' ? mk : enUS
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
@@ -40,7 +48,7 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
       const unreadOnly = filter === 'unread'
       const response = await fetch(`/api/notifications?unread_only=${unreadOnly}&limit=50`)
       if (!response.ok) throw new Error('Failed to load notifications')
-      
+
       const data = await response.json()
       setNotifications(data.notifications || [])
     } catch (error) {
@@ -66,8 +74,7 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
         (payload) => {
           const newNotification = payload.new as Notification
           setNotifications(prev => [newNotification, ...prev])
-          
-          // Show browser notification if permission granted
+
           if ('Notification' in window && Notification.permission === 'granted') {
             new Notification(newNotification.title, {
               body: newNotification.message,
@@ -85,6 +92,9 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
   useEffect(() => {
     if (!isOpen) return undefined
 
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
     const resolveUser = async () => {
       const { data } = await supabase.auth.getUser()
       setUserId(data.user?.id || null)
@@ -95,17 +105,16 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
     const channel = subscribeToNotifications()
 
     return () => {
+      document.body.style.overflow = previous
       channel?.unsubscribe()
     }
   }, [isOpen, filter, loadNotifications, subscribeToNotifications])
 
   const handleNotificationClick = async (notification: Notification) => {
-    // Mark as read
     if (!notification.read) {
       await markAsRead(notification.id)
     }
 
-    // Navigate to link if exists
     if (notification.link) {
       router.push(notification.link)
       onClose()
@@ -163,7 +172,7 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
   }
 
   const clearAllRead = async () => {
-    if (!confirm('Delete all read notifications?')) return
+    if (!confirm(t('notifications.deleteReadConfirm'))) return
 
     try {
       const response = await fetch('/api/notifications?delete_all=true', {
@@ -189,187 +198,172 @@ export default function NotificationCenter({ isOpen, onClose, workspaceId }: Not
       project_update: Bell
     }
     const Icon = icons[type] || Bell
-    return <Icon className="w-5 h-5" />
+    return <Icon className="h-5 w-5" />
   }
 
   const getNotificationColor = (type: string) => {
     const colors: Record<string, string> = {
-      task_assigned: 'text-blue-400 bg-blue-500/10',
-      task_due: 'text-yellow-400 bg-yellow-500/10',
-      task_overdue: 'text-red-400 bg-red-500/10',
-      task_completed: 'text-green-400 bg-green-500/10',
-      comment_mention: 'text-purple-400 bg-purple-500/10',
-      dependency_unblocked: 'text-emerald-400 bg-emerald-500/10',
-      project_update: 'text-indigo-400 bg-indigo-500/10'
+      task_assigned: 'text-primary bg-primary/10',
+      task_due: 'text-warning bg-warning/10',
+      task_overdue: 'text-danger bg-danger/10',
+      task_completed: 'text-success bg-success/10',
+      comment_mention: 'text-primary bg-primary/10',
+      dependency_unblocked: 'text-success bg-success/10',
+      project_update: 'text-primary bg-primary/10'
     }
-    return colors[type] || 'text-slate-400 bg-slate-500/10'
+    return colors[type] || 'text-text-primary bg-surface-hover'
   }
 
   const unreadCount = notifications.filter(n => !n.read).length
-  const filteredNotifications = filter === 'unread' 
+  const filteredNotifications = filter === 'unread'
     ? notifications.filter(n => !n.read)
     : notifications
 
-  if (!isOpen) return null
+  if (!isOpen || typeof document === 'undefined') return null
 
-  return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50"
+  return createPortal(
+    <div className="fixed inset-0 z-[80]">
+      <button
+        type="button"
+        aria-label={t('finance.close')}
+        className="absolute inset-0 bg-black/50"
         onClick={onClose}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('notifications.title')}
+        className="absolute inset-0 flex h-[100dvh] w-full flex-col bg-surface text-text-primary sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:max-w-md sm:border-l sm:border-border sm:shadow-xl"
       >
-        <motion.div
-          initial={{ opacity: 0, x: 300 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: 300 }}
-          transition={{ duration: 0.3, ease: 'easeOut' }}
-          onClick={(e) => e.stopPropagation()}
-          className="absolute right-0 top-0 h-full w-full max-w-md bg-slate-900 border-l border-slate-800 shadow-2xl flex flex-col"
-        >
-          {/* Header */}
-          <div className="p-4 border-b border-slate-800">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <h2 className="text-xl font-bold text-white">Notifications</h2>
-                {unreadCount > 0 && (
-                  <span className="px-2 py-0.5 bg-blue-600 text-white text-xs font-bold rounded-full">
-                    {unreadCount}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={onClose}
-                className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
+        <div className="border-b border-border p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <h2 className="text-lg font-semibold text-text-primary">{t('notifications.title')}</h2>
+              {unreadCount > 0 && (
+                <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-white">
+                  {unreadCount}
+                </span>
+              )}
             </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label={t('finance.close')}
+              className="shrink-0 rounded-lg p-2 text-text-primary hover:bg-surface-hover"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
 
-            {/* Filter Tabs */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setFilter('all')}
-                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filter === 'all'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                }`}
-              >
-                All
-              </button>
-              <button
-                onClick={() => setFilter('unread')}
-                className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filter === 'unread'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                }`}
-              >
-                Unread ({unreadCount})
-              </button>
-            </div>
+          <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-surface-hover p-1">
+            <button
+              type="button"
+              onClick={() => setFilter('all')}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${
+                filter === 'all' ? 'bg-primary text-white' : 'text-text-primary hover:bg-surface'
+              }`}
+            >
+              {t('notifications.all')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter('unread')}
+              className={`rounded-lg px-3 py-2 text-sm font-medium ${
+                filter === 'unread' ? 'bg-primary text-white' : 'text-text-primary hover:bg-surface'
+              }`}
+            >
+              {t('notifications.unread', { count: unreadCount })}
+            </button>
+          </div>
 
-            {/* Actions */}
-            {notifications.length > 0 && (
-              <div className="flex gap-2 mt-3">
-                {unreadCount > 0 && (
-                  <button
-                    onClick={markAllAsRead}
-                    className="flex-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs text-slate-300 transition-colors flex items-center justify-center gap-1"
-                  >
-                    <CheckCheck className="w-3 h-3" />
-                    Mark All Read
-                  </button>
-                )}
+          {notifications.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {unreadCount > 0 && (
                 <button
-                  onClick={clearAllRead}
-                  className="flex-1 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 rounded text-xs text-slate-300 transition-colors flex items-center justify-center gap-1"
+                  type="button"
+                  onClick={markAllAsRead}
+                  className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-text-primary hover:bg-surface-hover"
                 >
-                  <Trash2 className="w-3 h-3" />
-                  Clear Read
+                  <CheckCheck className="h-3 w-3" />
+                  {t('notifications.markAllRead')}
                 </button>
-              </div>
-            )}
-          </div>
+              )}
+              <button
+                type="button"
+                onClick={clearAllRead}
+                className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-text-primary hover:bg-surface-hover"
+              >
+                <Trash2 className="h-3 w-3" />
+                {t('notifications.clearRead')}
+              </button>
+            </div>
+          )}
+        </div>
 
-          {/* Notifications List */}
-          <div className="flex-1 overflow-y-auto">
-            {loading ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-              </div>
-            ) : filteredNotifications.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <Bell className="w-16 h-16 text-slate-700 mb-4" />
-                <h3 className="text-lg font-semibold text-slate-300 mb-2">
-                  {filter === 'unread' ? 'No unread notifications' : 'No notifications'}
-                </h3>
-                <p className="text-slate-500 text-sm">
-                  {filter === 'unread' 
-                    ? "You're all caught up!" 
-                    : "You'll see notifications here when something happens"}
-                </p>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-800">
-                {filteredNotifications.map((notification, index) => (
-                  <motion.div
-                    key={notification.id}
-                    initial={{ opacity: 0, x: 20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -20 }}
-                    transition={{ duration: 0.2, delay: index * 0.03 }}
+        <div className="min-h-0 flex-1 overflow-y-auto pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          {loading ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          ) : filteredNotifications.length === 0 ? (
+            <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+              <Bell className="mb-4 h-12 w-12 text-text-muted" />
+              <h3 className="text-base font-semibold text-text-primary">
+                {filter === 'unread' ? t('notifications.noUnread') : t('notifications.noNotifications')}
+              </h3>
+              <p className="mt-1 text-sm text-text-secondary">
+                {filter === 'unread'
+                  ? t('notifications.caughtUp')
+                  : t('notifications.emptyHint')}
+              </p>
+            </div>
+          ) : (
+            <ul className="divide-y divide-border">
+              {filteredNotifications.map((notification) => (
+                <li
+                  key={notification.id}
+                  className={`flex gap-3 p-4 ${!notification.read ? 'bg-primary/10' : ''}`}
+                >
+                  <button
+                    type="button"
                     onClick={() => handleNotificationClick(notification)}
-                    className={`p-4 cursor-pointer hover:bg-slate-800/50 transition-colors ${
-                      !notification.read ? 'bg-slate-800/30' : ''
-                    }`}
+                    className="flex min-w-0 flex-1 gap-3 text-left"
                   >
-                    <div className="flex gap-3">
-                      <div className={`mt-0.5 p-2 rounded-lg ${getNotificationColor(notification.type)}`}>
-                        {getNotificationIcon(notification.type)}
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <h3 className={`font-semibold text-sm ${
-                            !notification.read ? 'text-white' : 'text-slate-300'
-                          }`}>
-                            {notification.title}
-                          </h3>
-                          {!notification.read && (
-                            <div className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1"></div>
-                          )}
-                        </div>
-
-                        <p className="text-sm text-slate-400 mb-2 line-clamp-2">
-                          {notification.message}
-                        </p>
-
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-slate-500">
-                            {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
-                          </span>
-
-                          <button
-                            onClick={(e) => deleteNotification(notification.id, e)}
-                            className="p-1 hover:bg-slate-700 rounded transition-colors"
-                          >
-                            <Trash2 className="w-3 h-3 text-slate-500 hover:text-red-400" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+                    <span className={`mt-0.5 h-fit shrink-0 rounded-lg p-2 ${getNotificationColor(notification.type)}`}>
+                      {getNotificationIcon(notification.type)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="mb-1 flex items-start justify-between gap-2">
+                        <span className="break-words text-sm font-semibold text-text-primary">
+                          {notification.title}
+                        </span>
+                        {!notification.read && (
+                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
+                        )}
+                      </span>
+                      <span className="mb-2 line-clamp-2 block break-words text-sm text-text-primary">
+                        {notification.message}
+                      </span>
+                      <span className="text-xs text-text-secondary">
+                        {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: dateLocale })}
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => deleteNotification(notification.id, e)}
+                    className="h-fit shrink-0 rounded p-1 text-text-secondary hover:bg-surface-hover hover:text-danger"
+                    aria-label={t('finance.remove')}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
   )
 }

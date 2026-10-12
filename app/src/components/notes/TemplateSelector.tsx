@@ -1,8 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { FileText, Plus, X } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useTranslations } from 'next-intl';
+import { Dialog } from '@/components/ui/Dialog';
+import { Button } from '@/components/ui/Button';
 
 interface Template {
   id: string;
@@ -21,15 +24,16 @@ interface TemplateSelectorProps {
 }
 
 const TEMPLATE_CATEGORIES = [
-  { value: 'all', label: 'All Templates' },
-  { value: 'meeting', label: '📅 Meeting' },
-  { value: 'project', label: '📁 Project' },
-  { value: 'documentation', label: '📖 Documentation' },
-  { value: 'brainstorm', label: '💡 Brainstorm' },
-  { value: 'general', label: '📝 General' },
-];
+  { value: 'all' },
+  { value: 'meeting' },
+  { value: 'project' },
+  { value: 'documentation' },
+  { value: 'brainstorm' },
+  { value: 'general' },
+] as const;
 
 export default function TemplateSelector({ workspaceId, onSelect, onClose }: TemplateSelectorProps) {
+  const t = useTranslations('pages.notes');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -55,7 +59,6 @@ export default function TemplateSelector({ workspaceId, onSelect, onClose }: Tem
   }, [workspaceId, loadTemplates]);
 
   const handleSelectTemplate = async (template: Template) => {
-    // Increment usage count
     await supabase
       .from('note_templates')
       .update({ usage_count: template.usage_count + 1 })
@@ -67,107 +70,90 @@ export default function TemplateSelector({ workspaceId, onSelect, onClose }: Tem
 
   const filteredTemplates = selectedCategory === 'all'
     ? templates
-    : templates.filter(t => t.category === selectedCategory);
+    : templates.filter((template) => template.category === selectedCategory);
+
+  const categoryLabel = (category: string) => {
+    switch (category) {
+      case 'meeting':
+        return t('categories.meeting');
+      case 'project':
+        return t('categories.project');
+      case 'documentation':
+        return t('categories.documentation');
+      case 'brainstorm':
+        return t('categories.brainstorm');
+      case 'general':
+        return t('categories.general');
+      default:
+        return category;
+    }
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fadeIn">
-      <div className="card w-full max-w-4xl max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <FileText className="w-6 h-6 text-blue-500" />
-            Choose a Template
-          </h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <Dialog
+      open
+      title={t('chooseTemplate')}
+      onClose={onClose}
+      size="lg"
+      footer={
+        <div className="flex justify-end">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            {t('startFromScratch')}
+          </Button>
         </div>
+      }
+    >
+      <div className="mb-4 flex min-w-0 flex-wrap gap-2">
+        {TEMPLATE_CATEGORIES.map((cat) => (
+          <button
+            key={cat.value}
+            type="button"
+            onClick={() => setSelectedCategory(cat.value)}
+            className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors ${
+              selectedCategory === cat.value
+                ? 'bg-primary text-white'
+                : 'border border-border bg-secondary text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+            }`}
+          >
+            {t(`filters.${cat.value}`)}
+          </button>
+        ))}
+      </div>
 
-        {/* Category Filter */}
-        <div className="flex items-center gap-2 px-6 py-4 border-b border-white/10 overflow-x-auto">
-          {TEMPLATE_CATEGORIES.map(cat => (
+      {loading ? (
+        <p className="py-12 text-center text-sm text-text-secondary">{t('loadingTemplates')}</p>
+      ) : filteredTemplates.length === 0 ? (
+        <div className="py-12 text-center">
+          <FileText className="mx-auto mb-4 h-12 w-12 text-text-muted" />
+          <h3 className="mb-2 text-base font-semibold text-text-primary">{t('noTemplatesTitle')}</h3>
+          <p className="text-sm text-text-secondary">
+            {selectedCategory === 'all' ? t('noTemplatesAll') : t('noTemplatesCategory')}
+          </p>
+        </div>
+      ) : (
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
+          {filteredTemplates.map((template) => (
             <button
-              key={cat.value}
-              onClick={() => setSelectedCategory(cat.value)}
-              className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
-                selectedCategory === cat.value
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-              }`}
+              key={template.id}
+              type="button"
+              onClick={() => handleSelectTemplate(template)}
+              className="min-w-0 rounded-xl border border-border bg-secondary p-4 text-left hover:border-primary hover:bg-surface-hover"
             >
-              {cat.label}
+              <div className="flex min-w-0 items-start gap-3">
+                <span className="text-2xl">{template.icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-text-primary">{template.name}</span>
+                  <span className="mt-1 line-clamp-2 block text-xs text-text-secondary">{template.description}</span>
+                </span>
+              </div>
+              <span className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-3 text-xs text-text-secondary">
+                <span className="min-w-0 truncate">{categoryLabel(template.category)}</span>
+                <span className="shrink-0">{t('usedTimes', { count: template.usage_count })}</span>
+              </span>
             </button>
           ))}
         </div>
-
-        {/* Templates Grid */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="animate-pulse text-slate-400">Loading templates...</div>
-            </div>
-          ) : filteredTemplates.length === 0 ? (
-            <div className="text-center py-12">
-              <FileText className="w-16 h-16 mx-auto mb-4 text-slate-600" />
-              <h3 className="text-xl font-semibold mb-2">No templates found</h3>
-              <p className="text-slate-400">
-                {selectedCategory === 'all'
-                  ? 'Create your first template to get started'
-                  : 'No templates in this category'}
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredTemplates.map(template => (
-                <button
-                  key={template.id}
-                  onClick={() => handleSelectTemplate(template)}
-                  className="group text-left p-4 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 hover:border-blue-500 rounded-xl transition-all"
-                >
-                  <div className="flex items-start gap-3 mb-2">
-                    <span className="text-3xl">{template.icon}</span>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-semibold text-white mb-1 truncate group-hover:text-blue-400 transition-colors">
-                        {template.name}
-                      </h3>
-                      <p className="text-xs text-slate-400 line-clamp-2">
-                        {template.description}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-700">
-                    <span className="text-xs text-slate-500 capitalize">
-                      {template.category}
-                    </span>
-                    <span className="text-xs text-slate-500">
-                      Used {template.usage_count} times
-                    </span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t border-white/10">
-          <button
-            onClick={onClose}
-            className="btn-secondary"
-          >
-            Start from Scratch
-          </button>
-          <button
-            onClick={onClose}
-            className="text-sm text-slate-400 hover:text-white transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+    </Dialog>
   );
 }

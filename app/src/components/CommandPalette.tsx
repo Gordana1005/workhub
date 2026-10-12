@@ -23,6 +23,7 @@ import {
   Keyboard
 } from 'lucide-react';
 import './CommandPalette.css';
+import { useTranslations } from 'next-intl';
 
 interface CommandPaletteProps {
   onNewTask?: () => void;
@@ -42,6 +43,7 @@ export default function CommandPalette({
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const router = useRouter();
+  const t = useTranslations('pages.tools');
 
   useHotkeys('mod+k', (e) => {
     e.preventDefault();
@@ -62,30 +64,28 @@ export default function CommandPalette({
   }, [isOpen]);
 
   const commands = [
-    // Actions
     {
-      group: 'Actions',
+      group: t('command.groupActions'),
       items: [
-        { icon: Plus, label: 'New Task', shortcut: 'N', action: () => { onNewTask?.(); setIsOpen(false); } },
-        { icon: FolderPlus, label: 'New Project', shortcut: 'P', action: () => { onNewProject?.(); setIsOpen(false); } },
-        { icon: FileText, label: 'New Note', action: () => { onNewNote?.(); setIsOpen(false); } },
-        { icon: Clock, label: 'Toggle Timer', shortcut: 'Space', action: () => { onToggleTimer?.(); setIsOpen(false); } },
-        { icon: Download, label: 'Export Data', action: () => { onExport?.(); setIsOpen(false); } },
-        { icon: Keyboard, label: 'Keyboard Shortcuts', shortcut: 'Ctrl+/', action: () => { setIsOpen(false); } },
+        { icon: Plus, label: t('command.newTask'), shortcut: 'N', action: () => { onNewTask?.(); setIsOpen(false); } },
+        { icon: FolderPlus, label: t('command.newProject'), shortcut: 'P', action: () => { onNewProject?.(); setIsOpen(false); } },
+        { icon: FileText, label: t('command.newNote'), action: () => { onNewNote?.(); setIsOpen(false); } },
+        { icon: Clock, label: t('command.toggleTimer'), shortcut: t('command.space'), action: () => { onToggleTimer?.(); setIsOpen(false); } },
+        { icon: Download, label: t('command.exportData'), action: () => { onExport?.(); setIsOpen(false); } },
+        { icon: Keyboard, label: t('command.keyboardShortcuts'), shortcut: 'Ctrl+/', action: () => { setIsOpen(false); } },
       ]
     },
-    // Navigation
     {
-      group: 'Navigation',
+      group: t('command.groupNavigation'),
       items: [
-        { icon: LayoutDashboard, label: 'Go to Dashboard', shortcut: 'G D', action: () => { router.push('/dashboard'); setIsOpen(false); } },
-        { icon: ListTodo, label: 'Go to Tasks', shortcut: 'G T', action: () => { router.push('/dashboard/tasks'); setIsOpen(false); } },
-        { icon: FolderOpen, label: 'Go to Projects', shortcut: 'G P', action: () => { router.push('/dashboard/projects'); setIsOpen(false); } },
-        { icon: StickyNote, label: 'Go to Notes', shortcut: 'G N', action: () => { router.push('/dashboard/notes'); setIsOpen(false); } },
-        { icon: BarChart3, label: 'Go to Reports', shortcut: 'G R', action: () => { router.push('/dashboard/reports'); setIsOpen(false); } },
-        { icon: Target, label: 'Go to Focus Mode', shortcut: 'G F', action: () => { router.push('/dashboard/focus'); setIsOpen(false); } },
-        { icon: Users, label: 'Go to Team', action: () => { router.push('/dashboard/team'); setIsOpen(false); } },
-        { icon: Settings, label: 'Go to Settings', action: () => { router.push('/dashboard/settings'); setIsOpen(false); } },
+        { icon: LayoutDashboard, label: t('command.goDashboard'), shortcut: 'G D', action: () => { router.push('/dashboard'); setIsOpen(false); } },
+        { icon: ListTodo, label: t('command.goTasks'), shortcut: 'G T', action: () => { router.push('/dashboard/tasks'); setIsOpen(false); } },
+        { icon: FolderOpen, label: t('command.goProjects'), shortcut: 'G P', action: () => { router.push('/dashboard/projects'); setIsOpen(false); } },
+        { icon: StickyNote, label: t('command.goNotes'), shortcut: 'G N', action: () => { router.push('/dashboard/notes'); setIsOpen(false); } },
+        { icon: BarChart3, label: t('command.goReports'), shortcut: 'G R', action: () => { router.push('/dashboard/reports'); setIsOpen(false); } },
+        { icon: Target, label: t('command.goFocus'), shortcut: 'G F', action: () => { router.push('/dashboard/focus'); setIsOpen(false); } },
+        { icon: Users, label: t('command.goTeam'), action: () => { router.push('/dashboard/team'); setIsOpen(false); } },
+        { icon: Settings, label: t('command.goSettings'), action: () => { router.push('/dashboard/settings'); setIsOpen(false); } },
       ]
     }
   ];
@@ -96,11 +96,11 @@ export default function CommandPalette({
     <div className="command-palette-overlay" onClick={() => setIsOpen(false)}>
       <Command className="command-palette" onClick={(e) => e.stopPropagation()}>
         <div className="command-palette-header">
-          <Search className="w-5 h-5 text-gray-400" />
+          <Search className="w-5 h-5 text-text-secondary" />
           <Command.Input
             value={search}
             onValueChange={setSearch}
-            placeholder="Type a command or search..."
+            placeholder={t('command.placeholder')}
             className="command-palette-input"
             autoFocus
           />
@@ -108,7 +108,7 @@ export default function CommandPalette({
 
         <Command.List className="command-palette-list">
           <Command.Empty className="command-palette-empty">
-            No results found.
+            {t('command.empty')}
           </Command.Empty>
 
           {commands.map((group) => (
@@ -133,7 +133,7 @@ export default function CommandPalette({
         </Command.List>
 
         <div className="command-palette-footer">
-          Navigate with <kbd>↑</kbd> <kbd>↓</kbd> · Select with <kbd>↵</kbd> · Close with <kbd>Esc</kbd>
+          {t('command.navigate')} <kbd>↑</kbd> <kbd>↓</kbd> · {t('command.select')} <kbd>↵</kbd> · {t('command.close')} <kbd>Esc</kbd>
         </div>
       </Command>
     </div>

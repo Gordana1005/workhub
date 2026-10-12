@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import { Plus, CheckCircle, Circle, Trash2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
@@ -19,6 +20,7 @@ interface SubtaskListProps {
 }
 
 export default function SubtaskList({ taskId, subtasks, onUpdate }: SubtaskListProps) {
+  const t = useTranslations('pages.tasks')
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
   const [isAdding, setIsAdding] = useState(false)
 
@@ -82,13 +84,13 @@ export default function SubtaskList({ taskId, subtasks, onUpdate }: SubtaskListP
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium text-gray-300">
-          Subtasks ({completedCount}/{totalCount})
+        <h4 className="min-w-0 text-sm font-medium text-text-secondary">
+          {t('subtasksProgress', { completed: completedCount, total: totalCount })}
         </h4>
         {totalCount > 0 && (
-          <div className="w-32 h-1.5 bg-white/10 rounded-full overflow-hidden">
+          <div className="w-24 shrink-0 sm:w-32 h-1.5 bg-surface-hover rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-blue-purple transition-all duration-300"
+              className="h-full bg-primary transition-all duration-300"
               style={{ width: `${(completedCount / totalCount) * 100}%` }}
             />
           </div>
@@ -99,38 +101,42 @@ export default function SubtaskList({ taskId, subtasks, onUpdate }: SubtaskListP
         {subtasks.map((subtask) => (
           <div
             key={subtask.id}
-            className="group flex items-center gap-3 p-3 rounded-lg bg-surface hover:bg-surface-light transition-colors"
+            className="group flex items-center gap-3 p-3 rounded-lg border border-border bg-surface hover:bg-surface-hover transition-colors"
           >
             <button
+              type="button"
+              aria-label={t('markComplete')}
               onClick={() => handleToggleSubtask(subtask.id, subtask.is_completed)}
               className="flex-shrink-0"
             >
               {subtask.is_completed ? (
-                <CheckCircle className="w-5 h-5 text-green-400" />
+                <CheckCircle className="w-5 h-5 text-success" />
               ) : (
-                <Circle className="w-5 h-5 text-gray-500 hover:text-purple-400 transition-colors" />
+                <Circle className="w-5 h-5 text-text-secondary hover:text-primary transition-colors" />
               )}
             </button>
 
             <span
-              className={`flex-1 text-sm ${
+              className={`min-w-0 flex-1 break-words text-sm ${
                 subtask.is_completed
-                  ? 'line-through text-gray-500'
-                  : 'text-gray-200'
+                  ? 'line-through text-text-secondary'
+                  : 'text-text-primary'
               }`}
             >
               {subtask.title}
             </span>
 
             {subtask.estimated_minutes && (
-              <span className="text-xs text-gray-500">
-                {subtask.estimated_minutes}m
+              <span className="text-xs text-text-secondary">
+                {t('minutesShort', { count: subtask.estimated_minutes })}
               </span>
             )}
 
             <button
+              type="button"
+              aria-label={t('delete')}
               onClick={() => handleDeleteSubtask(subtask.id)}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300"
+              className="shrink-0 text-danger transition-opacity hover:opacity-80 lg:opacity-0 lg:group-hover:opacity-100"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -144,11 +150,13 @@ export default function SubtaskList({ taskId, subtasks, onUpdate }: SubtaskListP
           value={newSubtaskTitle}
           onChange={(e) => setNewSubtaskTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAddSubtask()}
-          placeholder="Add a subtask..."
-          className="flex-1 input-field text-sm"
+          placeholder={t('addSubtask')}
+          className="min-w-0 flex-1 input-field text-sm"
           disabled={isAdding}
         />
         <button
+          type="button"
+          aria-label={t('addSubtask')}
           onClick={handleAddSubtask}
           disabled={!newSubtaskTitle.trim() || isAdding}
           className="btn-secondary px-3"

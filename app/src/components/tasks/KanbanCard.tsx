@@ -4,6 +4,8 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Calendar, AlertCircle, User } from 'lucide-react';
 import { format } from 'date-fns';
+import { enUS, mk } from 'date-fns/locale';
+import { useLocale, useTranslations } from 'next-intl';
 import { Task } from './types';
 
 interface KanbanCardProps {
@@ -13,6 +15,18 @@ interface KanbanCardProps {
 }
 
 export default function KanbanCard({ task, isDragging = false, onClick }: KanbanCardProps) {
+  const t = useTranslations('pages.tasks');
+  const locale = useLocale();
+  const dateLocale = locale === 'mk' ? mk : enUS;
+
+  const priorityLabel = (priority: string) => {
+    if (priority === 'low') return t('priorityLow');
+    if (priority === 'medium') return t('priorityMedium');
+    if (priority === 'high') return t('priorityHigh');
+    if (priority === 'urgent') return t('priorityUrgent');
+    return priority;
+  };
+
   const {
     attributes,
     listeners,
@@ -41,7 +55,7 @@ export default function KanbanCard({ task, isDragging = false, onClick }: Kanban
     <div
       ref={setNodeRef}
       style={{ ...style, borderLeft: `4px solid ${projectColor}` }}
-      className={`card p-4 cursor-pointer hover:border-purple-500/50 transition-all ${
+      className={`card p-4 cursor-pointer hover:border-primary/50 transition-all ${
         isDragging ? 'rotate-3 opacity-50' : ''
       }`}
       onClick={onClick}
@@ -51,7 +65,7 @@ export default function KanbanCard({ task, isDragging = false, onClick }: Kanban
         <div
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing text-gray-500 hover:text-gray-300 mt-1"
+          className="cursor-grab active:cursor-grabbing text-text-secondary hover:text-text-primary mt-1 touch-none"
         >
           <GripVertical className="w-4 h-4" />
         </div>
@@ -59,11 +73,11 @@ export default function KanbanCard({ task, isDragging = false, onClick }: Kanban
         {/* Card Content */}
         <div className="flex-1 min-w-0">
           {/* Title */}
-          <h4 className="font-medium mb-2 line-clamp-2">{task.title}</h4>
+          <h4 className="font-medium text-text-primary mb-2 line-clamp-2 break-words">{task.title}</h4>
 
           {/* Description */}
           {task.description && (
-            <p className="text-sm text-gray-400 mb-3 line-clamp-2">
+            <p className="text-sm text-text-secondary mb-3 line-clamp-2">
               {task.description}
             </p>
           )}
@@ -71,28 +85,28 @@ export default function KanbanCard({ task, isDragging = false, onClick }: Kanban
           {/* Metadata */}
           <div className="flex flex-wrap items-center gap-2 text-xs">
             {/* Project */}
-            <div className="flex items-center gap-1 text-gray-400">
+            <div className="flex items-center gap-1 text-text-secondary">
               <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: projectColor }}></span>
-              <span className="truncate max-w-[120px]">{task.project?.name || 'No project'}</span>
+              <span className="truncate max-w-[120px]">{task.project?.name || t('noProject')}</span>
             </div>
 
             {/* Priority Badge */}
             <div className="flex items-center gap-1.5">
               <div className={`w-2 h-2 rounded-full ${priorityColors[task.priority]}`} />
-              <span className="text-gray-400 capitalize">{task.priority}</span>
+              <span className="text-text-secondary capitalize">{priorityLabel(task.priority)}</span>
             </div>
 
             {/* Due Date */}
             {task.due_date && (
-              <div className="flex items-center gap-1 text-gray-400">
+              <div className="flex items-center gap-1 text-text-secondary">
                 <Calendar className="w-3 h-3" />
-                <span>{format(new Date(task.due_date), 'MMM dd')}</span>
+                <span>{format(new Date(task.due_date), 'MMM dd', { locale: dateLocale })}</span>
               </div>
             )}
 
             {/* Category */}
             {task.category && (
-              <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded-full">
+              <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full">
                 {task.category}
               </span>
             )}
@@ -100,7 +114,7 @@ export default function KanbanCard({ task, isDragging = false, onClick }: Kanban
 
           {/* Assignee */}
           {task.assignee && (
-            <div className="flex items-center gap-1.5 mt-2 text-xs text-gray-400">
+            <div className="flex items-center gap-1.5 mt-2 text-xs text-text-secondary">
               <User className="w-3 h-3" />
               <span>{task.assignee.username}</span>
             </div>

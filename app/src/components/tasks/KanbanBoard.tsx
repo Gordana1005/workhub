@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
+import { Info } from 'lucide-react';
 import {
   DndContext,
   DragOverlay,
@@ -10,10 +12,9 @@ import {
   useSensor,
   useSensors,
   DragStartEvent,
-  DragOverEvent,
   DragEndEvent,
 } from '@dnd-kit/core';
-import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import KanbanColumn from './KanbanColumn';
 import KanbanCard from './KanbanCard';
 import { Task } from './types';
@@ -25,13 +26,14 @@ interface KanbanBoardProps {
 }
 
 const DEFAULT_COLUMNS = [
-  { id: 'To Do', title: 'To Do', color: 'from-gray-500 to-gray-600' },
-  { id: 'In Progress', title: 'In Progress', color: 'from-blue-500 to-blue-600' },
-  { id: 'Review', title: 'Review', color: 'from-yellow-500 to-yellow-600' },
-  { id: 'Done', title: 'Done', color: 'from-green-500 to-green-600' },
+  { id: 'To Do', titleKey: 'statusToDo', color: 'from-gray-500 to-gray-600' },
+  { id: 'In Progress', titleKey: 'statusInProgress', color: 'from-blue-500 to-blue-600' },
+  { id: 'Review', titleKey: 'statusReview', color: 'from-yellow-500 to-yellow-600' },
+  { id: 'Done', titleKey: 'statusDone', color: 'from-green-500 to-green-600' },
 ];
 
 export default function KanbanBoard({ tasks, onTaskUpdate, onTaskClick }: KanbanBoardProps) {
+  const t = useTranslations('pages.tasks');
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -58,7 +60,11 @@ export default function KanbanBoard({ tasks, onTaskUpdate, onTaskClick }: Kanban
     }
 
     const activeTask = tasks.find(t => t.id === active.id);
-    const overColumnId = over.id as string;
+    const overId = over.id as string;
+    // Dropping on a card resolves to that card's column
+    const overColumnId = DEFAULT_COLUMNS.some(column => column.id === overId)
+      ? overId
+      : tasks.find(task => task.id === overId)?.status ?? overId;
 
     if (activeTask && activeTask.status !== overColumnId) {
       // Update task status
@@ -81,22 +87,26 @@ export default function KanbanBoard({ tasks, onTaskUpdate, onTaskClick }: Kanban
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="bg-blue-500/10 border border-blue-500/20 text-blue-200 px-4 py-3 rounded-xl mb-6 text-sm flex items-center gap-2">
-         <span className="text-xl">💡</span>
-         <span>Drag and drop tasks between columns to update their status</span>
-      </div>
+      <div className="min-w-0 max-w-full">
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-secondary">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>{t('dragHint')}</span>
+        </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-4 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-        {DEFAULT_COLUMNS.map((column) => (
-          <KanbanColumn
-            key={column.id}
-            id={column.id}
-            title={column.title}
-            color={column.color}
-            tasks={getTasksByColumn(column.id)}
-            onTaskClick={onTaskClick}
-          />
-        ))}
+        <div className="max-w-full min-w-0 overflow-x-auto pb-4">
+          <div className="flex w-max gap-4">
+            {DEFAULT_COLUMNS.map((column) => (
+              <KanbanColumn
+                key={column.id}
+                id={column.id}
+                title={t(column.titleKey)}
+                color={column.color}
+                tasks={getTasksByColumn(column.id)}
+                onTaskClick={onTaskClick}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
       <DragOverlay>
