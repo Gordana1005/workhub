@@ -40,11 +40,23 @@ function safeUrl(url: string | undefined): string {
  * Sends a web push to every subscription of a user. Never throws: missing env,
  * missing table, network errors etc. are swallowed. Expired subscriptions (404/410) are removed.
  */
-export async function sendPushToUser(userId: string, payload: PushPayload): Promise<void> {
+export interface PushResult {
+  /** Subscriptions found for the user */
+  devices: number
+  sent: number
+  expired: number
+  failed: number
+  /** Short reason when nothing could be attempted, or the first failure */
+  reason?: string
+}
+
+export async function sendPushToUser(userId: string, payload: PushPayload): Promise<PushResult> {
+  const result: PushResult = { devices: 0, sent: 0, expired: 0, failed: 0 }
   try {
-    if (!userId || !isPushConfigured()) return
+    if (!userId) return { ...result, reason: 'no_user' }
+    if (!isPushConfigured()) return { ...result, reason: 'not_configured' }
     const admin = getSupabaseAdmin()
-    if (!admin) return
+    if (!admin) return { ...result, reason: 'no_admin_client' }
 
     const { data: subs, error } = await admin
       .from('push_subscriptions')
@@ -53,9 +65,10 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
 
     if (error) {
       if (!isMissingSchemaError(error)) console.error('[push] failed to load subscriptions:', error.message)
-      return
+      return { ...result, reason: isMissingSchemaError(error) ? 'schema' : 'load_failed' }
     }
-    if (!subs || subs.length === 0) return
+    if (!subs || subs.length === 0) return { ...result, reason: 'no_devices' }
+    result.devices = subs.length
 
     const body = JSON.stringify({
       title: payload.title,
@@ -79,7 +92,11 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
         } catch (err: any) {
           const status = err?.statusCode
           if (status === 404 || status === 410) expired.push(sub.endpoint)
-          else console.error('[push] send failed:', status || err?.message)
+          else {
+            result.failed += 1
+            result.reason = result.reason || `push_service_${status || 'error'}`
+            console.error('[push] send failed:', status || err?.message)
+          }
         }
       })
     )
@@ -93,7 +110,11 @@ export async function sendPushToUser(userId: string, payload: PushPayload): Prom
         .update({ last_used_at: new Date().toISOString() })
         .in('endpoint', delivered)
     }
+    result.sent = delivered.length
+    result.expired = expired.length
   } catch (error) {
     console.error('[push] unexpected error:', error)
+    result.reason = result.reason || 'unexpected'
   }
+  return result
 }

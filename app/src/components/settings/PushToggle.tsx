@@ -107,6 +107,8 @@ export default function PushToggle() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
   const [errorDetail, setErrorDetail] = useState('')
+  const [testMessage, setTestMessage] = useState<{ ok: boolean; text: string } | null>(null)
+  const [testing, setTesting] = useState(false)
   const [reason, setReason] = useState('')
   const [showIosNote, setShowIosNote] = useState(false)
 
@@ -213,6 +215,29 @@ export default function PushToggle() {
     }
   }
 
+  const sendTest = async () => {
+    setTesting(true)
+    setTestMessage(null)
+    try {
+      const res = await fetch('/api/push/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: t('settings.push.testTitle'), body: t('settings.push.testBody') }),
+      })
+      const result = await res.json().catch(() => null)
+      if (res.ok && result?.sent > 0) {
+        setTestMessage({ ok: true, text: t('settings.push.testSent', { count: result.sent }) })
+      } else {
+        const why = result?.reason || result?.code || `http_${res.status}`
+        setTestMessage({ ok: false, text: `${t('settings.push.testFailed')} (${why})` })
+      }
+    } catch {
+      setTestMessage({ ok: false, text: t('settings.push.testFailed') })
+    } finally {
+      setTesting(false)
+    }
+  }
+
   const disable = async () => {
     setBusy(true)
     setError(false)
@@ -270,6 +295,11 @@ export default function PushToggle() {
             {errorDetail ? <span className="mt-1 block text-xs text-text-muted">({errorDetail})</span> : null}
           </p>
         ) : null}
+        {testMessage ? (
+          <p role="status" className={`mt-2 text-sm ${testMessage.ok ? 'text-success' : 'text-danger'}`}>
+            {testMessage.text}
+          </p>
+        ) : null}
       </div>
       {state === 'off' ? (
         <Button type="button" variant="primary" onClick={enable} loading={busy} className="shrink-0">
@@ -277,9 +307,14 @@ export default function PushToggle() {
         </Button>
       ) : null}
       {state === 'on' ? (
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button type="button" variant="primary" onClick={() => void sendTest()} loading={testing}>
+            {t('settings.push.test')}
+          </Button>
         <Button type="button" variant="secondary" onClick={disable} loading={busy} className="shrink-0">
           {t('settings.push.disable')}
         </Button>
+        </div>
       ) : null}
     </div>
   )
