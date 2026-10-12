@@ -11,6 +11,7 @@ import CreateProjectDialog from '@/components/create/CreateProjectDialog'
 import QuickTaskForm from '@/components/create/QuickTaskForm'
 import FirstWorkspace from '@/components/onboarding/FirstWorkspace'
 import SearchHost from '@/components/search/SearchHost'
+import ServiceWorkerRegister from '@/components/shell/ServiceWorkerRegister'
 
 export default function DashboardLayout({
   children,
@@ -65,6 +66,7 @@ export default function DashboardLayout({
         <CreateWorkspaceDialog open={createKind === 'workspace'} onClose={() => setCreateKind(null)} />
         <CreateProjectDialog open={createKind === 'project'} onClose={() => setCreateKind(null)} />
         <QuickTaskForm open={createKind === 'task'} onClose={() => setCreateKind(null)} />
+        <ServiceWorkerRegister />
         <SearchHost onCreate={onCreate} />
       </AppShell>
     </ErrorBoundary>

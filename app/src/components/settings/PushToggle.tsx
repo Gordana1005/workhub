@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button'
 
 type PushState = 'loading' | 'unsupported' | 'unavailable' | 'blocked' | 'off' | 'on'
 
-const READY_TIMEOUT_MS = 5000
+const READY_TIMEOUT_MS = 15000
 
 function urlBase64ToUint8Array(base64: string): Uint8Array {
   const padding = '='.repeat((4 - (base64.length % 4)) % 4)

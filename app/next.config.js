@@ -15,7 +15,7 @@ try {
 
 const withPWA = require('next-pwa')({
   dest: 'public',
-  register: true,
+  register: false, // registered by src/components/shell/ServiceWorkerRegister.tsx (next-pwa's injection doesn't run for the App Router)
   skipWaiting: true,
   clientsClaim: true,
   disable: process.env.NODE_ENV === 'development',
