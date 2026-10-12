@@ -19,6 +19,11 @@ const withPWA = require('next-pwa')({
   skipWaiting: true,
   clientsClaim: true,
   disable: process.env.NODE_ENV === 'development',
+  // Do not pre-download the whole build (137 files) when the worker installs: on slow or flaky connections that
+  // made the install fail ('redundant') and kept the worker, push and offline mode from ever starting. Hashed
+  // assets are cached on first use by the runtime rules below instead.
+  buildExcludes: [/.*/],
+  publicExcludes: ['!**/*'],
   runtimeCaching: [
     {
       // Supabase REST / auth / storage / realtime: user data and tokens must
@@ -61,7 +66,7 @@ const withPWA = require('next-pwa')({
       options: {
         cacheName: 'static-resources',
         expiration: {
-          maxEntries: 50,
+          maxEntries: 300,
           maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
         }
       }
@@ -72,6 +77,7 @@ const withPWA = require('next-pwa')({
       urlPattern: ({ request }) => request.mode === 'navigate',
       handler: 'NetworkFirst',
       options: {
+        networkTimeoutSeconds: 5,
         cacheName: 'pages',
         expiration: {
           maxEntries: 20,
