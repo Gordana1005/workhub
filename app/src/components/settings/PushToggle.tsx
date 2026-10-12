@@ -18,7 +18,10 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 }
 
 /** Resolves with the active service worker registration, or null if there is none soon. */
+let workerIssue = ''
+
 async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
+  workerIssue = ''
   const waitReady = () =>
     Promise.race([
       navigator.serviceWorker.ready,
@@ -28,10 +31,33 @@ async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
     const existing = await waitReady()
     if (existing) return existing
     // No active worker yet (registration is normally automatic): register it ourselves, then wait again
-    await navigator.serviceWorker.register('/sw.js')
-    return await waitReady()
-  } catch {
+    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    const worker = registration.installing || registration.waiting || registration.active
+    workerIssue = `state=${worker?.state ?? 'none'}`
+    worker?.addEventListener('statechange', () => {
+      workerIssue = `state=${worker.state}`
+    })
+    const ready = await waitReady()
+    if (!ready) workerIssue += ' timeout'
+    return ready
+  } catch (error) {
+    workerIssue = `${(error as Error)?.name ?? 'error'}: ${String((error as Error)?.message ?? error).slice(0, 80)}`
     return null
+  }
+}
+
+/** Removes stale service workers and caches, registers a fresh worker and reloads the page. */
+async function repairWorker() {
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations()
+    await Promise.all(registrations.map((item) => item.unregister()))
+    if ('caches' in window) {
+      const keys = await caches.keys()
+      await Promise.all(keys.map((key) => caches.delete(key)))
+    }
+    await navigator.serviceWorker.register('/sw.js', { scope: '/' })
+  } finally {
+    window.location.reload()
   }
 }
 
@@ -100,7 +126,7 @@ export default function PushToggle() {
 
       const registration = await getRegistration()
       if (!registration) {
-        setReason('worker')
+        setReason(`worker ${workerIssue}`.trim())
         setState('unavailable')
         return
       }
@@ -212,6 +238,11 @@ export default function PushToggle() {
         </p>
         {state === 'unavailable' && reason ? (
           <p className="mt-1 text-xs text-text-muted">({reason})</p>
+        ) : null}
+        {state === 'unavailable' && reason.startsWith('worker') ? (
+          <Button type="button" variant="secondary" size="sm" onClick={() => void repairWorker()} className="mt-2">
+            {t('settings.push.repair')}
+          </Button>
         ) : null}
         {showIosNote && state !== 'on' ? (
           <p className="mt-2 text-sm text-text-secondary">{t('settings.push.iosNote')}</p>

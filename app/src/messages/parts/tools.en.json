@@ -445,6 +445,7 @@
       "stateBlocked": "Blocked. Allow notifications for this site in your browser settings.",
       "stateUnsupported": "This browser does not support push notifications.",
       "stateUnavailable": "Push notifications are not available yet.",
+      "repair": "Repair and retry",
       "enable": "Enable notifications",
       "disable": "Disable",
       "working": "Working...",
