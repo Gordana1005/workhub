@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { getSessionUser } from '@/lib/auth-client'
 import { useTranslations } from 'next-intl';
 import { useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
@@ -33,7 +34,7 @@ export default function BudgetRequestForm({ projectId, onClose, onSuccess }: Bud
     setIsSubmitting(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) throw new Error('Not authenticated');
 
       const { error } = await supabase

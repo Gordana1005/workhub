@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { topLevelOnly } from '@/lib/subtasks'
+import { getWorkspaceRole } from '@/lib/api-access'
+import { ServerTimer } from '@/lib/server-timing'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -16,28 +17,12 @@ const supabaseAdmin = createClient(
 // Upper bound for rows pulled into memory per report query
 const MAX_ROWS = 5000
 
-// Create auth client
-async function createAuthClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll() {}
-      }
-    }
-  )
-}
-
 // GET /api/reports
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const timer = new ServerTimer()
+    const user = await timer.time('auth', getAuthUser())
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -49,25 +34,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'workspace_id is required' }, { status: 400 })
     }
 
-    // Verify workspace access
-    const { data: membership } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', user.id)
-      .single()
-
-    if (!membership) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
-    }
+    // Verify workspace access. The check starts now and is awaited together with the report queries
+    // (they are independent); nothing is returned unless it passes.
+    const rolePromise = getWorkspaceRole(supabaseAdmin, workspaceId, user.id)
+    const denied = async () =>
+      (await rolePromise) ? null : NextResponse.json({ error: 'Access denied' }, { status: 403 })
 
     switch (reportType) {
       case 'tasks': {
-        const { data: taskRows, error } = await supabaseAdmin
-          .from('tasks')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .limit(MAX_ROWS)
+        const [{ data: taskRows, error }, deniedResponse] = await timer.time(
+          'db',
+          Promise.all([
+            supabaseAdmin
+              .from('tasks')
+              .select('*')
+              .eq('workspace_id', workspaceId)
+              .limit(MAX_ROWS),
+            denied(),
+          ])
+        )
+        if (deniedResponse) return deniedResponse
 
         if (error) throw error
         // Subtasks are not tasks for reporting purposes
@@ -91,48 +77,61 @@ export async function GET(request: NextRequest) {
           }, {})
         }
 
-        return NextResponse.json({ tasks, stats })
+        return timer.apply(NextResponse.json({ tasks, stats }))
       }
 
       case 'time': {
-        const { data: timeEntries, error } = await supabaseAdmin
-          .from('time_entries')
-          .select(`
-            *,
-            task:tasks!task_id(title, project:projects!project_id(name))
-          `)
-          .eq('workspace_id', workspaceId)
-          .order('date', { ascending: false })
-          .limit(MAX_ROWS)
+        const [{ data: timeEntries, error }, deniedResponse] = await timer.time(
+          'db',
+          Promise.all([
+            supabaseAdmin
+              .from('time_entries')
+              .select(`
+                *,
+                task:tasks!task_id(title, project:projects!project_id(name))
+              `)
+              .eq('workspace_id', workspaceId)
+              .order('date', { ascending: false })
+              .limit(MAX_ROWS),
+            denied(),
+          ])
+        )
+        if (deniedResponse) return deniedResponse
 
         if (error) throw error
 
         const totalDuration = timeEntries?.reduce((sum, e) => sum + (e.duration || 0), 0) || 0
 
-        return NextResponse.json({ 
-          timeEntries, 
-          stats: { 
+        return timer.apply(NextResponse.json({
+          timeEntries,
+          stats: {
             totalDuration,
             totalHours: Math.round(totalDuration / 3600 * 10) / 10
           }
-        })
+        }))
       }
 
       case 'productivity': {
         // Get tasks with completion dates
-        const { data: taskRows } = await supabaseAdmin
-          .from('tasks')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .limit(MAX_ROWS)
+        const [{ data: taskRows }, { data: timeEntries }, deniedResponse] = await timer.time(
+          'db',
+          Promise.all([
+            supabaseAdmin
+              .from('tasks')
+              .select('*')
+              .eq('workspace_id', workspaceId)
+              .limit(MAX_ROWS),
+            // Get time entries
+            supabaseAdmin
+              .from('time_entries')
+              .select('*')
+              .eq('workspace_id', workspaceId)
+              .limit(MAX_ROWS),
+            denied(),
+          ])
+        )
+        if (deniedResponse) return deniedResponse
         const tasks = topLevelOnly(taskRows)
-
-        // Get time entries
-        const { data: timeEntries } = await supabaseAdmin
-          .from('time_entries')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .limit(MAX_ROWS)
 
         // Calculate weekly stats
         const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -160,21 +159,23 @@ export async function GET(request: NextRequest) {
           }
         })
 
-        return NextResponse.json({ trendData, tasks, timeEntries })
+        return timer.apply(NextResponse.json({ trendData, tasks, timeEntries }))
       }
 
       default: {
         // Return overview of all data
-        const [taskResult, timeEntries, projects] = await Promise.all([
+        const [taskResult, timeEntries, projects, deniedResponse] = await timer.time('db', Promise.all([
           supabaseAdmin.from('tasks').select('*').eq('workspace_id', workspaceId).limit(MAX_ROWS),
           supabaseAdmin.from('time_entries').select('*').eq('workspace_id', workspaceId).limit(MAX_ROWS),
-          supabaseAdmin.from('projects').select('*').eq('workspace_id', workspaceId).limit(MAX_ROWS)
-        ])
+          supabaseAdmin.from('projects').select('*').eq('workspace_id', workspaceId).limit(MAX_ROWS),
+          denied(),
+        ]))
+        if (deniedResponse) return deniedResponse
         const tasks = { ...taskResult, data: topLevelOnly(taskResult.data) }
 
         const totalDuration = timeEntries.data?.reduce((sum, e) => sum + (e.duration || 0), 0) || 0
 
-        return NextResponse.json({
+        return timer.apply(NextResponse.json({
           stats: {
             totalTasks: tasks.data?.length || 0,
             completedTasks: tasks.data?.filter(t => t.is_completed).length || 0,
@@ -188,7 +189,7 @@ export async function GET(request: NextRequest) {
           tasks: tasks.data,
           timeEntries: timeEntries.data,
           projects: projects.data
-        })
+        }))
       }
     }
   } catch (error: any) {

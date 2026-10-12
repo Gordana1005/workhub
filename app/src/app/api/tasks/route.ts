@@ -1,19 +1,20 @@
-import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { getAuthUser } from '@/lib/supabase-server'
 import { getWorkspaceRole, omitKeys } from '@/lib/api-access'
 import { syncCompletion } from '@/lib/task-status'
 import { createNotifications } from '@/lib/notify'
 import { generateNextOccurrence } from '@/lib/recurrence'
 import {
-  attachSubtaskCounts,
+  fetchSubtaskCounts,
   isMissingSchemaError,
   runTopLevel,
   sanitizeSubtaskTitles,
   subtasksToChecklist,
+  withSubtaskCounts,
 } from '@/lib/subtasks'
 import { fetchLoggedSecondsByTask } from '@/lib/task-time'
+import { ServerTimer } from '@/lib/server-timing'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -44,34 +45,27 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 })
   }
 
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {}
-      }
-    }
-  )
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  
-  if (userError || !user) {
+  const timer = new ServerTimer()
+  const user = await timer.time('auth', getAuthUser())
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  // Verify user has access to this workspace
-  const { data: membership } = await supabaseAdmin
-    .from('workspace_members')
-    .select('role')
-    .eq('workspace_id', workspaceId)
-    .eq('user_id', user.id)
-    .single()
-
-  if (!membership) {
-    return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  // Verify user has access to this workspace. The membership check is started now but only awaited
+  // together with the data queries below (they are independent): one round trip instead of several.
+  // No data is returned unless the check passes.
+  const membershipPromise = Promise.resolve(
+    supabaseAdmin
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .single()
+  )
+  const denied = async () => {
+    const { data: membership } = await membershipPromise
+    return membership ? null : NextResponse.json({ error: 'Access denied' }, { status: 403 })
   }
 
   try {
@@ -84,59 +78,80 @@ export async function GET(request: Request) {
 
     // ?parent_task_id=<id>: the subtasks of one task (oldest first). Empty when subtasks are unavailable.
     if (parentTaskId) {
-      const { data: children, error: childError } = await supabaseAdmin
-        .from('tasks')
-        .select(selectColumns)
-        .eq('workspace_id', workspaceId)
-        .eq('parent_task_id', parentTaskId)
-        .order('created_at', { ascending: true })
-        .limit(500)
+      const [{ data: children, error: childError }, deniedResponse] = await timer.time(
+        'db',
+        Promise.all([
+          supabaseAdmin
+            .from('tasks')
+            .select(selectColumns)
+            .eq('workspace_id', workspaceId)
+            .eq('parent_task_id', parentTaskId)
+            .order('created_at', { ascending: true })
+            .limit(500),
+          denied(),
+        ])
+      )
+      if (deniedResponse) return deniedResponse
       if (childError) {
         if (isMissingSchemaError(childError)) return NextResponse.json([])
         throw childError
       }
-      return NextResponse.json(children)
+      return timer.apply(NextResponse.json(children))
     }
 
     // ?task_id=<id>: a single task (top-level or subtask), used to resolve deep links
     if (singleTaskId) {
-      const { data: single, error: singleError } = await supabaseAdmin
-        .from('tasks')
-        .select(selectColumns)
-        .eq('workspace_id', workspaceId)
-        .eq('id', singleTaskId)
-        .limit(1)
+      const [{ data: single, error: singleError }, deniedResponse] = await timer.time(
+        'db',
+        Promise.all([
+          supabaseAdmin
+            .from('tasks')
+            .select(selectColumns)
+            .eq('workspace_id', workspaceId)
+            .eq('id', singleTaskId)
+            .limit(1),
+          denied(),
+        ])
+      )
+      if (deniedResponse) return deniedResponse
       if (singleError) throw singleError
-      return NextResponse.json(single)
+      return timer.apply(NextResponse.json(single))
     }
 
     // Lists carry top-level tasks only (subtasks are loaded per parent) unless ?include_subtasks=1.
     // If the column does not exist yet the query simply runs without the restriction.
-    const { data: tasks, error } = await runTopLevel((topLevel) => {
-      let query = supabaseAdmin
-        .from('tasks')
-        .select(selectColumns)
-        .eq('workspace_id', workspaceId)
-        .order('created_at', { ascending: false })
-        .limit(2000)
-      if (projectId) query = query.eq('project_id', projectId)
-      if (topLevel && !includeSubtasks) query = query.is('parent_task_id', null)
-      return query
-    })
+    // The task rows, the per-parent subtask counts (one grouped query, no N+1), the logged time and
+    // the membership check do not depend on each other: they all run at once.
+    const [{ data: tasks, error }, subtaskCounts, logged, deniedResponse] = await timer.time(
+      'db',
+      Promise.all([
+        runTopLevel((topLevel) => {
+          let query = supabaseAdmin
+            .from('tasks')
+            .select(selectColumns)
+            .eq('workspace_id', workspaceId)
+            .order('created_at', { ascending: false })
+            .limit(2000)
+          if (projectId) query = query.eq('project_id', projectId)
+          if (topLevel && !includeSubtasks) query = query.is('parent_task_id', null)
+          return query
+        }),
+        includeSubtasks ? Promise.resolve(null) : fetchSubtaskCounts(supabaseAdmin, { workspaceId, projectId }),
+        includeTime ? fetchLoggedSecondsByTask(supabaseAdmin, { workspaceId }) : Promise.resolve(null),
+        denied(),
+      ])
+    )
+    if (deniedResponse) return deniedResponse
 
     if (error) throw error
 
     let result: any[] = tasks || []
-    if (!includeSubtasks) {
-      // One grouped query for every parent's x/y counts (no N+1)
-      result = await attachSubtaskCounts(supabaseAdmin, result, { workspaceId, projectId })
-    }
-    if (includeTime) {
-      const logged = await fetchLoggedSecondsByTask(supabaseAdmin, { workspaceId })
+    if (subtaskCounts) result = withSubtaskCounts(result, subtaskCounts)
+    if (logged) {
       result = result.map((task) => (logged[task.id] ? { ...task, logged_seconds: logged[task.id] } : task))
     }
 
-    return NextResponse.json(result)
+    return timer.apply(NextResponse.json(result))
   } catch (error: any) {
     console.error('Error fetching tasks:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -144,21 +159,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {}
-      }
-    }
-  )
-
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  
-  if (userError || !user) {
+  const user = await getAuthUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -173,13 +175,36 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'project_id is required' }, { status: 400 })
     }
 
-    // Verify workspace access
-    const { data: membership } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspace_id)
-      .eq('user_id', user.id)
-      .single()
+    // The membership check, the parent lookup, the project check and the assignee check do not depend
+    // on each other: run them at once and evaluate the results in the original order below.
+    const [{ data: membership }, parentResult, earlyProject, assigneeRole] = await Promise.all([
+      supabaseAdmin
+        .from('workspace_members')
+        .select('role')
+        .eq('workspace_id', workspace_id)
+        .eq('user_id', user.id)
+        .single(),
+      parentTaskId
+        ? supabaseAdmin
+            .from('tasks')
+            .select('id, workspace_id, project_id, parent_task_id')
+            .eq('id', parentTaskId)
+            .maybeSingle()
+        : Promise.resolve(null),
+      // top-level tasks know their project up front (a subtask's project comes from its parent)
+      !parentTaskId && project_id
+        ? supabaseAdmin
+            .from('projects')
+            .select('id')
+            .eq('id', project_id)
+            .eq('workspace_id', workspace_id)
+            .maybeSingle()
+        : Promise.resolve(null),
+      // Assignee (if different from the caller) must be a workspace member
+      assignee_id && assignee_id !== user.id
+        ? getWorkspaceRole(supabaseAdmin, workspace_id, assignee_id)
+        : Promise.resolve(null),
+    ])
 
     if (!membership) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
@@ -190,12 +215,8 @@ export async function POST(request: Request) {
     }
 
     // Subtask: the parent must be a top-level task of the same workspace (one level only)
-    if (parentTaskId) {
-      const { data: parent, error: parentError } = await supabaseAdmin
-        .from('tasks')
-        .select('id, workspace_id, project_id, parent_task_id')
-        .eq('id', parentTaskId)
-        .maybeSingle()
+    if (parentResult) {
+      const { data: parent, error: parentError } = parentResult
       if (parentError) {
         if (isMissingSchemaError(parentError)) return subtasksUnsupported()
         throw parentError
@@ -211,12 +232,16 @@ export async function POST(request: Request) {
 
     // The project must belong to the same workspace (prevents cross-workspace writes)
     if (project_id) {
-      const { data: project } = await supabaseAdmin
-        .from('projects')
-        .select('id')
-        .eq('id', project_id)
-        .eq('workspace_id', workspace_id)
-        .maybeSingle()
+      const project = parentTaskId
+        ? (
+            await supabaseAdmin
+              .from('projects')
+              .select('id')
+              .eq('id', project_id)
+              .eq('workspace_id', workspace_id)
+              .maybeSingle()
+          ).data
+        : earlyProject?.data
 
       if (!project) {
         return NextResponse.json({ error: 'Project not found in this workspace' }, { status: 400 })
@@ -225,7 +250,6 @@ export async function POST(request: Request) {
 
     // Assignee (if different from the caller) must be a workspace member
     if (assignee_id && assignee_id !== user.id) {
-      const assigneeRole = await getWorkspaceRole(supabaseAdmin, workspace_id, assignee_id)
       if (!assigneeRole) {
         return NextResponse.json({ error: 'Assignee is not a member of this workspace' }, { status: 400 })
       }
@@ -315,21 +339,8 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {}
-      }
-    }
-  )
-
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  
-  if (userError || !user) {
+  const user = await getAuthUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -352,8 +363,20 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Task not found' }, { status: 404 })
     }
 
-    // Caller must belong to the task's workspace
-    const role = await getWorkspaceRole(supabaseAdmin, current.workspace_id, user.id)
+    // Caller must belong to the task's workspace. (The optional project-move check below does not
+    // depend on the role, so it starts together with it.)
+    const movingProject = !!rawUpdates.project_id && rawUpdates.project_id !== current.project_id && !(current as any).parent_task_id
+    const [role, moveTarget] = await Promise.all([
+      getWorkspaceRole(supabaseAdmin, current.workspace_id, user.id),
+      movingProject
+        ? supabaseAdmin
+            .from('projects')
+            .select('id')
+            .eq('id', rawUpdates.project_id)
+            .eq('workspace_id', current.workspace_id)
+            .maybeSingle()
+        : Promise.resolve(null),
+    ])
     if (!role) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
@@ -368,13 +391,7 @@ export async function PATCH(request: Request) {
 
     // Moving to another project is only allowed within the same workspace
     if (updates.project_id && updates.project_id !== current.project_id) {
-      const { data: project } = await supabaseAdmin
-        .from('projects')
-        .select('id')
-        .eq('id', updates.project_id)
-        .eq('workspace_id', current.workspace_id)
-        .maybeSingle()
-      if (!project) {
+      if (!moveTarget?.data) {
         return NextResponse.json({ error: 'Project not found in this workspace' }, { status: 400 })
       }
     }
@@ -394,66 +411,74 @@ export async function PATCH(request: Request) {
 
     if (error) throw error
 
-    // Moving a task to another project takes its subtasks along (best effort)
-    if (!isSubtask && updates.project_id && updates.project_id !== current.project_id) {
-      await supabaseAdmin.from('tasks').update({ project_id: updates.project_id }).eq('parent_task_id', id)
-    }
-
-    // Reassigned to someone else: tell the new assignee (never the actor)
+    // Follow-up work: the three pieces below are independent, so they run together
+    const movedProject = !isSubtask && updates.project_id && updates.project_id !== current.project_id
     const newAssignee = (task as any)?.assignee_id
-    if (task && newAssignee && newAssignee !== current?.assignee_id && newAssignee !== user.id) {
-      if (await getWorkspaceRole(supabaseAdmin, (task as any).workspace_id, newAssignee)) {
-        await createNotifications([{
-          user_id: newAssignee,
-          workspace_id: (task as any).workspace_id,
-          type: 'task_assigned',
-          title: 'Task assigned to you',
-          message: String((task as any).title || 'Task'),
-          link: '/dashboard/tasks'
-        }])
-      }
-    }
-
-    // Task completion / status change notification
+    const reassigned = !!(task && newAssignee && newAssignee !== current?.assignee_id && newAssignee !== user.id)
     const wasCompleted = current?.is_completed || current?.status === 'Done'
     const nowCompleted = (task as any)?.is_completed || (task as any)?.status === 'Done'
     const statusChanged = current?.status !== (task as any)?.status || current?.is_completed !== (task as any)?.is_completed
-
     // Subtask status changes stay quiet: no workspace-wide broadcast, no recurrence
-    if (task && statusChanged && !isSubtask) {
-      const workspaceId = (task as any).workspace_id
-      const title = (task as any).title || 'Task updated'
+    const broadcast = !!(task && statusChanged && !isSubtask)
 
-      const { data: members } = await supabaseAdmin
-        .from('workspace_members')
-        .select('user_id')
-        .eq('workspace_id', workspaceId)
+    await Promise.all([
+      // Moving a task to another project takes its subtasks along (best effort)
+      movedProject
+        ? supabaseAdmin.from('tasks').update({ project_id: updates.project_id }).eq('parent_task_id', id)
+        : null,
+      // Reassigned to someone else: tell the new assignee (never the actor)
+      reassigned
+        ? (async () => {
+            if (await getWorkspaceRole(supabaseAdmin, (task as any).workspace_id, newAssignee)) {
+              await createNotifications([{
+                user_id: newAssignee,
+                workspace_id: (task as any).workspace_id,
+                type: 'task_assigned',
+                title: 'Task assigned to you',
+                message: String((task as any).title || 'Task'),
+                link: '/dashboard/tasks'
+              }])
+            }
+          })()
+        : null,
+      // Task completion / status change notification
+      broadcast
+        ? (async () => {
+            const workspaceId = (task as any).workspace_id
+            const title = (task as any).title || 'Task updated'
 
-      const baseMessage = wasCompleted
-        ? `${title} was reopened`
-        : nowCompleted
-          ? `${title} was completed`
-          : `${title} was updated`
+            const { data: members } = await supabaseAdmin
+              .from('workspace_members')
+              .select('user_id')
+              .eq('workspace_id', workspaceId)
 
-      const notifications = (members || [])
-        .filter((m: any) => m.user_id !== user.id)
-        .map((m: any) => ({
-          user_id: m.user_id,
-          workspace_id: workspaceId,
-          type: nowCompleted ? 'task_completed' : 'task_updated',
-          title: nowCompleted ? 'Task completed' : 'Task updated',
-          message: baseMessage,
-          link: '/dashboard/tasks'
-        }))
+            const baseMessage = wasCompleted
+              ? `${title} was reopened`
+              : nowCompleted
+                ? `${title} was completed`
+                : `${title} was updated`
 
-      // In-app only: broadcasting a push to every member for each status change would be noise
-      await createNotifications(notifications.map(n => ({ ...n, push: false })))
+            const notifications = (members || [])
+              .filter((m: any) => m.user_id !== user.id)
+              .map((m: any) => ({
+                user_id: m.user_id,
+                workspace_id: workspaceId,
+                type: nowCompleted ? 'task_completed' : 'task_updated',
+                title: nowCompleted ? 'Task completed' : 'Task updated',
+                message: baseMessage,
+                link: '/dashboard/tasks'
+              }))
 
-      // Completed recurring task -> create its next occurrence (guarded + idempotent, never throws)
-      if (nowCompleted && !wasCompleted && (task as any).recurrence_pattern) {
-        await generateNextOccurrence(supabaseAdmin, task as any)
-      }
-    }
+            // In-app only: broadcasting a push to every member for each status change would be noise
+            await createNotifications(notifications.map(n => ({ ...n, push: false })))
+
+            // Completed recurring task -> create its next occurrence (guarded + idempotent, never throws)
+            if (nowCompleted && !wasCompleted && (task as any).recurrence_pattern) {
+              await generateNextOccurrence(supabaseAdmin, task as any)
+            }
+          })()
+        : null,
+    ])
 
     return NextResponse.json(task)
   } catch (error: any) {
@@ -467,21 +492,9 @@ export async function DELETE(request: Request) {
   const taskId = searchParams.get('id')
   const bulkIds = searchParams.get('bulkIds')
 
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {}
-      }
-    }
-  )
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  
-  if (userError || !user) {
+  const user = await getAuthUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -497,10 +510,8 @@ export async function DELETE(request: Request) {
         .in('id', ids)
 
       const workspaceIds = Array.from(new Set((found || []).map((t: any) => t.workspace_id)))
-      const allowedWorkspaces = new Set<string>()
-      for (const wsId of workspaceIds) {
-        if (await getWorkspaceRole(supabaseAdmin, wsId, user.id)) allowedWorkspaces.add(wsId)
-      }
+      const roles = await Promise.all(workspaceIds.map((wsId) => getWorkspaceRole(supabaseAdmin, wsId, user.id)))
+      const allowedWorkspaces = new Set<string>(workspaceIds.filter((_, index) => roles[index]))
       const allowedIds = (found || [])
         .filter((t: any) => allowedWorkspaces.has(t.workspace_id))
         .map((t: any) => t.id)

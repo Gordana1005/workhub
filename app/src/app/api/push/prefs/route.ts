@@ -1,6 +1,5 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { getAuthUser } from '@/lib/supabase-server'
 import { getSupabaseAdmin, isMissingSchemaError } from '@/lib/supabase-admin'
 
 export const dynamic = 'force-dynamic'
@@ -12,14 +11,7 @@ function json(body: Record<string, unknown>, status = 200) {
 }
 
 async function getUser() {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
-  )
-  const { data: { user }, error } = await supabase.auth.getUser()
-  return error || !user ? null : user
+  return getAuthUser()
 }
 
 // GET /api/push/prefs -> { available, prefs: { daily_digest: boolean, locale?: 'en' | 'mk' } }

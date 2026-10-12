@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
+import { getJsonCached } from '@/lib/api-cache'
+import { getSessionUser } from '@/lib/auth-client'
 import NotesList from '@/components/notes/NotesList'
 import { stripHtml, type NoteProject, type NoteRecord, type NoteTag } from '@/components/notes/noteUtils'
 import { BookOpen, Plus, Search, X } from 'lucide-react'
@@ -87,10 +89,9 @@ export default function NotesPage() {
 
   useEffect(() => {
     let active = true
-    supabase.auth
-      .getUser()
-      .then(({ data }) => {
-        if (active) setUserId(data.user?.id ?? null)
+    getSessionUser()
+      .then((user) => {
+        if (active) setUserId(user?.id ?? null)
       })
       .catch(() => {})
     return () => {
@@ -131,12 +132,9 @@ export default function NotesPage() {
     if (!wsId) return
 
     try {
-      const response = await fetch(`/api/projects?workspace_id=${wsId}`)
-      const data = await response.json()
-
-      if (response.ok && data.projects) {
-        setProjects(data.projects)
-      }
+      // shared 30s cache (any write to /api clears it)
+      const data = await getJsonCached<any>(`/api/projects?workspace_id=${wsId}`)
+      if (data?.projects) setProjects(data.projects)
     } catch (error) {
       console.error('Error loading projects:', error)
     } finally {

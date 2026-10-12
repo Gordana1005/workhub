@@ -1,7 +1,6 @@
-import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { getAuthUser } from '@/lib/supabase-server'
 import { getRowWorkspaceId, getWorkspaceRole } from '@/lib/api-access'
 import { createNotifications, type NotificationInput } from '@/lib/notify'
 import { sanitizeHtml } from '@/lib/sanitize-html'
@@ -106,40 +105,31 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Task ID required' }, { status: 400 })
   }
 
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {}
-      }
-    }
-  )
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  
-  if (userError || !user) {
+  const user = await getAuthUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
     // Caller must belong to the workspace that owns the task
-    const taskWorkspaceId = await getRowWorkspaceId(supabaseAdmin, 'tasks', taskId)
+    // (the comment list does not depend on the access check, so both start together; the list is
+    // only returned when the check passes)
+    const [taskWorkspaceId, { data: comments, error }] = await Promise.all([
+      getRowWorkspaceId(supabaseAdmin, 'tasks', taskId),
+      supabaseAdmin
+        .from('task_notes')
+        .select(`
+          *,
+          user:profiles!user_id(id, username)
+        `)
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: true })
+        .limit(1000),
+    ])
     if (!taskWorkspaceId || !(await getWorkspaceRole(supabaseAdmin, taskWorkspaceId, user.id))) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
-
-    const { data: comments, error } = await supabaseAdmin
-      .from('task_notes')
-      .select(`
-        *,
-        user:profiles!user_id(id, username)
-      `)
-      .eq('task_id', taskId)
-      .order('created_at', { ascending: true })
-      .limit(1000)
 
     // If table doesn't exist, return empty array instead of error
     if (error) {
@@ -157,21 +147,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {}
-      }
-    }
-  )
-
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  
-  if (userError || !user) {
+  const user = await getAuthUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -225,19 +202,6 @@ export async function POST(request: Request) {
   }
 }
 
-function serverClient(cookieStore: Awaited<ReturnType<typeof cookies>>) {
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {}
-      }
-    }
-  )
-}
-
 interface CommentRow {
   id: string
   task_id: string
@@ -271,10 +235,8 @@ async function loadCommentContext(
 
 // Edit a comment (author only)
 export async function PUT(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = serverClient(cookieStore)
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  if (userError || !user) {
+  const user = await getAuthUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -345,10 +307,8 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Comment ID required' }, { status: 400 })
   }
 
-  const cookieStore = await cookies()
-  const supabase = serverClient(cookieStore)
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  if (userError || !user) {
+  const user = await getAuthUser()
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

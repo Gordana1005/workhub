@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { ServerTimer } from '@/lib/server-timing'
+import { createSupabaseServer, getAuthUser } from '@/lib/supabase-server'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -21,27 +21,33 @@ async function createNotifications(entries: Array<{ user_id: string; workspace_i
 
 export async function GET() {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const timer = new ServerTimer()
+    const user = await timer.time('auth', getAuthUser())
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    // Fast path: memberships + their workspaces + member counts in ONE query (embedded relations).
+    // Falls back to the step-by-step lookup below if the embed is not available.
+    const joined = await timer.time(
+      'db',
+      supabaseAdmin
+        .from('workspace_members')
+        .select('workspace_id, role, workspaces(*, workspace_members(count))')
+        .eq('user_id', user.id)
+        .limit(500)
+    )
+    if (!joined.error && Array.isArray(joined.data)) {
+      const workspacesWithDetails = (joined.data as any[])
+        .map((row) => {
+          const workspace = Array.isArray(row.workspaces) ? row.workspaces[0] : row.workspaces
+          if (!workspace) return null
+          const { workspace_members: countRows, ...rest } = workspace
+          const memberCount = Array.isArray(countRows) ? Number(countRows[0]?.count) || 0 : 0
+          return { ...rest, userRole: row.role, memberCount }
+        })
+        .filter(Boolean)
+      return timer.apply(NextResponse.json({ workspaces: workspacesWithDetails }))
     }
 
     // Get workspaces where user is a member (using service role to bypass RLS issues)
@@ -62,25 +68,25 @@ export async function GET() {
 
     const workspaceIds = membershipData.map(m => m.workspace_id)
 
-    // Use service role to get workspaces (bypasses RLS)
-    const { data: workspaces, error } = await supabaseAdmin
-      .from('workspaces')
-      .select('*')
-      .in('id', workspaceIds)
-      .limit(500)
+    // Use service role to get workspaces (bypasses RLS); member counts are one batched query
+    const [{ data: workspaces, error }, { data: allMembers }] = await Promise.all([
+      supabaseAdmin
+        .from('workspaces')
+        .select('*')
+        .in('id', workspaceIds)
+        .limit(500),
+      supabaseAdmin
+        .from('workspace_members')
+        .select('workspace_id')
+        .in('workspace_id', workspaceIds)
+        .limit(20000),
+    ])
 
     if (error) {
       console.error('Workspaces query error:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Get member counts for each workspace
-    // (single batched query instead of one count query per workspace)
-    const { data: allMembers } = await supabaseAdmin
-      .from('workspace_members')
-      .select('workspace_id')
-      .in('workspace_id', workspaceIds)
-      .limit(20000)
     const memberCounts = new Map<string, number>()
     for (const m of allMembers || []) {
       memberCounts.set(m.workspace_id, (memberCounts.get(m.workspace_id) || 0) + 1)
@@ -99,7 +105,7 @@ export async function GET() {
       })
     )
 
-    return NextResponse.json({ workspaces: workspacesWithDetails })
+    return timer.apply(NextResponse.json({ workspaces: workspacesWithDetails }))
 
   } catch (error) {
     // Log the full error to the server console for debugging
@@ -110,26 +116,10 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
+    const supabase = createSupabaseServer()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    const user = await getAuthUser(supabase)
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

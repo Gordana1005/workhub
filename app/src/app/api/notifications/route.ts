@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { getWorkspaceRole } from '@/lib/api-access'
 import { sendPushToUser } from '@/lib/push'
+import { ServerTimer } from '@/lib/server-timing'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -14,40 +14,18 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Create Supabase client for authentication
-async function createAuthClient() {
-  const cookieStore = await cookies()
-  
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options)
-          })
-        },
-      },
-    }
-  )
-}
-
 // GET /api/notifications - List notifications for current user
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
     const searchParams = request.nextUrl.searchParams
     const unreadOnly = searchParams.get('unread_only') === 'true'
     const parsedLimit = parseInt(searchParams.get('limit') || '50', 10)
     const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 50
 
     // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const timer = new ServerTimer()
+    const user = await timer.time('auth', getAuthUser())
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -67,7 +45,7 @@ export async function GET(request: NextRequest) {
       query = query.eq('read', false)
     }
 
-    const { data: notifications, error } = await query
+    const { data: notifications, error } = await timer.time('db', query)
 
     if (error) {
       console.error('Error fetching notifications:', error)
@@ -81,7 +59,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    return NextResponse.json({ notifications: notifications || [] })
+    return timer.apply(NextResponse.json({ notifications: notifications || [] }))
   } catch (error) {
     console.error('Error in GET /api/notifications:', error)
     return NextResponse.json(
@@ -94,13 +72,12 @@ export async function GET(request: NextRequest) {
 // PATCH /api/notifications - Mark notification(s) as read
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
     const body = await request.json()
     const { id, ids, mark_all_read } = body
 
     // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -180,14 +157,13 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/notifications - Delete notification(s)
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
     const searchParams = request.nextUrl.searchParams
     const id = searchParams.get('id')
     const deleteAll = searchParams.get('delete_all') === 'true'
 
     // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -248,7 +224,6 @@ export async function DELETE(request: NextRequest) {
 // POST /api/notifications - Create notification (for manual triggers)
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
     const body = await request.json()
 
     const {
@@ -271,8 +246,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Get current user for related_user_id
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { createNotification } from '@/lib/notify'
 
 // Force dynamic rendering (uses cookies)
@@ -13,30 +12,14 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-async function createAuthClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll() {}
-      }
-    }
-  )
-}
-
 type Guard =
   | { ok: true; userId: string; workspaceId: string; role: string | null }
   | { ok: false; response: NextResponse }
 
 // Authenticates the caller and verifies they belong to the project's workspace
 async function guardProject(projectId: string | null, requireAdmin = false): Promise<Guard> {
-  const supabase = await createAuthClient()
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-
-  if (userError || !user) {
+  const user = await getAuthUser()
+  if (!user) {
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) }
   }
   if (!projectId) {

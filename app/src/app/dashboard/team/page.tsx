@@ -101,6 +101,9 @@ export default function TeamPage() {
 
   const workspaceId = currentWorkspace?.id
   const isAdmin = viewerRole === 'admin'
+  // The role the workspace list already told us: lets the invitations request start together with the
+  // members request instead of waiting for it (the server still enforces the real role).
+  const mayInvite = isAdmin || (viewerRole === null && currentWorkspace?.userRole === 'admin')
 
   const loadMembers = useCallback(async () => {
     if (!workspaceId) return
@@ -150,8 +153,8 @@ export default function TeamPage() {
 
   useEffect(() => {
     setInvitations([])
-    if (workspaceId && isAdmin) loadInvitations()
-  }, [workspaceId, isAdmin, loadInvitations])
+    if (workspaceId && mayInvite) loadInvitations()
+  }, [workspaceId, mayInvite, loadInvitations])
 
   const counts = useMemo(
     () => ({

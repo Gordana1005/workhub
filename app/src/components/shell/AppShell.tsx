@@ -83,6 +83,7 @@ import { useLocaleSwitch } from '@/i18n/LocaleProvider'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useVisualViewport } from '@/hooks/useVisualViewport'
 import { supabase } from '@/lib/supabase'
+import { getMyProfile, getSessionUser } from '@/lib/auth-client'
 import { useThemeStore } from '@/stores/useThemeStore'
 import { useTimerStore } from '@/stores/useTimerStore'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
@@ -403,12 +404,14 @@ function AccountMenu({ placement, collapsed = false }: { placement: 'top' | 'sid
   useEffect(() => {
     let active = true
     const load = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      // Local session (no network) + one shared profile lookup: the shell renders this menu twice
+      // (header + sidebar) and each copy used to ask Supabase Auth and the profiles table on its own.
+      const user = await getSessionUser()
       if (!active || !user) return
       const metaName = typeof user.user_metadata?.username === 'string' ? user.user_metadata.username : ''
       if (active) setUsername(metaName || user.email || '')
-      const { data } = await supabase.from('profiles').select('username, avatar_url').eq('id', user.id).single()
-      if (!active) return
+      const data = await getMyProfile()
+      if (!active || !data) return
       if (data?.username) setUsername(data.username)
       if (data?.avatar_url) setAvatarUrl(data.avatar_url)
     }

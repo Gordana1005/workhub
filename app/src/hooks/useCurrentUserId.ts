@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSessionUser } from '@/lib/auth-client'
 
 /** The signed-in user's id ('' until it is known). */
 export function useCurrentUserId(): string {
@@ -7,8 +7,9 @@ export function useCurrentUserId(): string {
 
   useEffect(() => {
     let cancelled = false
-    supabase.auth.getUser().then(({ data }) => {
-      if (!cancelled && data.user) setUserId(data.user.id)
+    // local session, no network round trip
+    getSessionUser().then((user) => {
+      if (!cancelled && user) setUserId(user.id)
     })
     return () => {
       cancelled = true

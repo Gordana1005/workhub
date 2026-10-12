@@ -1,8 +1,8 @@
-import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { runTopLevel } from '@/lib/subtasks'
+import { getAuthUser } from '@/lib/supabase-server'
+import { ServerTimer } from '@/lib/server-timing'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -20,80 +20,54 @@ export async function GET(
   try {
     const { id: workspaceId } = await params
     
-    const cookieStore = await cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    )
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !user) {
+    const timer = new ServerTimer()
+    const user = await timer.time('auth', getAuthUser())
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify user has access to this workspace (using admin client)
-    const { data: membership } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', user.id)
-      .single()
+    // Membership check + the three counts are independent: one round trip instead of four
+    // (tasks are counted through an inner join on projects, same as "tasks of this workspace's projects")
+    const [{ data: membership }, { count: projectCount }, { count: rawTaskCount }, { count: memberCount }] =
+      await timer.time(
+        'db',
+        Promise.all([
+          supabaseAdmin
+            .from('workspace_members')
+            .select('role')
+            .eq('workspace_id', workspaceId)
+            .eq('user_id', user.id)
+            .single(),
+          supabaseAdmin
+            .from('projects')
+            .select('id', { count: 'exact', head: true })
+            .eq('workspace_id', workspaceId),
+          runTopLevel((topLevel) => {
+            let q = supabaseAdmin
+              .from('tasks')
+              .select('id, projects!inner(workspace_id)', { count: 'exact', head: true })
+              .eq('projects.workspace_id', workspaceId)
+            if (topLevel) q = q.is('parent_task_id', null)
+            return q
+          }),
+          supabaseAdmin
+            .from('workspace_members')
+            .select('user_id', { count: 'exact', head: true })
+            .eq('workspace_id', workspaceId),
+        ])
+      )
 
     if (!membership) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Get project count (using admin client)
-    const { count: projectCount } = await supabaseAdmin
-      .from('projects')
-      .select('*', { count: 'exact', head: true })
-      .eq('workspace_id', workspaceId)
-
-    // Get task count (across all projects in workspace)
-    const { data: projects } = await supabaseAdmin
-      .from('projects')
-      .select('id')
-      .eq('workspace_id', workspaceId)
-      .limit(5000)
-
-    let taskCount = 0
-    if (projects && projects.length > 0) {
-      const projectIds = projects.map(p => p.id)
-      const { count } = await runTopLevel((topLevel) => {
-        let q = supabaseAdmin
-          .from('tasks')
-          .select('*', { count: 'exact', head: true })
-          .in('project_id', projectIds)
-        if (topLevel) q = q.is('parent_task_id', null)
-        return q
+    return timer.apply(
+      NextResponse.json({
+        projectCount: projectCount || 0,
+        taskCount: rawTaskCount || 0,
+        memberCount: memberCount || 0,
       })
-      taskCount = count || 0
-    }
-
-    // Get member count
-    const { count: memberCount } = await supabaseAdmin
-      .from('workspace_members')
-      .select('*', { count: 'exact', head: true })
-      .eq('workspace_id', workspaceId)
-
-    return NextResponse.json({
-      projectCount: projectCount || 0,
-      taskCount: taskCount,
-      memberCount: memberCount || 0,
-    })
+    )
   } catch (error: any) {
     console.error('Error fetching workspace stats:', error)
     return NextResponse.json(

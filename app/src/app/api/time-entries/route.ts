@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { ServerTimer } from '@/lib/server-timing'
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -11,21 +11,6 @@ const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-// Create auth client
-async function createAuthClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll() {}
-      }
-    }
-  )
-}
 
 // A task / project referenced by a time entry must belong to the same workspace
 async function validateLinks(workspaceId: string, taskId?: string | null, projectId?: string | null) {
@@ -45,10 +30,9 @@ async function validateLinks(workspaceId: string, taskId?: string | null, projec
 // GET /api/time-entries
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const timer = new ServerTimer()
+    const user = await timer.time('auth', getAuthUser())
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -62,35 +46,45 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'workspace_id is required' }, { status: 400 })
     }
 
-    // Verify workspace access
-    const { data: membership } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', user.id)
-      .single()
-
-    if (!membership) {
-      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    // Verify workspace access. The membership check is started now and awaited together with the
+    // data queries (they are independent); nothing is returned unless it passes.
+    const membershipPromise = Promise.resolve(
+      supabaseAdmin
+        .from('workspace_members')
+        .select('role')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', user.id)
+        .single()
+    )
+    const denied = async () => {
+      const { data: membership } = await membershipPromise
+      return membership ? null : NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // ?task_id=<id>: everyone's entries for one task (the task detail "Time" section) + the total
     const taskId = searchParams.get('task_id')
     if (taskId) {
-      const { data: taskRow } = await supabaseAdmin
-        .from('tasks').select('id').eq('id', taskId).eq('workspace_id', workspaceId).maybeSingle()
+      const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit')) || 50))
+      const [deniedResponse, { data: taskRow }, { data: rows, error: rowsError }] = await timer.time(
+        'db',
+        Promise.all([
+          denied(),
+          supabaseAdmin
+            .from('tasks').select('id').eq('id', taskId).eq('workspace_id', workspaceId).maybeSingle(),
+          supabaseAdmin
+            .from('time_entries')
+            .select('id, task_id, project_id, user_id, description, duration, date, created_at')
+            .eq('workspace_id', workspaceId)
+            .eq('task_id', taskId)
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1000),
+        ])
+      )
+      if (deniedResponse) return deniedResponse
       if (!taskRow) {
         return NextResponse.json({ error: 'Task not found in this workspace' }, { status: 404 })
       }
-      const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit')) || 50))
-      const { data: rows, error: rowsError } = await supabaseAdmin
-        .from('time_entries')
-        .select('id, task_id, project_id, user_id, description, duration, date, created_at')
-        .eq('workspace_id', workspaceId)
-        .eq('task_id', taskId)
-        .order('date', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(1000)
       if (rowsError) throw rowsError
 
       const all = rows || []
@@ -98,11 +92,11 @@ export async function GET(request: NextRequest) {
       const recent = all.slice(0, limit)
       const userIds = Array.from(new Set(recent.map((row: any) => row.user_id).filter(Boolean)))
       const { data: profiles } = userIds.length
-        ? await supabaseAdmin.from('profiles').select('id, username, avatar_url').in('id', userIds)
+        ? await timer.time('db2', supabaseAdmin.from('profiles').select('id, username, avatar_url').in('id', userIds))
         : { data: [] as any[] }
       const byId = new Map((profiles || []).map((p: any) => [p.id, p]))
 
-      return NextResponse.json({
+      return timer.apply(NextResponse.json({
         timeEntries: recent.map((row: any) => ({
           ...row,
           user: byId.get(row.user_id)
@@ -111,7 +105,7 @@ export async function GET(request: NextRequest) {
         })),
         totalSeconds,
         totalCount: all.length,
-      })
+      }))
     }
 
     let query = supabaseAdmin
@@ -131,7 +125,8 @@ export async function GET(request: NextRequest) {
       query = query.gte('date', startDate).lte('date', endDate)
     }
 
-    const { data, error } = await query
+    const [{ data, error }, deniedResponse] = await timer.time('db', Promise.all([query, denied()]))
+    if (deniedResponse) return deniedResponse
 
     if (error) throw error
 
@@ -141,7 +136,7 @@ export async function GET(request: NextRequest) {
       task: entry.task ? (Array.isArray(entry.task) ? entry.task[0] : entry.task) : null
     })) || []
 
-    return NextResponse.json({ timeEntries: formattedData })
+    return timer.apply(NextResponse.json({ timeEntries: formattedData }))
   } catch (error: any) {
     console.error('Error in GET /api/time-entries:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -151,10 +146,8 @@ export async function GET(request: NextRequest) {
 // POST /api/time-entries
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -215,10 +208,8 @@ export async function POST(request: NextRequest) {
 // PATCH /api/time-entries
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -278,10 +269,8 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/time-entries
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

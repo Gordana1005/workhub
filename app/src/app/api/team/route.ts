@@ -1,9 +1,9 @@
-import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { createSupabaseServer, getAuthUser } from '@/lib/supabase-server'
 import { createNotification } from '@/lib/notify'
 import { runTopLevel } from '@/lib/subtasks'
+import { ServerTimer } from '@/lib/server-timing'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -26,22 +26,9 @@ async function isWorkspaceOwner(workspaceId: string, userId: string) {
 }
 
 export async function GET(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll() {}
-      }
-    }
-  )
-
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  if (userError || !user) {
+  const timer = new ServerTimer()
+  const user = await timer.time('auth', getAuthUser())
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -53,56 +40,75 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Verify user is member of workspace
-    const { data: membership } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspace_id)
-      .eq('user_id', user.id)
-      .single()
+    // Membership check, the member list, projects, open tasks, workspace owner and project-member rows
+    // are independent: ONE round trip (project members are scoped through an inner join on projects).
+    const [
+      { data: membership },
+      { data: members, error },
+      { data: projectRows },
+      { data: openTasks },
+      { data: workspace },
+      projectMembersResult,
+    ] = await timer.time(
+      'db',
+      Promise.all([
+        // Verify user is member of workspace
+        supabaseAdmin
+          .from('workspace_members')
+          .select('role')
+          .eq('workspace_id', workspace_id)
+          .eq('user_id', user.id)
+          .single(),
+        supabaseAdmin
+          .from('workspace_members')
+          .select(`
+            *,
+            profiles:user_id (
+              id,
+              username,
+              avatar_url,
+              email
+            )
+          `)
+          .eq('workspace_id', workspace_id)
+          .limit(1000),
+        // Per-member workload (additive): projects they belong to / created and their open + overdue tasks
+        supabaseAdmin.from('projects').select('id, creator_id').eq('workspace_id', workspace_id),
+        // top-level tasks only: subtasks do not count towards a member's workload
+        runTopLevel((topLevel) => {
+          let q = supabaseAdmin
+            .from('tasks')
+            .select('assignee_id, due_date')
+            .eq('workspace_id', workspace_id)
+            .eq('is_completed', false)
+            .not('assignee_id', 'is', null)
+            .limit(5000)
+          if (topLevel) q = q.is('parent_task_id', null)
+          return q
+        }),
+        supabaseAdmin.from('workspaces').select('owner_id').eq('id', workspace_id).maybeSingle(),
+        supabaseAdmin
+          .from('project_members')
+          .select('project_id, user_id, projects!inner(workspace_id)')
+          .eq('projects.workspace_id', workspace_id),
+      ])
+    )
 
     if (!membership) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    const { data: members, error } = await supabaseAdmin
-      .from('workspace_members')
-      .select(`
-        *,
-        profiles:user_id (
-          id,
-          username,
-          avatar_url,
-          email
-        )
-      `)
-      .eq('workspace_id', workspace_id)
-      .limit(1000)
-
     if (error) throw error
 
-    // Per-member workload (additive): projects they belong to / created and their open + overdue tasks
-    const [{ data: projectRows }, { data: openTasks }, { data: workspace }] = await Promise.all([
-      supabaseAdmin.from('projects').select('id, creator_id').eq('workspace_id', workspace_id),
-      // top-level tasks only: subtasks do not count towards a member's workload
-      runTopLevel((topLevel) => {
-        let q = supabaseAdmin
-          .from('tasks')
-          .select('assignee_id, due_date')
-          .eq('workspace_id', workspace_id)
-          .eq('is_completed', false)
-          .not('assignee_id', 'is', null)
-          .limit(5000)
-        if (topLevel) q = q.is('parent_task_id', null)
-        return q
-      }),
-      supabaseAdmin.from('workspaces').select('owner_id').eq('id', workspace_id).maybeSingle(),
-    ])
-
-    const projectIds = (projectRows || []).map((p: any) => p.id)
-    const { data: projectMemberRows } = projectIds.length
-      ? await supabaseAdmin.from('project_members').select('project_id, user_id').in('project_id', projectIds)
-      : { data: [] as any[] }
+    let projectMemberRows: any[] = projectMembersResult.data || []
+    if (projectMembersResult.error) {
+      // join not available (schema drift): fall back to the id-list query
+      const projectIds = (projectRows || []).map((p: any) => p.id)
+      const fallback = projectIds.length
+        ? await supabaseAdmin.from('project_members').select('project_id, user_id').in('project_id', projectIds)
+        : { data: [] as any[] }
+      projectMemberRows = fallback.data || []
+    }
 
     const projectsByUser = new Map<string, Set<string>>()
     const addProject = (userId: string, projectId: string) => {
@@ -132,12 +138,12 @@ export async function GET(request: Request) {
       },
     }))
 
-    return NextResponse.json({
+    return timer.apply(NextResponse.json({
       members: membersWithStats,
       viewer_id: user.id,
       viewer_role: membership.role,
       owner_id: workspace?.owner_id ?? null,
-    })
+    }))
   } catch (error) {
     console.error('Error fetching team members:', error)
     return NextResponse.json(
@@ -148,19 +154,7 @@ export async function GET(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll() {}
-      }
-    }
-  )
+
 
   const { searchParams } = new URL(request.url)
   const workspace_id = searchParams.get('workspace_id')
@@ -175,7 +169,7 @@ export async function DELETE(request: Request) {
 
   try {
     // Check if current user is admin
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -221,19 +215,7 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll() {}
-      }
-    }
-  )
+
 
   const { searchParams } = new URL(request.url)
   const workspace_id = searchParams.get('workspace_id')
@@ -255,7 +237,7 @@ export async function PATCH(request: Request) {
 
   try {
     // Check if current user is admin
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser()
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -301,21 +283,9 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll() {}
-      }
-    }
-  )
+  const supabase = createSupabaseServer()
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await getAuthUser(supabase)
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }

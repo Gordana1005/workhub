@@ -1,9 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { createSupabaseServer, getAuthUser } from '@/lib/supabase-server'
 import { requireAdmin } from '@/lib/auth-guard'
 import { getWorkspaceRole } from '@/lib/api-access'
-import { cookies } from 'next/headers'
-import { createServerClient } from '@supabase/ssr'
 import {
   appOrigin,
   countRecentInvites,
@@ -184,22 +183,10 @@ export async function DELETE(request: Request) {
 }
 
 export async function GET(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll() {}
-      }
-    }
-  )
+  const supabase = createSupabaseServer()
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  if (userError || !user) {
+  const user = await getAuthUser(supabase)
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

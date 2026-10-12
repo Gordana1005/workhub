@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { getWorkspaceRole, getRowWorkspaceId, omitKeys } from '@/lib/api-access'
 import { createNotifications } from '@/lib/notify'
 import { fetchSubtaskIds } from '@/lib/subtasks'
+import { ServerTimer } from '@/lib/server-timing'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -15,28 +15,12 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Create auth client
-async function createAuthClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll() {}
-      }
-    }
-  )
-}
-
 // GET /api/projects
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const timer = new ServerTimer()
+    const user = await timer.time('auth', getAuthUser())
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -62,62 +46,87 @@ export async function GET(request: NextRequest) {
 
       if (error) throw error
 
-      // Only members of the project's workspace may read it
-      const role = await getWorkspaceRole(supabaseAdmin, (project as any)?.workspace_id, user.id)
+      // Only members of the project's workspace may read it (role + subtask ids are independent)
+      const [role, subtaskIds] = await timer.time(
+        'db2',
+        Promise.all([
+          getWorkspaceRole(supabaseAdmin, (project as any)?.workspace_id, user.id),
+          fetchSubtaskIds(supabaseAdmin, (project as any)?.workspace_id),
+        ])
+      )
       if (!role) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
-      const subtaskIds = await fetchSubtaskIds(supabaseAdmin, (project as any).workspace_id)
       if (subtaskIds.size > 0 && Array.isArray((project as any).tasks)) {
         ;(project as any).tasks = (project as any).tasks.filter((t: any) => !subtaskIds.has(t.id))
       }
-      return NextResponse.json({ project })
+      return timer.apply(NextResponse.json({ project }))
     }
 
-    // Verify workspace access
-    const { data: membership } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', user.id)
-      .single()
+    // Membership check, the project list, the subtask ids and the project-member rows are independent:
+    // one round trip (the member rows are scoped through an inner join on projects instead of an id list).
+    const [{ data: membership }, { data: projects, error }, subtaskIds, memberRowsResult] = await timer.time(
+      'db',
+      Promise.all([
+        supabaseAdmin
+          .from('workspace_members')
+          .select('role')
+          .eq('workspace_id', workspaceId)
+          .eq('user_id', user.id)
+          .single(),
+        supabaseAdmin
+          .from('projects')
+          .select(`
+            *,
+            owner:profiles!creator_id(id, username, avatar_url),
+            tasks(id, is_completed)
+          `)
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false })
+          .limit(500),
+        fetchSubtaskIds(supabaseAdmin, workspaceId as string),
+        // Small member preview per project (avatars on the project cards)
+        supabaseAdmin
+          .from('project_members')
+          .select('project_id, user_id, added_at, projects!inner(workspace_id)')
+          .eq('projects.workspace_id', workspaceId)
+          .order('added_at', { ascending: true })
+          .limit(5000),
+      ])
+    )
 
     if (!membership) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    const { data: projects, error } = await supabaseAdmin
-      .from('projects')
-      .select(`
-        *,
-        owner:profiles!creator_id(id, username, avatar_url),
-        tasks(id, is_completed)
-      `)
-      .eq('workspace_id', workspaceId)
-      .order('created_at', { ascending: false })
-      .limit(500)
-
     if (error) throw error
 
-    // Small member preview per project (avatars on the project cards)
-    const projectIds = (projects || []).map((p: any) => p.id)
-    const { data: memberRows } = projectIds.length
-      ? await supabaseAdmin
-          .from('project_members')
-          .select('project_id, user_id, added_at')
-          .in('project_id', projectIds)
-          .order('added_at', { ascending: true })
-          .limit(5000)
-      : { data: [] as any[] }
+    let memberRows: any[] = memberRowsResult.data || []
+    if (memberRowsResult.error) {
+      // join not available (schema drift): fall back to the id-list query
+      const projectIds = (projects || []).map((p: any) => p.id)
+      const fallback = projectIds.length
+        ? await supabaseAdmin
+            .from('project_members')
+            .select('project_id, user_id, added_at')
+            .in('project_id', projectIds)
+            .order('added_at', { ascending: true })
+            .limit(5000)
+        : { data: [] as any[] }
+      memberRows = fallback.data || []
+    }
 
-    const memberUserIds = Array.from(new Set((memberRows || []).map((r: any) => r.user_id)))
+    const memberUserIds = Array.from(new Set(memberRows.map((r: any) => r.user_id)))
     const { data: memberProfiles } = memberUserIds.length
-      ? await supabaseAdmin.from('profiles').select('id, username, avatar_url').in('id', memberUserIds)
+      ? await timer.time(
+          'db2',
+          supabaseAdmin.from('profiles').select('id, username, avatar_url').in('id', memberUserIds)
+        )
       : { data: [] as any[] }
     const profileById = new Map((memberProfiles || []).map((p: any) => [p.id, p]))
 
     const membersByProject = new Map<string, any[]>()
-    for (const row of memberRows || []) {
+    for (const row of memberRows) {
       const profile: any = profileById.get(row.user_id)
       if (!profile) continue
       const list = membersByProject.get(row.project_id) || []
@@ -126,7 +135,6 @@ export async function GET(request: NextRequest) {
     }
 
     // Calculate task counts (subtasks are not counted as tasks)
-    const subtaskIds = await fetchSubtaskIds(supabaseAdmin, workspaceId as string)
     const projectsWithCounts = projects?.map(p => {
       const members = membersByProject.get(p.id) || []
       const topLevelTasks = (p.tasks || []).filter((t: any) => !subtaskIds.has(t.id))
@@ -139,7 +147,7 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ projects: projectsWithCounts })
+    return timer.apply(NextResponse.json({ projects: projectsWithCounts }))
   } catch (error: any) {
     console.error('Error in GET /api/projects:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -149,10 +157,8 @@ export async function GET(request: NextRequest) {
 // POST /api/projects
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -224,10 +230,8 @@ export async function POST(request: NextRequest) {
 // PATCH /api/projects
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -268,10 +272,8 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/projects
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

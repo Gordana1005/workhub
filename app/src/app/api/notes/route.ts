@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { sanitizeHtml } from '@/lib/sanitize-html';
+import { ServerTimer } from '@/lib/server-timing';
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic';
@@ -15,26 +15,9 @@ const supabaseAdmin = createClient(
 
 export async function GET(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    );
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const timer = new ServerTimer();
+    const user = await timer.time('auth', getAuthUser());
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -42,38 +25,13 @@ export async function GET(request: Request) {
     const projectId = searchParams.get('projectId') || searchParams.get('project_id');
     const workspaceId = searchParams.get('workspace_id') || searchParams.get('workspaceId');
 
-    // Resolve the workspace that must be checked: an explicit workspace_id,
-    // or the workspace that owns the requested project.
-    let accessWorkspaceId = workspaceId;
-    if (projectId) {
-      const { data: project } = await supabaseAdmin
-        .from('projects')
-        .select('workspace_id')
-        .eq('id', projectId)
-        .single();
-
-      if (!project) {
-        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
-      }
-      if (workspaceId && workspaceId !== project.workspace_id) {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-      }
-      accessWorkspaceId = project.workspace_id;
-    }
-
-    // Verify workspace access
-    if (accessWorkspaceId) {
-      const { data: membership } = await supabaseAdmin
+    const membershipFor = (wsId: string) =>
+      supabaseAdmin
         .from('workspace_members')
         .select('role')
-        .eq('workspace_id', accessWorkspaceId)
+        .eq('workspace_id', wsId)
         .eq('user_id', user.id)
         .single();
-
-      if (!membership) {
-        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
-      }
-    }
 
     let query = supabaseAdmin
       .from('notes')
@@ -85,13 +43,64 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
       .limit(1000);
 
+    // Tags for the same scope, fetched in the same round trip (note_tags -> tags through the FK,
+    // scoped by an inner join on notes). Non-fatal: falls back to the two-step lookup below.
+    let tagQuery = supabaseAdmin
+      .from('note_tags')
+      .select('note_id, tags(id, name, color, workspace_id), notes!inner(id)');
+
     if (projectId) {
       query = query.eq('project_id', projectId);
+      tagQuery = tagQuery.eq('notes.project_id', projectId);
     } else if (workspaceId) {
       query = query.eq('workspace_id', workspaceId);
+      tagQuery = tagQuery.eq('notes.workspace_id', workspaceId);
     }
 
-    const { data, error } = await query;
+    // The access check, the notes and their tags do not depend on each other: run them at once
+    // (nothing is returned unless the access check passes).
+    const [projectResult, notesResult, tagsResult, workspaceMembership] = await timer.time(
+      'db',
+      Promise.all([
+        projectId
+          ? supabaseAdmin.from('projects').select('workspace_id').eq('id', projectId).single()
+          : Promise.resolve(null),
+        query,
+        Promise.resolve(tagQuery).then(
+          (result) => result,
+          (err) => ({ data: null, error: err })
+        ),
+        workspaceId ? membershipFor(workspaceId) : Promise.resolve(null),
+      ])
+    );
+
+    // Resolve the workspace that must be checked: an explicit workspace_id,
+    // or the workspace that owns the requested project.
+    let accessWorkspaceId = workspaceId;
+    if (projectResult) {
+      const project = projectResult.data;
+      if (!project) {
+        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+      }
+      if (workspaceId && workspaceId !== project.workspace_id) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      }
+      accessWorkspaceId = project.workspace_id;
+    }
+
+    // Verify workspace access (reuse the check that already ran when the workspace was known up front)
+    if (accessWorkspaceId) {
+      const membershipResult =
+        workspaceId && workspaceId === accessWorkspaceId
+          ? workspaceMembership
+          : await timer.time('db2', membershipFor(accessWorkspaceId));
+
+      if (!membershipResult?.data) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      }
+    }
+
+    const { data, error } = notesResult;
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -100,33 +109,46 @@ export async function GET(request: Request) {
     // Attach real tags (non-fatal if the tag tables are unavailable)
     let notes: any[] = data || [];
     try {
-      const ids = notes.map((n) => n.id);
-      if (ids.length > 0) {
-        const { data: links } = await supabaseAdmin
-          .from('note_tags')
-          .select('note_id, tag_id')
-          .in('note_id', ids);
-        const tagIds = Array.from(new Set((links || []).map((l: any) => l.tag_id)));
-        const { data: tagRows } = tagIds.length > 0
-          ? await supabaseAdmin
-              .from('tags')
-              .select('id, name, color, workspace_id')
-              .in('id', tagIds)
-          : { data: [] as any[] };
-        const byId = new Map((tagRows || []).map((tg: any) => [tg.id, tg]));
-        notes = notes.map((n) => ({
-          ...n,
-          tags: (links || [])
-            .filter((l: any) => l.note_id === n.id)
-            .map((l: any) => byId.get(l.tag_id))
-            .filter(Boolean),
-        }));
+      if (notes.length > 0) {
+        if (!tagsResult.error && Array.isArray(tagsResult.data)) {
+          const tagsByNote = new Map<string, any[]>();
+          for (const link of tagsResult.data as any[]) {
+            const tag = Array.isArray(link.tags) ? link.tags[0] : link.tags;
+            if (!tag) continue;
+            const list = tagsByNote.get(link.note_id) || [];
+            list.push(tag);
+            tagsByNote.set(link.note_id, list);
+          }
+          notes = notes.map((n) => ({ ...n, tags: tagsByNote.get(n.id) || [] }));
+        } else {
+          // join unavailable: look the tags up by note ids
+          const ids = notes.map((n) => n.id);
+          const { data: links } = await supabaseAdmin
+            .from('note_tags')
+            .select('note_id, tag_id')
+            .in('note_id', ids);
+          const tagIds = Array.from(new Set((links || []).map((l: any) => l.tag_id)));
+          const { data: tagRows } = tagIds.length > 0
+            ? await supabaseAdmin
+                .from('tags')
+                .select('id, name, color, workspace_id')
+                .in('id', tagIds)
+            : { data: [] as any[] };
+          const byId = new Map((tagRows || []).map((tg: any) => [tg.id, tg]));
+          notes = notes.map((n) => ({
+            ...n,
+            tags: (links || [])
+              .filter((l: any) => l.note_id === n.id)
+              .map((l: any) => byId.get(l.tag_id))
+              .filter(Boolean),
+          }));
+        }
       }
     } catch (tagError) {
       console.error('Error loading note tags:', tagError);
     }
 
-    return NextResponse.json(notes);
+    return timer.apply(NextResponse.json(notes));
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
@@ -137,26 +159,8 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    );
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const user = await getAuthUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -292,26 +296,8 @@ export async function POST(request: Request) {
 
 export async function PUT(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    );
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const user = await getAuthUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -429,26 +415,8 @@ export async function PUT(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    );
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const user = await getAuthUser();
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

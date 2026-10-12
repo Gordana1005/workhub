@@ -1,4 +1,5 @@
 import type { MemberOption, Priority, ProjectOption, Task } from './types'
+import { getJsonCached } from '@/lib/api-cache'
 
 export const STATUSES = ['To Do', 'In Progress', 'Review', 'Done'] as const
 export const PRIORITIES: Priority[] = ['urgent', 'high', 'medium', 'low']
@@ -116,16 +117,13 @@ export function normalizeTask(raw: any): Task {
 }
 
 export async function fetchProjects(workspaceId: string): Promise<ProjectOption[]> {
-  const response = await fetch(`/api/projects?workspace_id=${encodeURIComponent(workspaceId)}`)
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Failed to load projects')
+  // shared 30s cache: the tasks page, the quick-add form and the detail dialog all want the same list
+  const data = await getJsonCached<any>(`/api/projects?workspace_id=${encodeURIComponent(workspaceId)}`)
   return (data.projects || []).map((p: any) => ({ id: p.id, name: p.name, color: p.color }))
 }
 
 export async function fetchMembers(workspaceId: string, unknownLabel: string): Promise<MemberOption[]> {
-  const response = await fetch(`/api/team?workspace_id=${encodeURIComponent(workspaceId)}`)
-  const data = await response.json()
-  if (!response.ok) throw new Error(data?.error || 'Failed to load members')
+  const data = await getJsonCached<any>(`/api/team?workspace_id=${encodeURIComponent(workspaceId)}`)
   const seen = new Set<string>()
   const members: MemberOption[] = []
   for (const row of data.members || []) {
@@ -145,16 +143,7 @@ export async function fetchMembers(workspaceId: string, unknownLabel: string): P
   return members
 }
 
-const memberCache = new Map<string, { at: number; promise: Promise<MemberOption[]> }>()
-
-/** Workspace members, fetched once per workspace (cached for a minute) and shared by every picker. */
+/** Workspace members, shared by every picker (the underlying request is cached for 30s and de-duplicated). */
 export function getWorkspaceMembers(workspaceId: string, unknownLabel: string): Promise<MemberOption[]> {
-  const hit = memberCache.get(workspaceId)
-  if (hit && Date.now() - hit.at < 60_000) return hit.promise
-  const promise = fetchMembers(workspaceId, unknownLabel)
-  memberCache.set(workspaceId, { at: Date.now(), promise })
-  promise.catch(() => {
-    if (memberCache.get(workspaceId)?.promise === promise) memberCache.delete(workspaceId)
-  })
-  return promise
+  return fetchMembers(workspaceId, unknownLabel)
 }

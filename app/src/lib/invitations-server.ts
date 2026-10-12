@@ -1,6 +1,5 @@
-import { createServerClient } from '@supabase/ssr'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { getAuthUser } from '@/lib/supabase-server'
 import { isMissingSchemaError } from '@/lib/supabase-admin'
 import {
   classifyInviteEmailError,
@@ -12,21 +11,7 @@ import {
 /** Server-only helpers shared by the invitation routes. */
 
 export async function getSessionUser() {
-  const cookieStore = cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll() {},
-      },
-    }
-  )
-  const { data: { user }, error } = await supabase.auth.getUser()
-  return error || !user ? null : user
+  return getAuthUser()
 }
 
 export function appOrigin(request: Request): string {

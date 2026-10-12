@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getRowWorkspaceId, getWorkspaceRole, omitKeys } from './api-access'
+import { getRowWorkspaceId, getWorkspaceRole, omitKeys, withMembership } from './api-access'
 
 /**
  * Tiny fake of the chainable Supabase query builder:
@@ -81,5 +81,25 @@ describe('omitKeys', () => {
 
   it('is a no-op for an empty key list', () => {
     expect(omitKeys({ a: 1 }, [])).toEqual({ a: 1 })
+  })
+})
+
+describe('withMembership', () => {
+  const admin = fakeClient({ workspace_members: [{ workspace_id: 'w1', user_id: 'u1', role: 'member' }] })
+
+  it('hands back the work result together with the role for members', async () => {
+    const work = vi.fn(async () => ({ rows: 3 }))
+    expect(await withMembership(admin, 'w1', 'u1', work)).toEqual({ ok: true, value: { rows: 3 }, role: 'member' })
+    expect(work).toHaveBeenCalledTimes(1)
+  })
+
+  it('discards the work result for non-members', async () => {
+    const work = vi.fn(async () => ({ secret: true }))
+    expect(await withMembership(admin, 'w1', 'stranger', work)).toEqual({ ok: false })
+    expect(await withMembership(admin, null, 'u1', work)).toEqual({ ok: false })
+  })
+
+  it('propagates errors from the work', async () => {
+    await expect(withMembership(admin, 'w1', 'u1', () => Promise.reject(new Error('db down')))).rejects.toThrow('db down')
   })
 })

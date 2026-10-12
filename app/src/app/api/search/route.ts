@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { getWorkspaceRole } from '@/lib/api-access'
+import { ServerTimer } from '@/lib/server-timing'
 
 export const dynamic = 'force-dynamic'
 
@@ -101,23 +101,9 @@ function rank(items: Ranked[], limit: number): SearchResult[] {
 }
 
 export async function GET(request: Request) {
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => cookieStore.getAll(),
-        setAll: () => {},
-      },
-    }
-  )
-
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-  if (authError || !user) {
+  const timer = new ServerTimer()
+  const user = await timer.time('auth', getAuthUser())
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: NO_STORE })
   }
 
@@ -129,12 +115,13 @@ export async function GET(request: Request) {
   if (!workspaceId) {
     return NextResponse.json({ error: 'workspace_id is required' }, { status: 400, headers: NO_STORE })
   }
-  if (!(await getWorkspaceRole(supabaseAdmin, workspaceId, user.id))) {
-    return NextResponse.json({ error: 'Access denied' }, { status: 403, headers: NO_STORE })
-  }
+  // The membership check runs while the searches do (independent); results are only used if it passes.
+  const rolePromise = getWorkspaceRole(supabaseAdmin, workspaceId, user.id)
+  const accessDenied = () => NextResponse.json({ error: 'Access denied' }, { status: 403, headers: NO_STORE })
 
   const empty = { query: rawQuery, total: 0, groups: [] as { key: GroupKey; items: SearchResult[] }[] }
   if ([...rawQuery].length < MIN_QUERY) {
+    if (!(await rolePromise)) return accessDenied()
     return NextResponse.json(empty, { headers: NO_STORE })
   }
 
@@ -145,7 +132,8 @@ export async function GET(request: Request) {
   const orValue = `"%${likeText.replace(/\\/g, '\\\\')}%"`
   const orFilter = (...columns: string[]) => columns.map((column) => `${column}.ilike.${orValue}`).join(',')
 
-  const [tasks, projects, notes, plans, milestones, members, comments] = await Promise.all([
+  const [role, tasks, projects, notes, plans, milestones, members, comments] = await timer.time('db', Promise.all([
+    rolePromise,
     safe<any>(
       supabaseAdmin
         .from('tasks')
@@ -203,7 +191,8 @@ export async function GET(request: Request) {
         .order('created_at', { ascending: false })
         .limit(FETCH_PER_GROUP)
     ),
-  ])
+  ]))
+  if (!role) return accessDenied()
 
   // People: workspace members whose profile matches.
   const roleByUser = new Map<string, string>(members.map((m: any) => [m.user_id as string, m.role as string]))
@@ -356,8 +345,10 @@ export async function GET(request: Request) {
     ] as { key: GroupKey; items: SearchResult[] }[]
   ).filter((group) => group.items.length > 0)
 
-  return NextResponse.json(
-    { query: rawQuery, total: groups.reduce((sum, group) => sum + group.items.length, 0), groups },
-    { headers: NO_STORE }
+  return timer.apply(
+    NextResponse.json(
+      { query: rawQuery, total: groups.reduce((sum, group) => sum + group.items.length, 0), groups },
+      { headers: NO_STORE }
+    )
   )
 }

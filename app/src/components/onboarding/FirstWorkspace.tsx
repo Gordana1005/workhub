@@ -20,6 +20,7 @@ import { MailPlus } from 'lucide-react'
 import { Button, buttonClasses } from '@/components/ui/Button'
 import { Field, Input } from '@/components/ui/Input'
 import { supabase } from '@/lib/supabase'
+import { getSessionUser } from '@/lib/auth-client'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 
 const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,30}$/
@@ -51,8 +52,7 @@ export default function FirstWorkspace() {
     ;(async () => {
       let needUsername = false
       try {
-        const { data } = await supabase.auth.getUser()
-        const user = data.user
+        const user = await getSessionUser()
         if (!user || cancelled) {
           if (!cancelled) setPhase('workspace')
           return

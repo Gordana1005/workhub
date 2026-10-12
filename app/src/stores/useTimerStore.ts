@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
+import { getSessionUser } from '@/lib/auth-client'
 import { localDateString } from '@/lib/date'
 import { useWorkspaceStore } from './useWorkspaceStore'
 
@@ -37,7 +38,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     set({ isRunning: false, time: 0, currentTaskId: null, currentProjectId: null })
 
     // Get current user and workspace
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getSessionUser()
     const { currentWorkspace } = useWorkspaceStore.getState()
 
     if (user && currentWorkspace && time > 0) {

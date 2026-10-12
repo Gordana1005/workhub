@@ -96,7 +96,9 @@ export default function ProjectsPage() {
       setLoading(true)
       loadProjects()
     }
-  }, [currentWorkspace, loadProjects])
+  // loadProjects already depends on the id; re-running for every new workspace object would fetch twice
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentWorkspace?.id, loadProjects])
 
   const groups = useMemo(() => {
     const counts = new Map<string, number>()

@@ -79,7 +79,9 @@ export default function WebhooksPage() {
     } else {
       setLoading(false)
     }
-  }, [currentWorkspace, loadWebhooks])
+  // loadWebhooks already depends on the id; re-running for every new workspace object would fetch twice
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentWorkspace?.id, loadWebhooks])
 
   const activeOf = (webhook: Webhook) => activeOverride[webhook.id] ?? webhook.active
 

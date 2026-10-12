@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { ServerTimer } from '@/lib/server-timing'
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 import { getRowWorkspaceId, getWorkspaceRole, omitKeys } from '@/lib/api-access'
 
 // Force dynamic rendering (uses cookies)
@@ -13,28 +13,12 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Create auth client
-async function createAuthClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll() {}
-      }
-    }
-  )
-}
-
 // GET /api/plans
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const timer = new ServerTimer()
+    const user = await timer.time('auth', getAuthUser())
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -70,27 +54,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ plan })
     }
 
-    // Verify workspace access
-    const { data: membership } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', user.id)
-      .single()
+    // Verify workspace access (the check and the list are independent: one round trip)
+    const [{ data: membership }, { data: plans, error }] = await timer.time(
+      'db',
+      Promise.all([
+        supabaseAdmin
+          .from('workspace_members')
+          .select('role')
+          .eq('workspace_id', workspaceId)
+          .eq('user_id', user.id)
+          .single(),
+        supabaseAdmin
+          .from('plans')
+          .select(`
+            *,
+            milestones:plan_milestones(id, is_completed)
+          `)
+          .eq('workspace_id', workspaceId)
+          .order('created_at', { ascending: false })
+          .limit(500),
+      ])
+    )
 
     if (!membership) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
-
-    const { data: plans, error } = await supabaseAdmin
-      .from('plans')
-      .select(`
-        *,
-        milestones:plan_milestones(id, is_completed)
-      `)
-      .eq('workspace_id', workspaceId)
-      .order('created_at', { ascending: false })
-      .limit(500)
 
     if (error) throw error
 
@@ -104,7 +92,7 @@ export async function GET(request: NextRequest) {
         : 0
     }))
 
-    return NextResponse.json({ plans: plansWithProgress })
+    return timer.apply(NextResponse.json({ plans: plansWithProgress }))
   } catch (error: any) {
     console.error('Error in GET /api/plans:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -114,10 +102,8 @@ export async function GET(request: NextRequest) {
 // POST /api/plans
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -169,10 +155,8 @@ export async function POST(request: NextRequest) {
 // PATCH /api/plans
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -213,10 +197,8 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/plans
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { AlertTriangle, Check, X, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { getSessionUser } from '@/lib/auth-client'
 import BudgetRequestForm from './BudgetRequestForm';
 import BudgetRequestsList from './BudgetRequestsList';
 import { useTranslations } from 'next-intl';
@@ -53,7 +54,7 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
   const [loading, setLoading] = useState(true);
 
   const checkIfOwner = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = await getSessionUser();
     if (!user) return;
 
     const { data } = await supabase

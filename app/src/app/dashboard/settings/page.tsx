@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/Skeleton'
 import PushToggle from '@/components/settings/PushToggle'
 import NotificationPrefs from '@/components/settings/NotificationPrefs'
 import { supabase } from '@/lib/supabase'
+import { getSessionUser, resetAuthCache } from '@/lib/auth-client'
 import { useLocaleSwitch, type AppLocale } from '@/i18n/LocaleProvider'
 import { useThemeStore, type ThemeChoice } from '@/stores/useThemeStore'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
@@ -127,9 +128,7 @@ export default function SettingsPage() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
+        const user = await getSessionUser()
 
         if (!user) {
           router.push('/auth/login')
@@ -184,6 +183,7 @@ export default function SettingsPage() {
 
       if (error) throw error
 
+      resetAuthCache() // the shell / home read the shared profile lookup
       setMessage({ type: 'success', text: t('settings.profileUpdated') })
       setTimeout(() => setMessage(null), 3000)
     } catch (error) {

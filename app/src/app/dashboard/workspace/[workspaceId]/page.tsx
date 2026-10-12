@@ -1,6 +1,5 @@
 import { redirect } from 'next/navigation'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createSupabaseServer, getAuthUser } from '@/lib/supabase-server'
 import WorkspaceOverview from '@/components/workspace/WorkspaceOverview'
 
 export default async function WorkspacePage({
@@ -9,49 +8,39 @@ export default async function WorkspacePage({
   params: Promise<{ workspaceId: string }>
 }) {
   const { workspaceId } = await params
-  const cookieStore = await cookies()
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-      },
-    }
-  )
+  const supabase = createSupabaseServer()
+  const user = await getAuthUser(supabase)
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-
-  if (authError || !user) {
+  if (!user) {
     redirect('/auth/login')
   }
 
-  // Check if user is a member of this workspace
-  const { data: membership, error: memberError } = await supabase
-    .from('workspace_members')
-    .select('role')
-    .eq('workspace_id', workspaceId)
-    .eq('user_id', user.id)
-    .single()
+  // Membership check and workspace details are independent: fetch both at once
+  const [membershipResult, workspaceResult] = await Promise.all([
+    supabase
+      .from('workspace_members')
+      .select('role')
+      .eq('workspace_id', workspaceId)
+      .eq('user_id', user.id)
+      .single(),
+    supabase
+      .from('workspaces')
+      .select(`
+        *,
+        workspace_members(count),
+        profiles!workspaces_owner_id_fkey(username, avatar_url)
+      `)
+      .eq('id', workspaceId)
+      .single(),
+  ])
+  const { data: membership, error: memberError } = membershipResult
+  const { data: workspace, error: workspaceError } = workspaceResult
 
   if (memberError || !membership) {
     redirect('/dashboard')
   }
 
-  // Get workspace details
-  const { data: workspace, error: workspaceError } = await supabase
-    .from('workspaces')
-    .select(`
-      *,
-      workspace_members(count),
-      profiles!workspaces_owner_id_fkey(username, avatar_url)
-    `)
-    .eq('id', workspaceId)
-    .single()
-
-  if (workspaceError) {
+  if (workspaceError || !workspace) {
     redirect('/dashboard')
   }
 

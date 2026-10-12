@@ -6,6 +6,8 @@ import { AnimatePresence } from 'framer-motion'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
 import { localDateString } from '@/lib/date'
+import { getMyProfile, getSessionUserId } from '@/lib/auth-client'
+import { getJsonCached } from '@/lib/api-cache'
 import { CheckCircle2, ChevronDown, Clock, FileText, Plus, Square } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -113,7 +115,7 @@ export default function Dashboard() {
   const tTasks = useTranslations('pages.tasks')
   const { confirm, dialog } = useConfirm()
   const format = useFormatter()
-  const { workspaces, currentWorkspace, fetchWorkspaces, loading } = useWorkspaceStore()
+  const { workspaces, currentWorkspace, loading } = useWorkspaceStore()
 
   const [userName, setUserName] = useState('')
   const [greetingKey, setGreetingKey] = useState<'greetingMorning' | 'greetingAfternoon' | 'greetingEvening'>('greetingAfternoon')
@@ -153,17 +155,15 @@ export default function Dashboard() {
     else if (hour < 18) setGreetingKey('greetingAfternoon')
     else setGreetingKey('greetingEvening')
 
-    const init = async () => {
-      if (workspaces.length === 0) await fetchWorkspaces()
-      
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
-        if (profile?.username) setUserName(profile.username)
-      }
+    // Workspaces are fetched once by the dashboard layout; the greeting name comes from the shared profile lookup
+    let active = true
+    getMyProfile().then((profile) => {
+      if (active && profile?.username) setUserName(profile.username)
+    })
+    return () => {
+      active = false
     }
-    init()
-  }, [fetchWorkspaces, workspaces.length])
+  }, [])
 
   // Fetch Dashboard Data
   useEffect(() => {
@@ -179,98 +179,95 @@ export default function Dashboard() {
     }
 
     const fetchData = async () => {
-      // 1. Tasks - Correctly handling status/completion
-      // We explicitly look for tasks that are not marked as completed
-      // (top-level tasks only: subtasks live inside their parent and show up as an x/y chip)
-      const { data: tasksData, error: tasksError } = await runTopLevel((topLevel) => {
-        let q = supabase
-          .from('tasks')
-          .select('*, project:projects(name, color), assignee:profiles!tasks_assignee_id_fkey(id, username)')
-          .eq('workspace_id', currentWorkspace.id)
-          .neq('is_completed', true)
-          .order('due_date', { ascending: true, nullsFirst: false })
-          .limit(40)
-        if (topLevel) q = q.is('parent_task_id', null)
-        return q
-      })
+      const workspaceId = currentWorkspace.id
+      const today = localDateString()
 
-      if (tasksData) {
-        const subtaskCounts = await fetchSubtaskCounts(supabase, { workspaceId: currentWorkspace.id })
-        setTasks(withSubtaskCounts(tasksData, subtaskCounts))
-      }
-      if (tasksError) console.error('Error fetching tasks:', tasksError)
+      // Everything on this screen is independent: start it all at once instead of one request after
+      // another, then paint when the slowest has landed.
+      const tasksPromise = (async () => {
+        // Tasks that are not completed (top-level only: subtasks live inside their parent and show
+        // up as an x/y chip). The subtask counts do not depend on the list, so they run alongside.
+        const [{ data: tasksData, error: tasksError }, subtaskCounts] = await Promise.all([
+          runTopLevel((topLevel) => {
+            let q = supabase
+              .from('tasks')
+              .select('*, project:projects(name, color), assignee:profiles!tasks_assignee_id_fkey(id, username)')
+              .eq('workspace_id', workspaceId)
+              .neq('is_completed', true)
+              .order('due_date', { ascending: true, nullsFirst: false })
+              .limit(40)
+            if (topLevel) q = q.is('parent_task_id', null)
+            return q
+          }),
+          fetchSubtaskCounts(supabase, { workspaceId }),
+        ])
+        if (tasksError) console.error('Error fetching tasks:', tasksError)
+        return tasksData ? withSubtaskCounts(tasksData, subtaskCounts) : null
+      })()
 
-      // 2. Projects
-      const projectsResponse = await fetch(`/api/projects?workspace_id=${currentWorkspace.id}`)
-      let projectsData: any[] = []
-      if (projectsResponse.ok) {
-        const projectsJson = await projectsResponse.json()
-        projectsData = projectsJson.projects || []
+      const projectsPromise = getJsonCached<any>(`/api/projects?workspace_id=${workspaceId}`).then(
+        (json) => ({ ok: true as const, projects: (json?.projects || []) as any[] }),
+        (error) => {
+          console.error('Error fetching projects:', error)
+          return { ok: false as const, projects: [] as any[] }
+        }
+      )
+
+      // Team members for quick assignment
+      const teamPromise = getJsonCached<any>(`/api/team?workspace_id=${workspaceId}`).then(
+        (json) =>
+          (json?.members?.map((m: any) => ({
+            id: m.profiles?.id || m.user_id,
+            username: m.profiles?.username || 'unknown'
+          })) || []) as { id: string; username: string }[],
+        () => null
+      )
+
+      // Notes - Using !inner join to filter by workspace via projects
+      const notesPromise = Promise.resolve(
+        supabase
+          .from('notes')
+          .select('*, project:projects!inner(workspace_id)')
+          .eq('project.workspace_id', workspaceId)
+          .order('created_at', { ascending: false })
+          .limit(3)
+      )
+
+      // Stats: tasks due (not completed) / completed (top-level only)
+      const countTasks = (completed: boolean) =>
+        runTopLevel((topLevel) => {
+          let q = supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('workspace_id', workspaceId)
+          q = completed ? q.eq('is_completed', true) : q.neq('is_completed', true)
+          if (topLevel) q = q.is('parent_task_id', null)
+          return q
+        })
+      const duePromise = countTasks(false)
+      const completedPromise = countTasks(true)
+
+      // Time logged today
+      const timePromise = Promise.resolve(
+        supabase.from('time_entries').select('duration').eq('workspace_id', workspaceId).eq('date', today)
+      )
+
+      const [tasksResult, projectsResult, teamResult, { data: notesData, error: notesError }, { count: dueCount }, { count: completedCount }, { data: timeData }] =
+        await Promise.all([tasksPromise, projectsPromise, teamPromise, notesPromise, duePromise, completedPromise, timePromise])
+
+      if (tasksResult) setTasks(tasksResult)
+
+      const projectsData = projectsResult.projects
+      if (projectsResult.ok) {
         setProjectTotal(projectsData.length)
-        const activeProjects = projectsData.filter((p: any) => p.status === 'active').slice(0, 8)
-        setProjects(activeProjects)
+        setProjects(projectsData.filter((p: any) => p.status === 'active').slice(0, 8))
       } else {
-        console.error('Error fetching projects:', await projectsResponse.text())
         setProjects([])
       }
 
-      // Team members for quick assignment
-      const teamResponse = await fetch(`/api/team?workspace_id=${currentWorkspace.id}`)
-      const teamJson = await teamResponse.json()
-      if (teamResponse.ok) {
-        const members = teamJson.members?.map((m: any) => ({
-          id: m.profiles?.id || m.user_id,
-          username: m.profiles?.username || 'unknown'
-        })) || []
-        setTeamMembers(members)
-      }
+      if (teamResult) setTeamMembers(teamResult)
 
-      // 3. Notes - Using !inner join to filter by workspace via projects
-      const { data: notesData, error: notesError } = await supabase
-        .from('notes')
-        .select('*, project:projects!inner(workspace_id)')
-        .eq('project.workspace_id', currentWorkspace.id)
-        .order('created_at', { ascending: false })
-        .limit(3)
-        
       if (notesData) setNotes(notesData)
       if (notesError) console.error('Error fetching notes:', notesError)
 
-      // 4. Stats Calculations
-      // Tasks Due (Not completed)
-      const { count: dueCount } = await runTopLevel((topLevel) => {
-        let q = supabase
-          .from('tasks')
-          .select('*', { count: 'exact', head: true })
-          .eq('workspace_id', currentWorkspace.id)
-          .neq('is_completed', true)
-        if (topLevel) q = q.is('parent_task_id', null)
-        return q
-      })
-
-      // Tasks Completed
-      const { count: completedCount } = await runTopLevel((topLevel) => {
-        let q = supabase
-          .from('tasks')
-          .select('*', { count: 'exact', head: true })
-          .eq('workspace_id', currentWorkspace.id)
-          .eq('is_completed', true)
-        if (topLevel) q = q.is('parent_task_id', null)
-        return q
-      })
-
-      // Active Projects
       const activeProjectsCount = projectsData.filter((p: any) => p.status === 'active').length
-      
-      // Time Logged - Fetch today's entries
-      const today = localDateString()
-      
-      const { data: timeData } = await supabase
-        .from('time_entries')
-        .select('duration')
-        .eq('workspace_id', currentWorkspace.id)
-        .eq('date', today)
-      
       const secondsToday = timeData?.reduce((acc, curr) => acc + curr.duration, 0) || 0
 
       const totalTasks = (dueCount || 0) + (completedCount || 0)
@@ -281,7 +278,7 @@ export default function Dashboard() {
       setStats({
         tasksDue: dueCount || 0,
         tasksCompleted: completedCount || 0,
-        timeLogged: secondsToday, 
+        timeLogged: secondsToday,
         activeProjects: activeProjectsCount || 0,
         completionRate,
         tasksRemaining: dueCount || 0
@@ -314,8 +311,7 @@ export default function Dashboard() {
     if (!newTaskTitle.trim() || !currentWorkspace || adding) return
     setAdding(true)
 
-    const { data: authData } = await supabase.auth.getUser()
-    const currentUserId = authData.user?.id
+    const currentUserId = (await getSessionUserId()) || undefined
 
     // Create simple task
     const { data, error } = await supabase.from('tasks').insert({

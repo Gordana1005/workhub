@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
-import { getRowWorkspaceId, getWorkspaceRole, omitKeys } from '@/lib/api-access'
+import { getRowWorkspaceId, getWorkspaceRole, omitKeys, withMembership } from '@/lib/api-access'
+import { ServerTimer } from '@/lib/server-timing'
 import {
   balanceChanges,
   isMissingRpcError,
@@ -152,28 +152,12 @@ async function authorizeRecord(type: string | null | undefined, id: string, user
   return null
 }
 
-// Create auth client
-async function createAuthClient() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll() {}
-      }
-    }
-  )
-}
-
 // GET /api/finance - Get finance data
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const timer = new ServerTimer()
+    const user = await timer.time('auth', getAuthUser())
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -187,88 +171,84 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'workspace_id is required' }, { status: 400 })
     }
 
-    // Verify workspace access
-    const { data: membership } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', user.id)
-      .single()
+    // Verify workspace access while the data query runs (independent: one round trip, not two)
+    const gate = await timer.time('db', withMembership(supabaseAdmin, workspaceId, user.id, async () => {
+      switch (type) {
+        case 'accounts': {
+          const { data, error } = await supabaseAdmin
+            .from('finance_accounts')
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .eq('is_active', true)
+            .limit(500)
+          
+          if (error) throw error
+          return ({ accounts: data })
+        }
 
-    if (!membership) {
+        case 'transactions': {
+          let query = supabaseAdmin
+            .from('finance_transactions')
+            .select('*, category:finance_categories(*)')
+            .eq('workspace_id', workspaceId)
+            .order('date', { ascending: false })
+            .limit(2000)
+
+          if (startDate) query = query.gte('date', startDate)
+          if (endDate) query = query.lte('date', endDate)
+
+          const { data, error } = await query
+          if (error) throw error
+          return ({ transactions: data })
+        }
+
+        case 'categories': {
+          const { data, error } = await supabaseAdmin
+            .from('finance_categories')
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .order('name')
+            .limit(1000)
+          
+          if (error) throw error
+          return ({ categories: data })
+        }
+
+        case 'goals': {
+          const { data, error } = await supabaseAdmin
+            .from('finance_goals')
+            .select('*')
+            .eq('workspace_id', workspaceId)
+            .order('target_date')
+            .limit(500)
+          
+          if (error) throw error
+          return ({ goals: data })
+        }
+
+        default: {
+          // Return all finance data
+          const [accounts, transactions, categories, goals] = await Promise.all([
+            supabaseAdmin.from('finance_accounts').select('*').eq('workspace_id', workspaceId).eq('is_active', true).limit(500),
+            supabaseAdmin.from('finance_transactions').select('*, category:finance_categories(*)').eq('workspace_id', workspaceId).order('date', { ascending: false }).limit(50),
+            supabaseAdmin.from('finance_categories').select('*').eq('workspace_id', workspaceId).limit(1000),
+            supabaseAdmin.from('finance_goals').select('*').eq('workspace_id', workspaceId).limit(500)
+          ])
+
+          return ({
+            accounts: accounts.data || [],
+            transactions: transactions.data || [],
+            categories: categories.data || [],
+            goals: goals.data || []
+          })
+        }
+      }
+    }))
+
+    if (!gate.ok) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
-
-    switch (type) {
-      case 'accounts': {
-        const { data, error } = await supabaseAdmin
-          .from('finance_accounts')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .eq('is_active', true)
-          .limit(500)
-        
-        if (error) throw error
-        return NextResponse.json({ accounts: data })
-      }
-
-      case 'transactions': {
-        let query = supabaseAdmin
-          .from('finance_transactions')
-          .select('*, category:finance_categories(*)')
-          .eq('workspace_id', workspaceId)
-          .order('date', { ascending: false })
-          .limit(2000)
-
-        if (startDate) query = query.gte('date', startDate)
-        if (endDate) query = query.lte('date', endDate)
-
-        const { data, error } = await query
-        if (error) throw error
-        return NextResponse.json({ transactions: data })
-      }
-
-      case 'categories': {
-        const { data, error } = await supabaseAdmin
-          .from('finance_categories')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .order('name')
-          .limit(1000)
-        
-        if (error) throw error
-        return NextResponse.json({ categories: data })
-      }
-
-      case 'goals': {
-        const { data, error } = await supabaseAdmin
-          .from('finance_goals')
-          .select('*')
-          .eq('workspace_id', workspaceId)
-          .order('target_date')
-          .limit(500)
-        
-        if (error) throw error
-        return NextResponse.json({ goals: data })
-      }
-
-      default: {
-        // Return all finance data
-        const [accounts, transactions, categories, goals] = await Promise.all([
-          supabaseAdmin.from('finance_accounts').select('*').eq('workspace_id', workspaceId).eq('is_active', true).limit(500),
-          supabaseAdmin.from('finance_transactions').select('*, category:finance_categories(*)').eq('workspace_id', workspaceId).order('date', { ascending: false }).limit(50),
-          supabaseAdmin.from('finance_categories').select('*').eq('workspace_id', workspaceId).limit(1000),
-          supabaseAdmin.from('finance_goals').select('*').eq('workspace_id', workspaceId).limit(500)
-        ])
-
-        return NextResponse.json({
-          accounts: accounts.data || [],
-          transactions: transactions.data || [],
-          categories: categories.data || [],
-          goals: goals.data || []
-        })
-      }
-    }
+    return timer.apply(NextResponse.json(gate.value))
   } catch (error: any) {
     console.error('Error in GET /api/finance:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -278,10 +258,8 @@ export async function GET(request: NextRequest) {
 // POST /api/finance - Create finance records
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -400,10 +378,8 @@ export async function POST(request: NextRequest) {
 // PATCH /api/finance - Update finance records
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -536,10 +512,8 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/finance - Delete finance records
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

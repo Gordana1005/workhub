@@ -204,7 +204,9 @@ export default function FocusMode() {
     if (currentWorkspace) {
       loadTasks()
     }
-  }, [currentWorkspace, loadTasks])
+  // loadTasks already depends on the id; re-running for every new workspace object would fetch twice
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentWorkspace?.id, loadTasks])
 
   const handleSessionComplete = useCallback(() => {
     setIsRunning(false)

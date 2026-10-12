@@ -1,8 +1,7 @@
-import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { logger } from './logger';
+import { getAuthUser } from './supabase-server';
 
 // Create a service role client to bypass RLS for membership checks
 // This is necessary because workspace_members RLS might be restrictive (infinite recursion issues)
@@ -26,25 +25,10 @@ export interface AuthContext {
  * Returns either auth context or error response
  */
 export async function requireAuth(request: Request): Promise<AuthContext | NextResponse> {
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {}, // No need to set in API routes
-        remove() {},
-      },
-    }
-  );
-  
-  // Check authentication
-  const { data: { user }, error: authError } = await supabase.auth.getUser();
-  
-  if (authError || !user) {
+  // Check authentication (JWT verified locally - no Supabase Auth round trip)
+  const user = await getAuthUser();
+
+  if (!user) {
     logger.warn('Unauthorized API access attempt');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
@@ -112,7 +96,7 @@ export async function requireAuth(request: Request): Promise<AuthContext | NextR
   });
 
   return {
-    user: { id: user.id, email: user.email! },
+    user: { id: user.id, email: user.email },
     workspaceId,
     userRole: membership.role as 'admin' | 'member',
   };
@@ -144,28 +128,13 @@ export async function requireAdmin(request: Request): Promise<AuthContext | Next
  * Optionally require authentication - returns user if authenticated, null otherwise
  */
 export async function optionalAuth(request: Request): Promise<{ user: { id: string; email: string } } | null> {
-  const cookieStore = cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value;
-        },
-        set() {},
-        remove() {},
-      },
-    }
-  );
-  
-  const { data: { user }, error } = await supabase.auth.getUser();
-  
-  if (error || !user) {
+  const user = await getAuthUser();
+
+  if (!user) {
     return null;
   }
 
   return {
-    user: { id: user.id, email: user.email! }
+    user: { id: user.id, email: user.email }
   };
 }

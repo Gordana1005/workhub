@@ -42,7 +42,7 @@ function readSavedWorkspace(): Workspace | null {
   }
 }
 
-export const useWorkspaceStore = create<WorkspaceState>((set) => ({
+export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   workspaces: [],
   // Start empty so server HTML and the first client render agree (no hydration mismatch);
   // hydrateWorkspace() restores the saved selection right after mount.
@@ -70,9 +70,17 @@ export const useWorkspaceStore = create<WorkspaceState>((set) => ({
       // Use the fresh server copy (up-to-date name/role/memberCount) instead of the cached one
       const savedStillValid = savedWorkspace ? fetched.find((w: Workspace) => w.id === savedWorkspace.id) : null
 
+      // Keep the same object when nothing changed: screens that depend on the workspace object (not just its
+      // id) would otherwise reload their data a second time right after the first paint.
+      const existing = get().currentWorkspace
+      const nextCurrent =
+        savedStillValid && existing && existing.id === savedStillValid.id && JSON.stringify(existing) === JSON.stringify(savedStillValid)
+          ? existing
+          : savedStillValid || null
+
       set({
         workspaces: fetched,
-        currentWorkspace: savedStillValid || null,
+        currentWorkspace: nextCurrent,
         loading: false
       })
 

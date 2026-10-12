@@ -41,3 +41,18 @@ export function omitKeys<T extends Record<string, any>>(obj: T, keys: string[]):
   for (const k of keys) delete copy[k]
   return copy as Partial<T>
 }
+
+/**
+ * Runs `work` while the membership check is in flight (they are independent), so a guarded read costs
+ * one round trip instead of two. The work's result is only handed back when the caller is a member;
+ * for non-members it is discarded. If `work` throws, the error propagates.
+ */
+export async function withMembership<T>(
+  admin: SupabaseClient,
+  workspaceId: string | null | undefined,
+  userId: string,
+  work: () => PromiseLike<T> | T
+): Promise<{ ok: true; value: T; role: 'admin' | 'member' } | { ok: false }> {
+  const [role, value] = await Promise.all([getWorkspaceRole(admin, workspaceId, userId), Promise.resolve().then(work)])
+  return role ? { ok: true, value, role } : { ok: false }
+}

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -12,33 +11,14 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-// Create Supabase client for authentication
-async function createAuthClient() {
-  const cookieStore = await cookies()
-  
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-        setAll() {}
-      },
-    }
-  )
-}
-
 // GET /api/templates - List all templates for a workspace
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
     const searchParams = request.nextUrl.searchParams
     const workspaceId = searchParams.get('workspace_id')
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -49,24 +29,25 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Verify workspace access
-    const { data: membership } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', user.id)
-      .single()
+    // Verify workspace access (independent of the list: one round trip)
+    const [{ data: membership }, { data: templates, error }] = await Promise.all([
+      supabaseAdmin
+        .from('workspace_members')
+        .select('role')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', user.id)
+        .single(),
+      supabaseAdmin
+        .from('task_templates')
+        .select('*, created_by_profile:profiles!task_templates_created_by_fkey(username, email)')
+        .eq('workspace_id', workspaceId)
+        .order('created_at', { ascending: false })
+        .limit(500),
+    ])
 
     if (!membership) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
-
-    const { data: templates, error } = await supabaseAdmin
-      .from('task_templates')
-      .select('*, created_by_profile:profiles!task_templates_created_by_fkey(username, email)')
-      .eq('workspace_id', workspaceId)
-      .order('created_at', { ascending: false })
-      .limit(500)
 
     if (error) {
       // If table doesn't exist, return empty array
@@ -93,7 +74,6 @@ export async function GET(request: NextRequest) {
 // POST /api/templates - Create a new template
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
     const body = await request.json()
 
     const {
@@ -113,8 +93,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -168,7 +148,6 @@ export async function POST(request: NextRequest) {
 // PATCH /api/templates - Update a template
 export async function PATCH(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
     const body = await request.json()
 
     const {
@@ -187,8 +166,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -230,7 +209,6 @@ export async function PATCH(request: NextRequest) {
 // DELETE /api/templates - Delete a template
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createAuthClient()
     const searchParams = request.nextUrl.searchParams
     const id = searchParams.get('id')
 
@@ -242,8 +220,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Get current user
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getAuthUser()
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

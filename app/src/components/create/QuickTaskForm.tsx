@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { supabase } from '@/lib/supabase'
+import { getSessionUser, getSessionUserId } from '@/lib/auth-client'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import AssigneePicker from '@/components/tasks/AssigneePicker'
 import { PRIORITIES, PRIORITY_TONE, fetchProjects, getWorkspaceMembers, priorityLabel } from '@/components/tasks/taskUtils'
@@ -105,10 +106,10 @@ export default function QuickTaskForm({ open, onClose, initial, defaultProjectId
         const [projectList, memberList, userRes] = await Promise.all([
           fetchProjects(workspaceId),
           getWorkspaceMembers(workspaceId, '').catch(() => [] as MemberOption[]),
-          supabase.auth.getUser(),
+          getSessionUser(),
         ])
         if (cancelled) return
-        setUserId(userRes.data.user?.id ?? '')
+        setUserId(userRes?.id ?? '')
         setProjects(projectList)
         setPeople(memberList)
         const preferred = [defaultProjectRef.current, readLastProject()].find(
@@ -141,8 +142,7 @@ export default function QuickTaskForm({ open, onClose, initial, defaultProjectId
       if (who === 'me') {
         assigneeId = userId || null
         if (!assigneeId) {
-          const { data } = await supabase.auth.getUser()
-          assigneeId = data.user?.id ?? null
+          assigneeId = (await getSessionUserId()) || null
         }
       } else if (who !== 'unassigned') {
         assigneeId = who

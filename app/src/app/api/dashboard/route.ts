@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import { getAuthUser } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
 import { runTopLevel } from '@/lib/subtasks';
+import { ServerTimer } from '@/lib/server-timing';
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic';
@@ -15,26 +15,9 @@ const supabaseAdmin = createClient(
 
 export async function GET(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll()
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              cookieStore.set(name, value, options)
-            })
-          },
-        },
-      }
-    );
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    const timer = new ServerTimer();
+    const user = await timer.time('auth', getAuthUser());
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -46,81 +29,62 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Workspace ID required' }, { status: 400 });
     }
 
-    // Verify user has access to this workspace
-    const { data: membership } = await supabaseAdmin
-      .from('workspace_members')
-      .select('role')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', user.id)
-      .single();
+    // Everything below is independent of each other (the project filter is an inner join, not a
+    // separate "list project ids" query), so it all runs in ONE round trip alongside the membership check.
+    // Tasks are limited to this workspace's projects; subtasks never count as tasks.
+    const [{ data: membership }, completed, active, upcoming, { data: timeEntries }] = await timer.time(
+      'db',
+      Promise.all([
+        supabaseAdmin
+          .from('workspace_members')
+          .select('role')
+          .eq('workspace_id', workspaceId)
+          .eq('user_id', user.id)
+          .single(),
+        runTopLevel((topLevel) => {
+          let q = supabaseAdmin
+            .from('tasks')
+            .select('id, projects!inner(workspace_id)', { count: 'exact', head: true })
+            .eq('projects.workspace_id', workspaceId)
+            .eq('is_completed', true);
+          if (topLevel) q = q.is('parent_task_id', null);
+          return q;
+        }),
+        runTopLevel((topLevel) => {
+          let q = supabaseAdmin
+            .from('tasks')
+            .select('id, projects!inner(workspace_id)', { count: 'exact', head: true })
+            .eq('projects.workspace_id', workspaceId)
+            .eq('is_completed', false);
+          if (topLevel) q = q.is('parent_task_id', null);
+          return q;
+        }),
+        runTopLevel((topLevel) => {
+          let q = supabaseAdmin
+            .from('tasks')
+            .select('*, projects!inner(name, workspace_id)')
+            .eq('projects.workspace_id', workspaceId)
+            .eq('is_completed', false)
+            .order('due_date', { ascending: true, nullsFirst: false })
+            .limit(10);
+          if (topLevel) q = q.is('parent_task_id', null);
+          return q;
+        }),
+        supabaseAdmin
+          .from('time_entries')
+          .select('duration')
+          .eq('workspace_id', workspaceId)
+          .eq('user_id', user.id),
+      ])
+    );
 
     if (!membership) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 });
     }
 
-    // Get projects in this workspace first
-    const { data: projects } = await supabaseAdmin
-      .from('projects')
-      .select('id')
-      .eq('workspace_id', workspaceId);
-
-    const projectIds = projects?.map(p => p.id) || [];
-
-    let tasksCompleted = 0;
-    let activeTasksCount = 0;
-    let upcomingTasks: any[] = [];
-
-    if (projectIds.length > 0) {
-      // Get tasks completed in projects of this workspace
-      // (top-level tasks only: subtasks never count as tasks)
-      const { count: completedCount } = await runTopLevel((topLevel) => {
-        let q = supabaseAdmin
-          .from('tasks')
-          .select('*', { count: 'exact', head: true })
-          .in('project_id', projectIds)
-          .eq('is_completed', true);
-        if (topLevel) q = q.is('parent_task_id', null);
-        return q;
-      });
-
-      tasksCompleted = completedCount || 0;
-
-      // Get active tasks
-      const { count: activeCount } = await runTopLevel((topLevel) => {
-        let q = supabaseAdmin
-          .from('tasks')
-          .select('*', { count: 'exact', head: true })
-          .in('project_id', projectIds)
-          .eq('is_completed', false);
-        if (topLevel) q = q.is('parent_task_id', null);
-        return q;
-      });
-
-      activeTasksCount = activeCount || 0;
-
-      // Get upcoming tasks
-      const { data: upcoming } = await runTopLevel((topLevel) => {
-        let q = supabaseAdmin
-          .from('tasks')
-          .select('*, projects(name, workspace_id)')
-          .in('project_id', projectIds)
-          .eq('is_completed', false)
-          .order('due_date', { ascending: true, nullsFirst: false })
-          .limit(10);
-        if (topLevel) q = q.is('parent_task_id', null);
-        return q;
-      });
-
-      upcomingTasks = upcoming || [];
-    }
-
-    // Get time logged
-    const { data: timeEntries } = await supabaseAdmin
-      .from('time_entries')
-      .select('duration')
-      .eq('workspace_id', workspaceId)
-      .eq('user_id', user.id);
-
+    const tasksCompleted = completed.count || 0;
+    const activeTasksCount = active.count || 0;
+    const upcomingTasks: any[] = upcoming.data || [];
     const totalTimeLogged = timeEntries?.reduce((sum, entry) => sum + (entry.duration || 0), 0) || 0;
 
     // Calculate completion rate
@@ -128,13 +92,13 @@ export async function GET(request: Request) {
       ? Math.round((tasksCompleted / (activeTasksCount + tasksCompleted)) * 100)
       : 0;
 
-    return NextResponse.json({
+    return timer.apply(NextResponse.json({
       tasksCompleted,
       timeLogged: Math.round(totalTimeLogged / 3600), // Convert seconds to hours
       activeTasks: activeTasksCount,
       completionRate,
       dueToday: upcomingTasks,
-    });
+    }));
   } catch (error) {
     console.error('Dashboard API error:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });

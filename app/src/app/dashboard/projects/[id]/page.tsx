@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getJsonCached } from '@/lib/api-cache'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
@@ -188,21 +189,35 @@ export default function ProjectDetailPage() {
     const run = async () => {
       setLoading(true)
       try {
-        const response = await fetch(`/api/projects?id=${projectId}`)
-        const result = await response.json()
-        if (!response.ok) throw new Error(result.error)
+        // Everything except the project row itself can start right away: members and notes only need the
+        // project id, and the selected workspace (persisted) is almost always the project's workspace.
+        // The project request is no longer in front of the other five.
+        const hintWs = currentWorkspace?.id || ''
+        const projectRequest = fetch(`/api/projects?id=${projectId}`).then(async (response) => {
+          const body = await response.json()
+          if (!response.ok) throw new Error(body.error)
+          return body
+        })
+        const loadSide = (ws: string) =>
+          Promise.all([
+            ws ? getJsonCached<any>(`/api/task-categories?workspace_id=${ws}`).catch(() => null) : null,
+            ws ? getJsonCached<any>(`/api/team?workspace_id=${ws}`).catch(() => null) : null,
+            loadTasks(ws),
+          ])
+        const early = Promise.all([loadSide(hintWs), loadProjectMembers(), loadNotes()])
+        early.catch(() => {})
+
+        const result = await projectRequest
         if (cancelled) return
         const loaded: Project = result.project
         setProject(loaded)
-        const ws = loaded.workspace_id || currentWorkspace?.id || ''
+        const ws = loaded.workspace_id || hintWs
 
-        const [categoriesResult, teamResult] = await Promise.all([
-          ws ? fetch(`/api/task-categories?workspace_id=${ws}`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null,
-          ws ? fetch(`/api/team?workspace_id=${ws}`).then((r) => (r.ok ? r.json() : null)).catch(() => null) : null,
-          loadTasks(ws),
-          loadProjectMembers(),
-          loadNotes(),
-        ])
+        let [categoriesResult, teamResult] = (await early)[0]
+        if (ws !== hintWs) {
+          // deep link into a project of another workspace: reload the workspace-scoped data for it
+          ;[categoriesResult, teamResult] = await loadSide(ws)
+        }
         if (cancelled) return
         setCategories(categoriesResult?.categories || [])
         setWorkspaceMembers(

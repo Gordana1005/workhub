@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { getSessionUser } from '@/lib/auth-client'
 import { format, isToday, isYesterday } from 'date-fns'
 import { enUS, mk } from 'date-fns/locale'
 import { useLocaleSwitch } from '@/i18n/LocaleProvider'
@@ -107,7 +108,7 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
 
     setLoading(true)
     loadNotifications()
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id || null))
+    getSessionUser().then((user) => setUserId(user?.id || null))
 
     return () => {
       document.body.style.overflow = previous

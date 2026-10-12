@@ -6,6 +6,7 @@ import { differenceInDays } from 'date-fns';
 import { useTranslations } from 'next-intl';
 import { useToast } from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase';
+import { getSessionUser } from '@/lib/auth-client'
 import { useLocaleSwitch } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -94,7 +95,7 @@ export default function GoalsDashboard({ currency = 'USD' }: { currency?: string
 
         if (error) throw error;
       } else {
-        const { data: { user } } = await supabase.auth.getUser();
+        const user = await getSessionUser();
         const { error } = await supabase
           .from('finance_goals')
           .insert({

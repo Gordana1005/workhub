@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { safeNextPath } from '@/lib/safeNext'
+import { getUserFromClient } from '@/lib/auth-claims'
 
 // NOTE: with a `src/` directory Next.js only picks up `src/middleware.ts`
 // (a root-level middleware.ts is silently ignored).
@@ -39,11 +40,12 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  // getUser() validates the JWT with Supabase (getSession() only reads the cookie)
+  // getClaims() verifies the JWT signature/expiry locally (JWKS is cached) and refreshes the session
+  // when it expired, so a normal navigation costs no Supabase Auth round trip. It falls back to
+  // getUser() for legacy symmetric-key projects.
   let user = null
   try {
-    const { data } = await supabase.auth.getUser()
-    user = data.user
+    user = await getUserFromClient(supabase)
   } catch (err) {
     console.error('Middleware auth check failed', err)
   }

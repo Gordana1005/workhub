@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getJsonCached } from '@/lib/api-cache';
 import {
   addDays,
   addMonths,
@@ -133,11 +134,12 @@ export default function ReportsPage() {
     try {
       const [reportRes, teamRes] = await Promise.all([
         fetch(`/api/reports?workspace_id=${workspaceId}`),
-        fetch(`/api/team?workspace_id=${workspaceId}`),
+        // shared 30s cache: the team list is also needed by the tasks / home screens
+        getJsonCached<any>(`/api/team?workspace_id=${workspaceId}`).catch(() => ({ members: [] })),
       ]);
       const report = await reportRes.json();
       if (!reportRes.ok) throw new Error(report.error || 'report failed');
-      const team = teamRes.ok ? await teamRes.json() : { members: [] };
+      const team = teamRes;
 
       setTasks(report.tasks || []);
       setEntries(report.timeEntries || []);

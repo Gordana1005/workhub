@@ -1,3 +1,5 @@
+import { invalidateApiCache } from './api-cache'
+
 /**
  * Deletes every Cache Storage entry (the service worker's runtime caches, which
  * can hold authenticated pages). Does NOT unregister the service worker.
@@ -5,6 +7,7 @@
  * unavailable, and it never throws.
  */
 export async function clearClientCaches(): Promise<void> {
+  invalidateApiCache() // in-memory GET cache (signed-out users must not see the last account's data)
   try {
     if (typeof window === 'undefined' || typeof caches === 'undefined') return
     const keys = await caches.keys()

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Check, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { getSessionUser } from '@/lib/auth-client'
 import { format } from 'date-fns';
 import { enUS, mk } from 'date-fns/locale';
 import { useTranslations } from 'next-intl';
@@ -91,7 +92,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
 
   const handleApprove = async (requestId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) return;
 
       const { error } = await supabase
@@ -125,7 +126,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
     setRejecting(true);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getSessionUser();
       if (!user) return;
 
       const { error } = await supabase
