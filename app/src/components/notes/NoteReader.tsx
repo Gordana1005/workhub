@@ -1,13 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { ArrowLeft, Check, FolderOpen, Pencil } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/Button'
 import { IconMenu } from '@/components/ui/IconMenu'
-import VersionHistory from './VersionHistory'
 import NoteContent from './NoteContent'
 import { countWords, stripHtml, tagTint, useNoteDates, type NoteRecord } from './noteUtils'
+
+const VersionHistory = dynamic(() => import('./VersionHistory'), { ssr: false })
 
 interface NoteReaderProps {
   note: NoteRecord
@@ -133,7 +135,7 @@ export default function NoteReader({
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:hidden"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:hidden"
           aria-label={t('back')}
         >
           <ArrowLeft className="h-5 w-5" />
@@ -159,19 +161,23 @@ export default function NoteReader({
         ) : null}
 
         {canEdit ? (
-          <Button type="button" onClick={onEdit} className="shrink-0 gap-2">
+          <Button type="button" onClick={onEdit} className="h-11 shrink-0 gap-2 sm:h-10">
             <Pencil className="h-4 w-4" />
             {t('edit')}
           </Button>
         ) : null}
-        <IconMenu label={t('moreActions')} items={menuItems} />
+        <IconMenu
+          label={t('moreActions')}
+          items={menuItems}
+          buttonClassName="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover sm:h-9 sm:w-9"
+        />
       </header>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div
-          className={`mx-auto flex w-full justify-center gap-12 px-5 sm:px-8 ${showRail ? 'max-w-[74rem]' : 'max-w-[58rem]'}`}
+          className={`mx-auto flex w-full justify-center gap-12 px-4 sm:px-8 ${showRail ? 'max-w-[74rem]' : 'max-w-[58rem]'}`}
         >
-          <article className="w-full min-w-0 max-w-[44rem] pb-32 pt-6 md:pt-12">
+          <article className="w-full min-w-0 max-w-[44rem] pb-[calc(8rem+env(safe-area-inset-bottom))] pt-5 md:pt-12">
             <h1 className="break-words text-[1.75rem] font-bold leading-[1.2] tracking-tight text-text-primary sm:text-4xl">
               {note.title}
             </h1>

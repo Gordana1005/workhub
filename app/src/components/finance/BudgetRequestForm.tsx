@@ -13,7 +13,7 @@ interface BudgetRequestFormProps {
   onSuccess: () => void;
 }
 
-const fieldClass = 'block w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
+const fieldClass = 'block w-full min-w-0 rounded-lg border border-border-control bg-secondary px-3 py-2.5 min-h-11 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:min-h-10 sm:text-sm';
 
 export default function BudgetRequestForm({ projectId, onClose, onSuccess }: BudgetRequestFormProps) {
   const t = useTranslations('pages.tools');
@@ -70,18 +70,19 @@ export default function BudgetRequestForm({ projectId, onClose, onSuccess }: Bud
       onClose={onClose}
       size="lg"
       footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={onClose}>
+        <>
+          <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={onClose}>
             {t('finance.cancel')}
           </Button>
           <Button
             type="submit"
             form="budget-request-form"
+            className="h-12 sm:h-10"
             disabled={isSubmitting || !formData.amount || !formData.description}
           >
             {isSubmitting ? t('finance.submitting') : t('finance.submitRequest')}
           </Button>
-        </div>
+        </>
       }
     >
       <form id="budget-request-form" onSubmit={handleSubmit} className="space-y-4">
@@ -93,6 +94,8 @@ export default function BudgetRequestForm({ projectId, onClose, onSuccess }: Bud
             id="budget-amount"
             type="number"
             step="0.01"
+            inputMode="decimal"
+            enterKeyHint="next"
             value={formData.amount}
             onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
             placeholder="250.00"
@@ -108,6 +111,7 @@ export default function BudgetRequestForm({ projectId, onClose, onSuccess }: Bud
           <input
             id="budget-description"
             type="text"
+            enterKeyHint="next"
             value={formData.description}
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             placeholder={t('finance.descriptionPlaceholder')}

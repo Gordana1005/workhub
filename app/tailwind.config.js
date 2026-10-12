@@ -5,6 +5,11 @@ const c = (name) => `rgb(var(--rgb-${name}) / <alpha-value>)`
 
 module.exports = {
   darkMode: 'class',
+  // hover: styles only apply on devices that can really hover, so taps on phones never leave a
+  // "stuck" hover state behind (use `active:` for pressed feedback).
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
   content: [
     './src/**/*.{js,ts,jsx,tsx,mdx}',
   ],
@@ -97,6 +102,7 @@ module.exports = {
         'dialog-in': 'tw-dialog-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
         'dialog-out': 'tw-dialog-out 150ms ease-in both',
         'sheet-in': 'tw-sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
+        'sheet-out': 'tw-sheet-out 150ms ease-in both',
         'pop-in': 'tw-pop-in 120ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
         'toast-in': 'tw-toast-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
         shimmer: 'tw-shimmer 1.5s ease-in-out infinite',

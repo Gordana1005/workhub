@@ -28,7 +28,7 @@ interface ImportTransactionsProps {
   onClose: () => void;
 }
 
-const selectClass = 'block w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2 text-text-primary focus:border-primary focus:outline-none';
+const selectClass = 'block w-full min-w-0 rounded-lg border border-border-control bg-secondary px-3 py-2 min-h-11 text-base text-text-primary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:min-h-10 sm:text-sm';
 
 export default function ImportTransactions({ accountId, onImport, onClose }: ImportTransactionsProps) {
   const t = useTranslations('pages.tools');
@@ -188,14 +188,14 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
       onClose={onClose}
       size="lg"
       footer={file && !importResults ? (
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={onClose}>
+        <>
+          <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={onClose}>
             {t('finance.cancel')}
           </Button>
-          <Button type="button" onClick={handleImport} disabled={isImporting || !mapping.description || !mapping.amount}>
+          <Button type="button" className="h-12 sm:h-10" onClick={handleImport} disabled={isImporting || !mapping.description || !mapping.amount}>
             {isImporting ? t('finance.importing') : t('finance.importTransactions')}
           </Button>
-        </div>
+        </>
       ) : undefined}
     >
       {!file && (
@@ -210,7 +210,7 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
           />
           <label
             htmlFor="csv-upload"
-            className="inline-flex cursor-pointer rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-surface-hover focus-within:ring-2"
+            className="inline-flex min-h-12 cursor-pointer items-center rounded-lg border border-border-strong bg-surface px-5 text-sm font-medium text-text-primary hover:bg-surface-hover active:bg-tertiary focus-within:ring-2"
           >
             {t('finance.chooseCsv')}
           </label>
@@ -232,7 +232,7 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
                 setPreview([]);
                 setHeaders([]);
               }}
-              className="shrink-0 text-sm text-danger hover:underline"
+              className="inline-flex min-h-11 shrink-0 items-center px-2 text-sm text-danger hover:underline"
             >
               {t('finance.remove')}
             </button>
@@ -322,7 +322,7 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
               ? t('finance.importSummaryFailed', { success: importResults.success, failed: importResults.failed })
               : t('finance.importSummary', { success: importResults.success })}
           </p>
-          <Button type="button" onClick={onClose}>
+          <Button type="button" size="lg" onClick={onClose}>
             {t('finance.close')}
           </Button>
         </div>

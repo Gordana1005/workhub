@@ -15,6 +15,8 @@ export function Segmented<T extends string>({
   label,
   className = '',
   fullWidth = false,
+  large = false,
+  stretchOnPhone = false,
 }: {
   value: T
   onChange: (value: T) => void
@@ -22,12 +24,16 @@ export function Segmented<T extends string>({
   label: string
   className?: string
   fullWidth?: boolean
+  /** Taller, larger-type buttons for primary phone forms */
+  large?: boolean
+  /** Fill the row on phones, shrink to content from sm */
+  stretchOnPhone?: boolean
 }) {
   return (
     <div
       role="radiogroup"
       aria-label={label}
-      className={`${fullWidth ? 'flex w-full' : 'inline-flex'} items-center gap-0.5 rounded-xl bg-surface-hover p-1 ${className}`}
+      className={`${fullWidth ? 'flex w-full' : stretchOnPhone ? 'flex w-full sm:inline-flex sm:w-auto' : 'inline-flex'} items-center gap-0.5 rounded-xl bg-surface-hover p-1 ${className}`}
     >
       {options.map((option) => {
         const selected = option.value === value
@@ -38,8 +44,10 @@ export function Segmented<T extends string>({
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(option.value)}
-            className={`min-w-0 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-              fullWidth ? 'flex-1' : ''
+            className={`min-w-0 whitespace-nowrap rounded-lg px-3 py-1 text-sm font-medium max-sm:whitespace-normal max-sm:px-1.5 max-sm:text-center max-sm:leading-tight transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              large ? 'min-h-12 text-base sm:min-h-10 sm:text-sm' : 'min-h-10 sm:min-h-8'
+            } ${
+              fullWidth ? 'flex-1' : stretchOnPhone ? 'flex-1 sm:flex-none' : ''
             } ${
               selected
                 ? 'bg-surface text-text-primary shadow-sm'

@@ -1,21 +1,27 @@
 ﻿'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { AnimatePresence } from 'framer-motion'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
 import { localDateString } from '@/lib/date'
-import { Clock, FileText, Plus, Square } from 'lucide-react'
+import { CheckCircle2, ChevronDown, Clock, FileText, Plus, Square } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Input, Select } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { TaskRow } from '@/components/ui/TaskRow'
 import Link from 'next/link'
 import { addDays, isValid, startOfDay } from 'date-fns'
 import { useTimerStore } from '@/stores/useTimerStore'
 import TaskDetailModal from '@/components/tasks/TaskDetailModal'
+import SubtaskChip from '@/components/tasks/SubtaskChip'
+import { fetchSubtaskCounts, runTopLevel, withSubtaskCounts } from '@/lib/subtasks'
+import GettingStarted from '@/components/onboarding/GettingStarted'
+import FirstProjectHero from '@/components/onboarding/FirstProjectHero'
 
 // Types
 interface Task {
@@ -28,6 +34,8 @@ interface Task {
   category?: string | null
   project?: { name: string; color: string }
   assignee?: { id: string; username: string }
+  subtask_total?: number
+  subtask_done?: number
 }
 
 interface Project {
@@ -55,6 +63,50 @@ interface DashboardStats {
   tasksRemaining: number
 }
 
+// Layout-shaped placeholder (no spinners): same blocks as the real page so nothing jumps when data lands.
+function TaskRowsSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div aria-hidden className="space-y-2">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-3">
+          <Skeleton className="h-5 w-5 shrink-0 !rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-3.5 w-3/4" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ListSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div aria-hidden className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-surface">
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="space-y-2 px-4 py-3">
+          <Skeleton className="h-3.5 w-1/2" />
+          <Skeleton className="h-3 w-2/3" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function HomeSkeleton({ label }: { label: string }) {
+  return (
+    <div role="status" aria-busy="true" className="space-y-6">
+      <span className="sr-only">{label}</span>
+      <div aria-hidden className="space-y-2">
+        <Skeleton className="h-7 w-2/3 max-w-sm" />
+        <Skeleton className="h-4 w-1/3 max-w-xs" />
+      </div>
+      <Skeleton className="h-[7.25rem] w-full !rounded-xl sm:h-14" />
+      <TaskRowsSkeleton />
+    </div>
+  )
+}
+
 // Duplicate Task type trimmed; using the above definition
 export default function Dashboard() {
   const t = useTranslations('pages.home')
@@ -77,10 +129,18 @@ export default function Dashboard() {
     completionRate: 0,
     tasksRemaining: 0
   })
+  // Total projects (any status); null until the projects request has succeeded. Drives first-run onboarding.
+  const [projectTotal, setProjectTotal] = useState<number | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
+  const silentReload = useRef(false)
   const [newTaskTitle, setNewTaskTitle] = useState('')
   const [quickProjectId, setQuickProjectId] = useState('')
   const [quickAssigneeId, setQuickAssigneeId] = useState('')
   const [mounted, setMounted] = useState(false)
+  const [dataLoading, setDataLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [showMore, setShowMore] = useState(false)
+  const quickInputRef = useRef<HTMLInputElement>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [showTaskModal, setShowTaskModal] = useState(false)
   const { time: timerTime, isRunning: timerRunning, stop: stopTimer } = useTimerStore()
@@ -109,18 +169,35 @@ export default function Dashboard() {
   useEffect(() => {
     if (!currentWorkspace) return
 
+    let cancelled = false
+    // A task created elsewhere (New menu, onboarding checklist) refetches without flashing the skeleton
+    const silent = silentReload.current
+    silentReload.current = false
+    if (!silent) {
+      setDataLoading(true)
+      setProjectTotal(null)
+    }
+
     const fetchData = async () => {
       // 1. Tasks - Correctly handling status/completion
       // We explicitly look for tasks that are not marked as completed
-      const { data: tasksData, error: tasksError } = await supabase
-        .from('tasks')
-        .select('*, project:projects(name, color), assignee:profiles!tasks_assignee_id_fkey(id, username)')
-        .eq('workspace_id', currentWorkspace.id)
-        .neq('is_completed', true)
-        .order('due_date', { ascending: true, nullsFirst: false })
-        .limit(40)
-      
-      if (tasksData) setTasks(tasksData)
+      // (top-level tasks only: subtasks live inside their parent and show up as an x/y chip)
+      const { data: tasksData, error: tasksError } = await runTopLevel((topLevel) => {
+        let q = supabase
+          .from('tasks')
+          .select('*, project:projects(name, color), assignee:profiles!tasks_assignee_id_fkey(id, username)')
+          .eq('workspace_id', currentWorkspace.id)
+          .neq('is_completed', true)
+          .order('due_date', { ascending: true, nullsFirst: false })
+          .limit(40)
+        if (topLevel) q = q.is('parent_task_id', null)
+        return q
+      })
+
+      if (tasksData) {
+        const subtaskCounts = await fetchSubtaskCounts(supabase, { workspaceId: currentWorkspace.id })
+        setTasks(withSubtaskCounts(tasksData, subtaskCounts))
+      }
       if (tasksError) console.error('Error fetching tasks:', tasksError)
 
       // 2. Projects
@@ -129,6 +206,7 @@ export default function Dashboard() {
       if (projectsResponse.ok) {
         const projectsJson = await projectsResponse.json()
         projectsData = projectsJson.projects || []
+        setProjectTotal(projectsData.length)
         const activeProjects = projectsData.filter((p: any) => p.status === 'active').slice(0, 8)
         setProjects(activeProjects)
       } else {
@@ -160,18 +238,26 @@ export default function Dashboard() {
 
       // 4. Stats Calculations
       // Tasks Due (Not completed)
-      const { count: dueCount } = await supabase
-        .from('tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('workspace_id', currentWorkspace.id)
-        .neq('is_completed', true)
+      const { count: dueCount } = await runTopLevel((topLevel) => {
+        let q = supabase
+          .from('tasks')
+          .select('*', { count: 'exact', head: true })
+          .eq('workspace_id', currentWorkspace.id)
+          .neq('is_completed', true)
+        if (topLevel) q = q.is('parent_task_id', null)
+        return q
+      })
 
       // Tasks Completed
-      const { count: completedCount } = await supabase
-        .from('tasks')
-        .select('*', { count: 'exact', head: true })
-        .eq('workspace_id', currentWorkspace.id)
-        .eq('is_completed', true)
+      const { count: completedCount } = await runTopLevel((topLevel) => {
+        let q = supabase
+          .from('tasks')
+          .select('*', { count: 'exact', head: true })
+          .eq('workspace_id', currentWorkspace.id)
+          .eq('is_completed', true)
+        if (topLevel) q = q.is('parent_task_id', null)
+        return q
+      })
 
       // Active Projects
       const activeProjectsCount = projectsData.filter((p: any) => p.status === 'active').length
@@ -203,13 +289,30 @@ export default function Dashboard() {
     }
 
     fetchData()
+      .catch((error) => console.error('Error loading dashboard:', error))
+      .finally(() => {
+        if (!cancelled) setDataLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   // Only the workspace id matters: the store hands out a fresh object on every refresh, which would refetch needlessly
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentWorkspace?.id])
+  }, [currentWorkspace?.id, reloadTick])
+
+  useEffect(() => {
+    const onTaskCreated = () => {
+      silentReload.current = true
+      setReloadTick((tick) => tick + 1)
+    }
+    window.addEventListener('trackwork:task-created', onTaskCreated)
+    return () => window.removeEventListener('trackwork:task-created', onTaskCreated)
+  }, [])
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newTaskTitle.trim() || !currentWorkspace) return
+    if (!newTaskTitle.trim() || !currentWorkspace || adding) return
+    setAdding(true)
 
     const { data: authData } = await supabase.auth.getUser()
     const currentUserId = authData.user?.id
@@ -231,9 +334,12 @@ export default function Dashboard() {
         setTasks([data, ...tasks])
         setNewTaskTitle('')
       // Keep quick selectors as-is so you can add multiple tasks; clear title only
+      // and keep the keyboard up so the next one can be typed straight away
+      quickInputRef.current?.focus()
     } else if (error) {
         console.error('Error creating task:', error)
     }
+    setAdding(false)
   }
 
   const handleToggleTask = async (taskId: string, currentStatus: boolean) => {
@@ -312,7 +418,7 @@ export default function Dashboard() {
   const formatDuration = (seconds: number) =>
     t('hoursMinutes', { hours: Math.floor(seconds / 3600), minutes: Math.floor((seconds % 3600) / 60) })
 
-  if (!mounted) return null
+  if (!mounted) return <HomeSkeleton label={t('loadingWorkspace')} />
 
   if (!loading && workspaces.length === 0 && !currentWorkspace) {
     return (
@@ -335,13 +441,11 @@ export default function Dashboard() {
     )
   }
 
-  if (!currentWorkspace) return <p className="py-12 text-center text-sm text-text-muted">{t('loadingWorkspace')}</p>
+  if (!currentWorkspace) return <HomeSkeleton label={t('loadingWorkspace')} />
 
-  const fieldClass =
-    'w-full rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-text-primary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
-
+  // 44px touch target on phones, still reads as a quiet text link on desktop
   const linkClass =
-    'rounded text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
+    'inline-flex min-h-11 items-center rounded px-1 text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:min-h-0'
 
   const groupDefs = [
     { key: 'overdue' as const, label: t('groupOverdue'), tone: 'text-danger' },
@@ -352,6 +456,51 @@ export default function Dashboard() {
 
   const cardClass = 'rounded-xl border border-border bg-surface'
 
+  // Phone: this chip sits right under the quick-add field; xl: it moves to the side column.
+  const timerCard = (
+    <section className={`${cardClass} flex items-center gap-3 px-4 py-3`}>
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+          timerRunning ? 'bg-primary/10 text-primary' : 'bg-surface-hover text-text-muted'
+        }`}
+      >
+        <Clock className="h-[18px] w-[18px]" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-text-primary">
+          {timerRunning ? t('timerRunning') : t('timerIdle')}
+        </p>
+        <p className="truncate text-xs text-text-muted">
+          {t('timeToday')}: {formatDuration(stats.timeLogged + (timerRunning ? timerTime : 0))}
+        </p>
+      </div>
+      {timerRunning ? (
+        <Button type="button" variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={() => stopTimer()}>
+          <Square className="h-3 w-3" />
+          {t('stopTimer')}
+        </Button>
+      ) : (
+        <Link href="/dashboard/time-tracker" aria-label={t('openTimer')} className={`shrink-0 ${linkClass}`}>
+            {t('start')}
+          </Link>
+      )}
+    </section>
+  )
+
+  // Brand-new workspace: one friendly hero with the primary action instead of three empty boxes
+  if (!dataLoading && projectTotal === 0 && tasks.length === 0 && stats.tasksDue + stats.tasksCompleted === 0) {
+    return (
+      <div className="space-y-6">
+        <PageHeader title={`${t(greetingKey)}, ${userName || t('there')}`} />
+        <FirstProjectHero />
+        {dialog}
+      </div>
+    )
+  }
+
+  const dueNowCount = taskGroups.overdue.length + taskGroups.today.length
+  const laterCount = taskGroups.upcoming.length + taskGroups.noDate.length
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -359,38 +508,46 @@ export default function Dashboard() {
         description={t('doneLeft', { done: stats.tasksCompleted, left: stats.tasksRemaining })}
       />
 
+      {!dataLoading && projectTotal !== null ? (
+        <GettingStarted counts={{ projects: projectTotal, tasks: stats.tasksDue + stats.tasksCompleted, notes: notes.length }} />
+      ) : null}
+
       <form
         onSubmit={handleCreateTask}
         aria-label={t('quickAddLabel')}
         className={`${cardClass} grid grid-cols-2 gap-2 p-2 sm:flex sm:items-center`}
       >
-        <input
+        <Input
+          ref={quickInputRef}
           type="text"
           aria-label={t('quickAddLabel')}
           placeholder={t('taskPlaceholder')}
-          className={`${fieldClass} col-span-2 min-w-0 sm:flex-1`}
+          className="col-span-2 min-w-0 sm:flex-1"
+          enterKeyHint="done"
+          autoComplete="off"
+          autoCapitalize="sentences"
           value={newTaskTitle}
           onChange={(event) => setNewTaskTitle(event.target.value)}
         />
         {projects.length > 0 && (
-          <select
+          <Select
             aria-label={t('project')}
             value={quickProjectId}
             onChange={(event) => setQuickProjectId(event.target.value)}
-            className={`${fieldClass} min-w-0 sm:w-44 xl:w-52`}
+            wrapperClassName="min-w-0 sm:w-44 xl:w-52"
           >
             <option value="">{t('selectProject')}</option>
             {projects.map((project) => (
               <option key={project.id} value={project.id}>{project.name}</option>
             ))}
-          </select>
+          </Select>
         )}
         {teamMembers.length > 0 && (
-          <select
+          <Select
             aria-label={t('assignee')}
             value={quickAssigneeId}
             onChange={(event) => setQuickAssigneeId(event.target.value)}
-            className={`${fieldClass} min-w-0 sm:w-40 xl:w-48`}
+            wrapperClassName="min-w-0 sm:w-40 xl:w-48"
           >
             <option value="">{t('assignToMe')}</option>
             {teamMembers.map((member) => (
@@ -398,13 +555,15 @@ export default function Dashboard() {
                 {member.username === 'unknown' ? t('unknownUser') : member.username}
               </option>
             ))}
-          </select>
+          </Select>
         )}
-        <Button type="submit" disabled={!newTaskTitle.trim()} className="col-span-2 shrink-0 gap-1.5">
+        <Button type="submit" size="lg" disabled={!newTaskTitle.trim()} loading={adding} className="col-span-2 shrink-0 gap-1.5 sm:h-10 sm:w-auto sm:px-4">
           <Plus className="h-4 w-4" />
           {t('addTask')}
         </Button>
       </form>
+
+      <div className="xl:hidden">{timerCard}</div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-12 xl:gap-8">
         <section className="min-w-0 space-y-5 xl:col-span-8">
@@ -412,14 +571,20 @@ export default function Dashboard() {
             <h2 className="text-base font-semibold text-text-primary">{t('tasksOpen')}</h2>
             <Link href="/dashboard/tasks" className={linkClass}>{t('viewAll')}</Link>
           </div>
-          {tasks.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-border px-4 py-10 text-center text-sm text-text-muted">
-              {t('allCaughtUp')}
-            </p>
+          {dataLoading && tasks.length === 0 ? (
+            <div role="status" aria-busy="true">
+              <span className="sr-only">{t('loadingWorkspace')}</span>
+              <TaskRowsSkeleton />
+            </div>
+          ) : tasks.length === 0 ? (
+            <EmptyState compact icon={<CheckCircle2 />} title={t('allCaughtUp')} />
           ) : (
             groupDefs.map(({ key, label, tone }) =>
               taskGroups[key].length === 0 ? null : (
-                <div key={key} className="space-y-2">
+                <div
+                  key={key}
+                  className={`space-y-2 ${(key === 'upcoming' || key === 'noDate') && !showMore ? 'hidden md:block' : ''}`}
+                >
                   <h3 className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-wider ${tone}`}>
                     {label}
                     <span className="rounded-full bg-surface-hover px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal text-text-muted">
@@ -447,6 +612,7 @@ export default function Dashboard() {
                         }}
                         onToggle={() => handleToggleTask(task.id, task.is_completed)}
                         onDelete={() => handleDeleteTask(task.id)}
+                        meta={task.subtask_total ? <SubtaskChip total={task.subtask_total} done={task.subtask_done} /> : undefined}
                       />
                     ))}
                   </div>
@@ -454,43 +620,35 @@ export default function Dashboard() {
               )
             )
           )}
+          {tasks.length > 0 && dueNowCount === 0 ? (
+            <p className="rounded-xl border border-dashed border-border px-4 py-5 text-center text-sm text-text-muted md:hidden">
+              {t('nothingDueNow')}
+            </p>
+          ) : null}
+          {laterCount > 0 ? (
+            <button
+              type="button"
+              aria-expanded={showMore}
+              onClick={() => setShowMore((value) => !value)}
+              className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-border bg-surface px-4 text-sm font-medium text-text-secondary active:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:hidden"
+            >
+              {showMore ? t('showLess') : t('showMoreTasks', { count: laterCount })}
+              <ChevronDown className={`h-4 w-4 transition-transform ${showMore ? 'rotate-180' : ''}`} />
+            </button>
+          ) : null}
         </section>
 
         <div className="grid min-w-0 content-start gap-6 md:grid-cols-2 xl:col-span-4 xl:grid-cols-1">
-          <section className={`${cardClass} flex items-center gap-3 px-4 py-3 md:col-span-2 xl:col-span-1`}>
-            <span
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
-                timerRunning ? 'bg-primary/10 text-primary' : 'bg-surface-hover text-text-muted'
-              }`}
-            >
-              <Clock className="h-[18px] w-[18px]" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-text-primary">
-                {timerRunning ? t('timerRunning') : t('timerIdle')}
-              </p>
-              <p className="truncate text-xs text-text-muted">
-                {t('timeToday')}: {formatDuration(stats.timeLogged + (timerRunning ? timerTime : 0))}
-              </p>
-            </div>
-            {timerRunning ? (
-              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => stopTimer()}>
-                <Square className="h-3 w-3" />
-                {t('stopTimer')}
-              </Button>
-            ) : (
-              <Link href="/dashboard/time-tracker" className={`shrink-0 ${linkClass}`}>
-                {t('openTimer')}
-              </Link>
-            )}
-          </section>
+          <div className="hidden xl:block">{timerCard}</div>
 
           <section className="min-w-0 space-y-3">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold text-text-primary">{t('activeProjects')}</h2>
               <Link href="/dashboard/projects" className={linkClass}>{t('viewAll')}</Link>
             </div>
-            {projects.length === 0 ? (
+            {dataLoading && projects.length === 0 ? (
+              <ListSkeleton />
+            ) : projects.length === 0 ? (
               <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted">
                 {t('noActiveProjects')}
               </p>
@@ -540,7 +698,9 @@ export default function Dashboard() {
               <h2 className="text-base font-semibold text-text-primary">{t('recentNotes')}</h2>
               <Link href="/dashboard/notes" className={linkClass}>{t('viewAll')}</Link>
             </div>
-            {notes.length === 0 ? (
+            {dataLoading && notes.length === 0 ? (
+              <ListSkeleton rows={2} />
+            ) : notes.length === 0 ? (
               <p className="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-text-muted">
                 {t('noRecentNotes')}
               </p>

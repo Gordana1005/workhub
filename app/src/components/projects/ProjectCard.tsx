@@ -58,7 +58,7 @@ export function AvatarStack({
   const extra = Math.max(0, (total ?? members.length) - shown.length)
   if (shown.length === 0) return null
   return (
-    <div className="flex items-center -space-x-2">
+    <div className="flex items-center -space-x-1.5">
       {shown.map((member) => (
         <Avatar
           key={member.id}
@@ -66,11 +66,11 @@ export function AvatarStack({
           alt={member.username || '?'}
           fallback={(member.username || '?').slice(0, 2).toUpperCase()}
           size="sm"
-          className="h-6 w-6 text-[10px] ring-2 ring-surface"
+          className="h-7 w-7 text-[10px] ring-2 ring-surface"
         />
       ))}
       {extra > 0 ? (
-        <span className="relative z-0 inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-border bg-background px-1 text-[10px] font-medium text-text-secondary ring-2 ring-surface">
+        <span className="relative z-0 inline-flex h-7 min-w-7 items-center justify-center rounded-full border border-border bg-background px-1 text-[10px] font-medium text-text-secondary ring-2 ring-surface">
           +{extra}
         </span>
       ) : null}
@@ -136,7 +136,11 @@ export default function ProjectCard({ project, view = 'grid', onEdit, onDelete }
   const menu =
     menuItems.length > 0 ? (
       <div className="pointer-events-auto relative">
-        <IconMenu label={`${t('projectActions')}: ${project.name}`} items={menuItems} />
+        <IconMenu
+          label={`${t('projectActions')}: ${project.name}`}
+          items={menuItems}
+          buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover sm:h-9 sm:w-9"
+        />
       </div>
     ) : null
 
@@ -157,9 +161,9 @@ export default function ProjectCard({ project, view = 'grid', onEdit, onDelete }
 
   if (view === 'list') {
     return (
-      <div className="group relative transition-colors duration-150 hover:bg-surface-hover">
+      <div className="group relative transition-colors duration-150 hover:bg-surface-hover active:bg-surface-hover">
         {overlay}
-        <div className={`pointer-events-none relative flex items-center gap-3 px-3 py-3 sm:px-4 lg:grid lg:gap-x-4 ${PROJECT_LIST_COLUMNS}`}>
+        <div className={`pointer-events-none relative flex min-h-[4.25rem] items-center gap-3 px-3 py-3 sm:px-4 lg:grid lg:gap-x-4 ${PROJECT_LIST_COLUMNS}`}>
           <div className="flex min-w-0 flex-1 items-center gap-3">
             <ProjectTile project={project} />
             <div className="min-w-0 flex-1">
@@ -199,16 +203,16 @@ export default function ProjectCard({ project, view = 'grid', onEdit, onDelete }
   }
 
   return (
-    <article className="group relative flex rounded-2xl border border-border bg-surface transition-colors duration-150 hover:border-primary/40 hover:bg-surface-hover">
+    <article className="group relative flex rounded-2xl border border-border bg-surface transition-colors duration-150 hover:border-primary/40 hover:bg-surface-hover active:bg-surface-hover">
       {overlay}
       <div className="pointer-events-none relative flex min-w-0 flex-1 flex-col gap-3 p-4">
         <div className="flex items-start gap-3">
           <ProjectTile project={project} />
           <div className="min-w-0 flex-1">
-            <h2 className="truncate text-base font-semibold text-text-primary">{project.name}</h2>
+            <h2 className="line-clamp-2 break-words text-base font-semibold leading-snug text-text-primary">{project.name}</h2>
             <p className="mt-0.5 text-xs text-text-muted">{statusLine}</p>
           </div>
-          {menu ? <div className="-mr-2 -mt-1">{menu}</div> : null}
+          {menu ? <div className="-mr-2 -mt-2">{menu}</div> : null}
         </div>
 
         {project.description ? (

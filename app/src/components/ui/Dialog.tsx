@@ -4,7 +4,10 @@
  * Dialog
  * ------
  * <Dialog open title onClose footer? size?='sm'|'md'|'lg'|'xl' description? closeOnBackdrop?=true>
- *   - portal, z-[80]; full-screen on phone (safe-area aware), centred rounded-2xl panel on sm+
+ *   - portal, z-[80]. Phone: size sm|md = bottom sheet (grab handle, swipe down to close, max 92% tall),
+ *     size lg|xl = full-screen (safe-area aware). sm+: centred rounded-2xl panel.
+ *   - on-screen keyboard: the dialog resizes to the visual viewport, so the footer stays reachable and
+ *     the focused field is scrolled into view
  *   - 150ms enter/exit (opacity + translate), instant under prefers-reduced-motion
  *   - focus trap, initial focus (`data-autofocus` / autoFocus / first field; on touch devices the
  *     panel itself so the keyboard does not pop), focus restored to the opener on close
@@ -18,37 +21,12 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
+import { useVisualViewport } from '@/hooks/useVisualViewport'
+import { focusables, lockScroll, prefersReducedMotion, revealFocused, unlockScroll } from './modalUtils'
+import { useSheetDrag } from './useSheetDrag'
 
-// ---- shared modal plumbing (module scope so nested dialogs cooperate) ----
+// Open dialogs, topmost last (module scope so nested dialogs cooperate).
 const stack: symbol[] = []
-let lockCount = 0
-let savedOverflow = ''
-
-function lockScroll() {
-  if (lockCount++ === 0) {
-    savedOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-  }
-}
-function unlockScroll() {
-  if (--lockCount <= 0) {
-    lockCount = 0
-    document.body.style.overflow = savedOverflow
-  }
-}
-
-const FOCUSABLE =
-  'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),[tabindex]:not([tabindex="-1"]),[contenteditable="true"]'
-
-function focusables(root: HTMLElement | null): HTMLElement[] {
-  if (!root) return []
-  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-    (el) => !el.hasAttribute('data-dialog-skip') && (el.offsetWidth > 0 || el.offsetHeight > 0 || el.getClientRects().length > 0)
-  )
-}
-
-const prefersReducedMotion = () =>
-  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
 const SIZE_CLASS = {
   sm: 'sm:max-w-sm',
@@ -82,6 +60,10 @@ export function Dialog({
   const panelRef = useRef<HTMLDivElement>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
+  const sheet = size === 'sm' || size === 'md'
+  const keyboard = useVisualViewport(open)
+  const drag = useSheetDrag(() => onCloseRef.current(), sheet, true)
+  const resetDrag = drag.reset
 
   // Remember who opened us during render, i.e. BEFORE React's autoFocus runs in the commit.
   const openerRef = useRef<HTMLElement | null>(null)
@@ -111,6 +93,10 @@ export function Dialog({
   }, [open])
 
   const visible = mounted && (open || present)
+
+  useEffect(() => {
+    if (open) resetDrag()
+  }, [open, resetDrag])
 
   // Escape / scroll lock / focus management: tied to `open`, released the moment it closes.
   useEffect(() => {
@@ -179,7 +165,8 @@ export function Dialog({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[80] flex items-end justify-center bg-[rgb(var(--rgb-overlay)/0.55)] backdrop-blur-[2px] sm:items-center sm:p-6 ${
+      style={keyboard ? { top: keyboard.top, bottom: 'auto', height: keyboard.height } : undefined}
+      className={`fixed inset-0 z-[80] flex items-end justify-center overscroll-contain bg-[rgb(var(--rgb-overlay)/0.55)] sm:items-center sm:p-6 sm:backdrop-blur-[2px] ${
         closing ? 'animate-fade-out' : 'animate-fade-in'
       }`}
       onMouseDown={(event) => {
@@ -193,12 +180,37 @@ export function Dialog({
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
+        data-sheet
         onKeyDown={onPanelKeyDown}
-        className={`relative flex h-[100dvh] w-full flex-col overflow-hidden bg-surface text-text-primary shadow-xl outline-none sm:h-auto sm:max-h-[min(88dvh,860px)] sm:rounded-2xl sm:border sm:border-border ${
-          SIZE_CLASS[size] ?? SIZE_CLASS.md
-        } ${closing ? 'animate-dialog-out' : 'animate-dialog-in'}`}
+        onFocusCapture={(event) => {
+          if (window.matchMedia?.('(pointer: coarse)').matches) revealFocused(event.target)
+        }}
+        style={sheet ? drag.style : undefined}
+        className={`relative flex w-full flex-col overflow-hidden bg-surface text-text-primary shadow-xl outline-none sm:h-auto sm:max-h-[min(88dvh,860px)] sm:rounded-2xl sm:border sm:border-border ${
+          sheet
+            ? 'max-h-[min(92%,calc(100%_-_env(safe-area-inset-top)_-_0.5rem))] rounded-t-2xl border-t border-border'
+            : 'h-full'
+        } ${SIZE_CLASS[size] ?? SIZE_CLASS.md} ${
+          sheet
+            ? closing
+              ? 'animate-sheet-out sm:animate-dialog-out'
+              : 'animate-sheet-in sm:animate-dialog-in'
+            : closing
+              ? 'animate-dialog-out'
+              : 'animate-dialog-in'
+        }`}
       >
-        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6 sm:py-4">
+        {sheet ? (
+          <div {...drag.handleProps} className="shrink-0 sm:hidden">
+            <div aria-hidden className="mx-auto mb-1 mt-2 h-1 w-10 rounded-full bg-border-strong" />
+          </div>
+        ) : null}
+        <div
+          {...(sheet ? drag.handleProps : {})}
+          className={`flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 pb-3 sm:px-6 sm:py-4 ${
+            sheet ? 'pt-1' : 'pt-[max(0.75rem,env(safe-area-inset-top))]'
+          }`}
+        >
           <div className="min-w-0 self-center">
             <h2 id={titleId} className="truncate text-base font-semibold leading-6 tracking-tight">
               {title}
@@ -225,7 +237,11 @@ export function Dialog({
           {children}
         </div>
         {footer ? (
-          <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:flex-row sm:items-center sm:justify-end sm:px-6 sm:py-4">
+          <div
+            className={`flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-surface px-4 pt-3 sm:flex-row sm:items-center sm:justify-end sm:px-6 sm:py-4 ${
+              keyboard ? 'pb-3' : 'pb-[max(0.75rem,env(safe-area-inset-bottom))]'
+            }`}
+          >
             {footer}
           </div>
         ) : null}

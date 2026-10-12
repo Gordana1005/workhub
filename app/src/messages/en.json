@@ -31,7 +31,10 @@
     "collapseSidebar": "Collapse sidebar",
     "expandSidebar": "Expand sidebar",
     "stopTimer": "Stop timer",
-    "workspace": "Workspace"
+    "workspace": "Workspace",
+    "newTask": "New task",
+    "newProject": "New project",
+    "unreadCount": "{count} unread"
   },
   "theme": {
     "light": "Light",
@@ -65,6 +68,8 @@
     "starterInternalHelp": "For the work a team does for itself.",
     "starterPersonal": "Personal",
     "starterPersonalHelp": "A quiet place for your own tasks.",
+    "starterEvent": "Event",
+    "starterEventHelp": "Plan a launch, trip, or gathering from first idea to the day itself.",
     "taskPlaceholder": "What needs doing?",
     "who": "Who",
     "when": "When",
@@ -81,6 +86,135 @@
     "emptyBody": "Create a project, and the day will start to fill in.",
     "overdue": "Overdue",
     "noTasks": "Nothing due today."
+  },
+  "onboarding": {
+    "title": "Getting started",
+    "progress": "{done} of {total} done",
+    "next": "Next: {step}",
+    "hide": "Hide checklist",
+    "skip": "Skip",
+    "close": "Close",
+    "doneLabel": "Done",
+    "skippedLabel": "Skipped",
+    "allSetTitle": "You're all set",
+    "allSetBody": "Your workspace is ready. Nice work.",
+    "steps": {
+      "project": {
+        "title": "Create your first project",
+        "body": "A project keeps related tasks, notes and people together.",
+        "action": "Create project"
+      },
+      "task": {
+        "title": "Add your first task",
+        "body": "Write down one thing that needs doing.",
+        "action": "Add task"
+      },
+      "invite": {
+        "title": "Invite a teammate",
+        "body": "Share a link so someone can join this workspace.",
+        "action": "Invite"
+      },
+      "note": {
+        "title": "Write a note",
+        "body": "Capture ideas, meeting notes or decisions.",
+        "action": "Open notes"
+      },
+      "search": {
+        "title": "Try search",
+        "body": "Find anything in a moment. Press",
+        "action": "Open search"
+      }
+    },
+    "hero": {
+      "title": "Start with your first project",
+      "body": "A project holds your tasks, notes and people. Pick a starting point; you can change everything later.",
+      "choices": {
+        "team": {
+          "title": "Team project",
+          "body": "Goal, plan, work and review for your team."
+        },
+        "personal": {
+          "title": "Personal",
+          "body": "A quiet place for your own tasks."
+        },
+        "client": {
+          "title": "Client work",
+          "body": "Kickoff to delivery for someone else."
+        },
+        "event": {
+          "title": "Event",
+          "body": "From the first idea to the day itself."
+        }
+      },
+      "justTask": "Or just add a single task"
+    },
+    "first": {
+      "checking": "Getting your account ready",
+      "usernameTitle": "Choose a username",
+      "usernameBody": "This is how your teammates will see you.",
+      "usernameLabel": "Username",
+      "usernameHint": "3 to 30 letters, numbers, dots, dashes or underscores.",
+      "usernamePlaceholder": "yourname",
+      "usernameContinue": "Continue",
+      "usernameInvalid": "Use 3 to 30 letters, numbers, dots, dashes or underscores.",
+      "usernameTaken": "That username is already taken. Try another one.",
+      "usernameFailed": "We could not save your username. Please try again.",
+      "workspaceTitle": "Create your workspace",
+      "workspaceBody": "A workspace is home for your projects, tasks and team. You can add more later.",
+      "workspaceLabel": "Workspace name",
+      "workspaceHint": "A company, a team, or just your own name.",
+      "workspacePlaceholder": "Acme, Studio, Personal…",
+      "workspaceCreate": "Create workspace",
+      "workspaceFailed": "We could not create the workspace. Please try again.",
+      "inviteTitle": "You have a pending invitation",
+      "inviteBody": "Join your team's workspace instead of creating a new one.",
+      "inviteOpen": "Open invitation",
+      "signOut": "Sign out"
+    }
+  },
+  "search": {
+    "title": "Search",
+    "inputLabel": "Search",
+    "placeholder": "Search tasks, projects, notes…",
+    "open": "Search",
+    "buttonPlaceholder": "Search…",
+    "clear": "Clear search",
+    "cancel": "Cancel",
+    "close": "Close search",
+    "results": "Search results",
+    "minChars": "Type at least {count} characters to search.",
+    "searching": "Searching…",
+    "error": "Search failed. Check your connection and try again.",
+    "retry": "Try again",
+    "noResults": "No results for “{query}”",
+    "noResultsHint": "Check the spelling or try a different word.",
+    "needWorkspace": "Choose a workspace to search in.",
+    "resultCount": "{count, plural, one {# result} other {# results}}",
+    "recent": "Recent searches",
+    "clearRecent": "Clear",
+    "quickActions": "Quick actions",
+    "goTo": "Go to",
+    "newTask": "New task",
+    "newProject": "New project",
+    "newNote": "New note",
+    "group": {
+      "tasks": "Tasks",
+      "projects": "Projects",
+      "notes": "Notes",
+      "plans": "Plans",
+      "people": "People",
+      "comments": "Comments"
+    },
+    "milestone": "Milestone",
+    "commentOn": "Comment on {task}",
+    "untitled": "Untitled",
+    "done": "Done",
+    "roleAdmin": "Admin",
+    "roleMember": "Member",
+    "hintNavigate": "Navigate",
+    "hintOpen": "Open",
+    "hintGroups": "Switch group",
+    "hintClose": "Close"
   },
   "common": {
     "loading": "Loading",

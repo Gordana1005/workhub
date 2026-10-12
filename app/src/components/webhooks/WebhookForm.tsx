@@ -31,7 +31,7 @@ const AVAILABLE_EVENTS = [
 ] as const
 
 const fieldClass =
-  'w-full max-w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30'
+  'min-h-11 w-full max-w-full rounded-lg border border-border-control bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:min-h-10 sm:text-sm'
 
 export default function WebhookForm({ webhook, workspaceId, onClose }: WebhookFormProps) {
   const t = useTranslations('pages.tools')
@@ -129,27 +129,31 @@ export default function WebhookForm({ webhook, workspaceId, onClose }: WebhookFo
       onClose={requestClose}
       size="lg"
       footer={
-        <div className="flex gap-2">
-          <Button type="button" variant="secondary" className="flex-1" onClick={requestClose} disabled={loading}>
+        <>
+          <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={requestClose} disabled={loading}>
             {t('webhooks.cancel')}
           </Button>
-          <Button type="submit" form="webhook-form" className="flex-1" disabled={loading}>
+          <Button type="submit" form="webhook-form" className="h-12 sm:h-10" disabled={loading}>
             {loading ? t('webhooks.saving') : webhook ? t('webhooks.saveChanges') : t('webhooks.create')}
           </Button>
-        </div>
+        </>
       }
     >
       <form id="webhook-form" onSubmit={handleSubmit} className="space-y-4">
-        {error ? (
-          <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
-            {error}
-          </p>
-        ) : null}
+        <div aria-live="assertive">
+          {error ? (
+            <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
+              {error}
+            </p>
+          ) : null}
+        </div>
 
         <label className="block text-sm text-text-secondary">
           {t('webhooks.name')}
           <input
             type="text"
+            enterKeyHint="next"
+            autoComplete="off"
             value={formData.name}
             onChange={(event) => setFormData({ ...formData, name: event.target.value })}
             placeholder={t('webhooks.namePlaceholder')}
@@ -161,6 +165,12 @@ export default function WebhookForm({ webhook, workspaceId, onClose }: WebhookFo
           {t('webhooks.url')}
           <input
             type="url"
+            inputMode="url"
+            enterKeyHint="next"
+            autoComplete="off"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={formData.url}
             onChange={(event) => setFormData({ ...formData, url: event.target.value })}
             placeholder="https://example.com/webhook"
@@ -185,7 +195,7 @@ export default function WebhookForm({ webhook, workspaceId, onClose }: WebhookFo
           {AVAILABLE_EVENTS.map((event) => (
             <label
               key={event.value}
-              className={`flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-2 transition-colors ${
+              className={`flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors active:bg-tertiary ${
                 formData.events.includes(event.value) ? 'border-primary bg-primary/10' : 'border-border hover:bg-surface-hover'
               }`}
             >
@@ -193,7 +203,7 @@ export default function WebhookForm({ webhook, workspaceId, onClose }: WebhookFo
                 type="checkbox"
                 checked={formData.events.includes(event.value)}
                 onChange={() => toggleEvent(event.value)}
-                className="mt-1 h-4 w-4 rounded border-border accent-primary"
+                className="mt-0.5 h-5 w-5 shrink-0 rounded border-border accent-primary"
               />
               <span className="min-w-0">
                 <span className="block text-sm font-medium text-text-primary">{t(event.labelKey)}</span>
@@ -203,12 +213,12 @@ export default function WebhookForm({ webhook, workspaceId, onClose }: WebhookFo
           ))}
         </fieldset>
 
-        <label className="flex items-start gap-3 rounded-xl border border-border bg-surface px-3 py-2">
+        <label className="flex min-h-12 items-start gap-3 rounded-xl border border-border bg-surface px-3 py-2.5 active:bg-tertiary">
           <input
             type="checkbox"
             checked={formData.verify_ssl}
             onChange={(event) => setFormData({ ...formData, verify_ssl: event.target.checked })}
-            className="mt-1 h-4 w-4 rounded border-border accent-primary"
+            className="mt-0.5 h-5 w-5 shrink-0 rounded border-border accent-primary"
           />
           <span className="min-w-0">
             <span className="block text-sm font-medium text-text-primary">{t('webhooks.verifySsl')}</span>

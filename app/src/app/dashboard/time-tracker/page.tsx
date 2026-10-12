@@ -12,6 +12,8 @@ import { Dialog } from '@/components/ui/Dialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconMenu } from '@/components/ui/IconMenu'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { TaskPicker } from '@/components/tools/TaskPicker'
 
 interface Task {
   id: string
@@ -42,7 +44,7 @@ const TIMER_KEY = 'trackwork-timer'
 const CHART_MIN_SCALE = 8 * 3600
 
 const fieldClass =
-  'w-full max-w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+  'w-full max-w-full rounded-lg border border-border bg-secondary min-h-11 px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:min-h-10 sm:text-sm'
 
 const ymd = (date: Date) => format(date, 'yyyy-MM-dd')
 const weekStartOf = (date: Date) => startOfWeek(date, { weekStartsOn: 1 })
@@ -339,89 +341,108 @@ export default function TimeTrackerPage() {
       <section
         className={`rounded-2xl border bg-surface p-4 transition-colors sm:p-5 ${
           running ? 'border-primary/50' : 'border-border'
+        } ${
+          timerIdle
+            ? ''
+            : 'max-md:sticky max-md:top-[calc(var(--app-header-h,0px)+0.5rem)] max-md:z-20 max-md:shadow-md'
         }`}
         aria-label={t('time.title')}
       >
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:gap-6">
-          <div className="grid min-w-0 flex-1 gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <div className="order-2 grid min-w-0 flex-1 gap-3 md:order-none md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <input
               type="text"
               placeholder={t('time.describeWork')}
               aria-label={t('time.describeWork')}
               value={currentDescription}
+              enterKeyHint="go"
               onChange={(event) => setCurrentDescription(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && timerIdle) startTimer()
               }}
               className={fieldClass}
             />
-            <select
+            <TaskPicker
               value={currentTaskId}
-              onChange={(event) => setCurrentTaskId(event.target.value)}
-              aria-label={t('time.taskLabel')}
-              className={fieldClass}
-            >
-              <option value="">{t('time.selectTask')}</option>
-              {tasks.map((task) => (
-                <option key={task.id} value={task.id}>
-                  {task.title}
-                  {task.project ? ` (${task.project.name})` : ''}
-                </option>
-              ))}
-            </select>
+              onChange={setCurrentTaskId}
+              tasks={tasks}
+              label={t('time.taskLabel')}
+            />
           </div>
 
-          <div className="flex items-center justify-between gap-4 xl:justify-end">
-            <p
-              className={`flex items-center gap-2.5 font-mono text-4xl font-semibold tabular-nums tracking-tight sm:text-5xl ${
-                running ? 'text-primary' : 'text-text-primary'
-              }`}
-              role="timer"
-              aria-live="off"
-            >
-              {running ? <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-primary" aria-hidden /> : null}
-              {formatClock(seconds)}
-            </p>
+          {/* Phone: clock, fields, then big buttons (display: contents). md+: clock and buttons share a row. */}
+          <div className="contents md:flex md:items-center md:justify-between md:gap-4 xl:justify-end">
+            <div className="relative order-1 flex items-center justify-center md:order-none">
+              <p
+                className={`flex items-center gap-2.5 font-mono text-5xl font-semibold tabular-nums tracking-tight ${
+                  running ? 'text-primary' : 'text-text-primary'
+                }`}
+                role="timer"
+                aria-live="off"
+              >
+                {running ? <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-primary" aria-hidden /> : null}
+                {formatClock(seconds)}
+              </p>
+              {seconds > 0 && !running ? (
+                <button
+                  type="button"
+                  onClick={discardTimer}
+                  aria-label={t('time.discard')}
+                  className="absolute right-0 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary active:bg-tertiary md:hidden"
+                >
+                  <Trash2 className="h-5 w-5" aria-hidden />
+                </button>
+              ) : null}
+            </div>
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="order-3 flex shrink-0 items-center gap-2 md:order-none">
               {seconds > 0 && !running ? (
                 <button
                   type="button"
                   onClick={discardTimer}
                   aria-label={t('time.discard')}
                   title={t('time.discard')}
-                  className="rounded-lg p-2.5 text-text-secondary transition-colors hover:bg-surface-hover hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="hidden h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:inline-flex"
                 >
                   <Trash2 className="h-4 w-4" aria-hidden />
                 </button>
               ) : null}
 
               {timerIdle ? (
-                <Button onClick={startTimer} size="lg" className="gap-2">
-                  <Play className="h-4 w-4" aria-hidden />
+                <Button onClick={startTimer} size="lg" className="h-14 w-full gap-2 text-base md:h-12 md:w-auto">
+                  <Play className="h-5 w-5" aria-hidden />
                   {t('time.startTimer')}
                 </Button>
               ) : running ? (
                 <>
-                  <Button variant="secondary" size="lg" onClick={pauseTimer} className="gap-2">
-                    <Pause className="h-4 w-4" aria-hidden />
-                    <span className="hidden sm:inline">{t('time.pause')}</span>
-                    <span className="sr-only sm:hidden">{t('time.pause')}</span>
+                  <Button variant="secondary" size="lg" onClick={pauseTimer} className="h-14 flex-1 gap-2 text-base md:h-12 md:flex-none">
+                    <Pause className="h-5 w-5" aria-hidden />
+                    {t('time.pause')}
                   </Button>
-                  <Button size="lg" onClick={stopAndSave} disabled={saving} className="gap-2">
-                    <Square className="h-4 w-4" aria-hidden />
+                  <Button
+                    size="lg"
+                    onClick={stopAndSave}
+                    disabled={saving}
+                    className="h-14 flex-[1.4] gap-2 whitespace-normal px-3 text-base leading-tight md:h-12 md:flex-none md:whitespace-nowrap md:px-6"
+                  >
+                    <Square className="h-5 w-5 shrink-0" aria-hidden />
                     {t('time.stopSave')}
                   </Button>
                 </>
               ) : (
                 <>
-                  <Button variant="secondary" size="lg" onClick={stopAndSave} disabled={saving} className="gap-2">
-                    <Square className="h-4 w-4" aria-hidden />
-                    <span className="hidden sm:inline">{t('time.stopSave')}</span>
-                    <span className="sr-only sm:hidden">{t('time.stopSave')}</span>
+                  <Button
+                    variant="secondary"
+                    size="lg"
+                    onClick={stopAndSave}
+                    disabled={saving}
+                    className="h-14 flex-1 gap-2 whitespace-normal px-3 text-base leading-tight md:h-12 md:flex-none md:whitespace-nowrap md:px-6"
+                  >
+                    <Square className="h-5 w-5 shrink-0" aria-hidden />
+                    {t('time.stopSave')}
                   </Button>
-                  <Button size="lg" onClick={startTimer} className="gap-2">
-                    <Play className="h-4 w-4" aria-hidden />
+                  <Button size="lg" onClick={startTimer} className="h-14 flex-1 gap-2 text-base md:h-12 md:flex-none">
+                    <Play className="h-5 w-5" aria-hidden />
                     {t('time.resume')}
                   </Button>
                 </>
@@ -440,12 +461,12 @@ export default function TimeTrackerPage() {
         {/* Week summary: below the list on phones, above it on tablets, side column on desktop */}
         <aside className="min-w-0 space-y-5 rounded-2xl border border-border bg-surface p-4 sm:p-5 order-last md:order-first xl:order-last xl:sticky xl:top-20 xl:col-span-4 2xl:col-span-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2 sm:gap-1">
               <button
                 type="button"
                 onClick={() => setWeekStart((current) => addWeeks(current, -1))}
                 aria-label={t('time.prevWeek')}
-                className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary active:bg-tertiary sm:h-9 sm:w-9"
               >
                 <ChevronLeft className="h-4 w-4" aria-hidden />
               </button>
@@ -454,7 +475,7 @@ export default function TimeTrackerPage() {
                 onClick={() => setWeekStart((current) => addWeeks(current, 1))}
                 aria-label={t('time.nextWeek')}
                 disabled={isCurrentWeek}
-                className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-40"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary active:bg-tertiary disabled:pointer-events-none disabled:opacity-40 sm:h-9 sm:w-9"
               >
                 <ChevronRight className="h-4 w-4" aria-hidden />
               </button>
@@ -478,7 +499,7 @@ export default function TimeTrackerPage() {
                 </div>
               </div>
 
-              <ul className="mt-4 grid grid-cols-7 gap-1.5">
+              <ul className="mt-4 grid grid-cols-7 gap-1 sm:gap-1.5">
                 {weekDays.map((day) => {
                   const key = ymd(day)
                   const total = dayTotals.get(key) ?? 0
@@ -493,11 +514,11 @@ export default function TimeTrackerPage() {
                         disabled={total === 0}
                         aria-pressed={selected}
                         aria-label={`${format(day, 'EEEE, MMM d', { locale: dateLocale })}: ${formatDuration(total)}`}
-                        className={`flex w-full flex-col items-center gap-1 rounded-lg px-0.5 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        className={`flex w-full flex-col items-center gap-1 rounded-lg px-0.5 py-1 transition-colors active:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                           selected ? 'bg-primary/10' : total > 0 ? 'hover:bg-surface-hover' : ''
                         } disabled:cursor-default`}
                       >
-                        <span className="h-4 text-[11px] font-medium tabular-nums text-text-secondary">
+                        <span className="h-4 text-xs font-medium tabular-nums text-text-secondary">
                           {total > 0 ? (total / 3600).toFixed(1) : ''}
                         </span>
                         <span className="flex h-24 w-full items-end justify-center rounded-md bg-surface-hover/60">
@@ -509,7 +530,7 @@ export default function TimeTrackerPage() {
                           />
                         </span>
                         <span
-                          className={`text-[11px] uppercase ${isToday ? 'font-semibold text-primary' : 'text-text-secondary'}`}
+                          className={`text-xs uppercase ${isToday ? 'font-semibold text-primary' : 'text-text-secondary'}`}
                         >
                           {format(day, 'EEE', { locale: dateLocale })}
                         </span>
@@ -546,20 +567,20 @@ export default function TimeTrackerPage() {
 
         <section className="min-w-0 space-y-4 xl:col-span-8 2xl:col-span-9">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
               <h2 className="text-base font-semibold text-text-primary">{t('time.timeEntries')}</h2>
               {selectedDay ? (
                 <button
                   type="button"
                   onClick={() => setSelectedDay(null)}
-                  className="rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="inline-flex min-h-10 items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary active:bg-primary/20"
                 >
                   {t('time.showAllDays')}
                 </button>
               ) : null}
             </div>
-            <Button variant="secondary" size="sm" className="gap-1.5" onClick={() => setDialog({ entry: null })}>
-              <Plus className="h-3.5 w-3.5" aria-hidden />
+            <Button variant="secondary" size="sm" className="h-11 gap-1.5 sm:h-8" onClick={() => setDialog({ entry: null })}>
+              <Plus className="h-4 w-4" aria-hidden />
               {t('time.addEntry')}
             </Button>
           </div>
@@ -567,7 +588,7 @@ export default function TimeTrackerPage() {
           {loading ? (
             <div className="space-y-3">
               {[1, 2].map((item) => (
-                <div key={item} className="h-32 animate-pulse rounded-2xl border border-border bg-surface" />
+                <Skeleton key={item} className="h-32 rounded-2xl" />
               ))}
             </div>
           ) : visibleDays.length === 0 ? (
@@ -576,8 +597,8 @@ export default function TimeTrackerPage() {
             visibleDays.map((key) => (
               <section key={key} className="rounded-2xl border border-border bg-surface">
                 <header className="flex items-baseline justify-between gap-3 rounded-t-2xl border-b border-border bg-surface-hover/60 px-4 py-2.5">
-                  <h3 className="text-sm font-semibold capitalize text-text-primary">{dayLabel(key)}</h3>
-                  <p className="text-sm font-medium tabular-nums text-text-secondary">
+                  <h3 className="min-w-0 truncate text-sm font-semibold capitalize text-text-primary">{dayLabel(key)}</h3>
+                  <p className="shrink-0 text-sm font-medium tabular-nums text-text-secondary">
                     {formatDuration(dayTotals.get(key) ?? 0)}
                   </p>
                 </header>
@@ -585,13 +606,13 @@ export default function TimeTrackerPage() {
                   {(byDay.get(key) ?? []).map((entry) => {
                     const detail = entryDetail(entry)
                     return (
-                      <li key={entry.id} className="flex items-center gap-2 px-4 py-2.5 transition-colors hover:bg-surface-hover/60">
+                      <li key={entry.id} className="flex min-h-14 items-center gap-2 px-4 py-2 transition-colors hover:bg-surface-hover/60 active:bg-surface-hover">
                         <button
                           type="button"
                           onClick={() => setDialog({ entry })}
-                          className="min-w-0 flex-1 rounded-lg py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          className="min-w-0 flex-1 rounded-lg py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         >
-                          <span className="block truncate text-sm font-medium text-text-primary">{entryTitle(entry)}</span>
+                          <span className="line-clamp-2 break-words text-sm font-medium text-text-primary sm:line-clamp-1">{entryTitle(entry)}</span>
                           {detail ? <span className="mt-0.5 block truncate text-xs text-text-secondary">{detail}</span> : null}
                         </button>
                         <span className="shrink-0 text-sm font-medium tabular-nums text-text-primary">
@@ -603,7 +624,7 @@ export default function TimeTrackerPage() {
                           disabled={running || seconds > 0}
                           aria-label={t('time.continueEntry')}
                           title={t('time.continueEntry')}
-                          className="hidden rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-30 sm:block"
+                          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary active:bg-tertiary disabled:pointer-events-none disabled:opacity-30 sm:h-9 sm:w-9"
                         >
                           <Play className="h-4 w-4" aria-hidden />
                         </button>
@@ -735,14 +756,14 @@ function EntryDialog({
       title={entry ? t('time.editEntryTitle') : t('time.newEntryTitle')}
       onClose={onClose}
       footer={
-        <div className="flex gap-3 sm:justify-end">
-          <Button type="button" variant="secondary" className="flex-1 sm:flex-none" onClick={onClose}>
+        <>
+          <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={onClose}>
             {t('time.cancel')}
           </Button>
-          <Button type="submit" form="entry-form" className="flex-1 sm:flex-none" disabled={!canSave}>
+          <Button type="submit" form="entry-form" className="h-12 sm:h-10" disabled={!canSave}>
             {saving ? t('time.saving') : t('time.save')}
           </Button>
-        </div>
+        </>
       }
     >
       <form
@@ -761,22 +782,21 @@ function EntryDialog({
             onChange={(event) => setDescription(event.target.value)}
             placeholder={t('time.describeWork')}
             className={`${fieldClass} mt-1.5`}
+            enterKeyHint="next"
             autoFocus
           />
         </label>
 
-        <label className="block text-sm text-text-secondary">
-          {t('time.taskLabel')}
-          <select value={taskId} onChange={(event) => setTaskId(event.target.value)} className={`${fieldClass} mt-1.5`}>
-            <option value="">{t('time.selectTask')}</option>
-            {taskOptions.map((task) => (
-              <option key={task.id} value={task.id}>
-                {task.title}
-                {task.project ? ` (${task.project.name})` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="block text-sm text-text-secondary">
+          <span id="entry-task-label">{t('time.taskLabel')}</span>
+          <TaskPicker
+            className="mt-1.5"
+            value={taskId}
+            onChange={setTaskId}
+            tasks={taskOptions}
+            label={t('time.taskLabel')}
+          />
+        </div>
 
         <div className="grid grid-cols-3 gap-3">
           <label className="col-span-3 block text-sm text-text-secondary sm:col-span-1">
@@ -793,6 +813,7 @@ function EntryDialog({
             <input
               type="number"
               inputMode="numeric"
+              enterKeyHint="next"
               min={0}
               max={24}
               value={hours}
@@ -805,6 +826,7 @@ function EntryDialog({
             <input
               type="number"
               inputMode="numeric"
+              enterKeyHint="done"
               min={0}
               max={59}
               value={minutes}

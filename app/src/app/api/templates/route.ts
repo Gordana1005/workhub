@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
       .select('*, created_by_profile:profiles!task_templates_created_by_fkey(username, email)')
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false })
+      .limit(500)
 
     if (error) {
       // If table doesn't exist, return empty array

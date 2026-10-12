@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { createNotification } from '@/lib/notify'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -83,6 +84,7 @@ export async function GET(request: NextRequest) {
       .select('user_id, role, added_at')
       .eq('project_id', projectId!)
       .order('added_at', { ascending: true })
+      .limit(1000)
 
     if (error) throw error
 
@@ -145,6 +147,19 @@ export async function POST(request: NextRequest) {
 
     // 23505 = already a member, treat as success
     if (error && error.code !== '23505') throw error
+
+    // Tell the person who was added (not when they added themselves or were already a member)
+    if (!error && user_id !== guard.userId) {
+      const { data: project } = await supabaseAdmin.from('projects').select('name').eq('id', project_id).maybeSingle()
+      await createNotification({
+        user_id,
+        workspace_id: guard.workspaceId,
+        type: 'project_member_added',
+        title: 'Added to a project',
+        message: `You were added to ${project?.name || 'a project'}.`,
+        link: `/dashboard/projects/${project_id}`
+      })
+    }
 
     return NextResponse.json({ success: true }, { status: error ? 200 : 201 })
   } catch (error: any) {

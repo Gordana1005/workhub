@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
 import { supabase } from '@/lib/supabase'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
-import { PRIORITIES, PRIORITY_TONE, fetchMembers, fetchProjects, priorityLabel } from '@/components/tasks/taskUtils'
+import AssigneePicker from '@/components/tasks/AssigneePicker'
+import { PRIORITIES, PRIORITY_TONE, fetchProjects, getWorkspaceMembers, priorityLabel } from '@/components/tasks/taskUtils'
 import type { MemberOption, Priority, ProjectOption } from '@/components/tasks/types'
 
 export interface QuickTaskInitial {
@@ -17,6 +18,8 @@ export interface QuickTaskInitial {
   estimated_hours?: number
   tags?: string[]
   due_date?: string
+  /** Titles of subtasks to create with the task (from a template). */
+  subtasks?: string[]
 }
 
 interface QuickTaskFormProps {
@@ -32,7 +35,7 @@ interface QuickTaskFormProps {
 const LAST_PROJECT_KEY = 'trackwork-last-project'
 
 const fieldClass =
-  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50'
+  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm'
 
 function apiError(data: unknown, fallback: string) {
   if (data && typeof data === 'object' && 'error' in data && typeof (data as { error: unknown }).error === 'string') {
@@ -101,7 +104,7 @@ export default function QuickTaskForm({ open, onClose, initial, defaultProjectId
       try {
         const [projectList, memberList, userRes] = await Promise.all([
           fetchProjects(workspaceId),
-          fetchMembers(workspaceId, '').catch(() => [] as MemberOption[]),
+          getWorkspaceMembers(workspaceId, '').catch(() => [] as MemberOption[]),
           supabase.auth.getUser(),
         ])
         if (cancelled) return
@@ -160,6 +163,7 @@ export default function QuickTaskForm({ open, onClose, initial, defaultProjectId
           category: seed?.category || null,
           estimated_hours: seed?.estimated_hours || null,
           tags: seed?.tags || [],
+          ...(seed?.subtasks?.length ? { subtasks: seed.subtasks } : {}),
         }),
       })
       const data = await res.json().catch(() => null)
@@ -190,13 +194,13 @@ export default function QuickTaskForm({ open, onClose, initial, defaultProjectId
       footer={
         currentWorkspace ? (
           <div className="flex gap-3">
-            <Button type="button" variant="secondary" className="flex-1" onClick={onClose} disabled={saving}>
+            <Button type="button" variant="secondary" className="h-11 flex-1 sm:h-10" onClick={onClose} disabled={saving}>
               {t('cancel')}
             </Button>
             <Button
               type="submit"
               form="quick-task-form"
-              className="flex-1 gap-2"
+              className="h-11 flex-1 gap-2 sm:h-10"
               disabled={busy || !title.trim() || !projectId}
               aria-busy={busy}
             >
@@ -233,9 +237,10 @@ export default function QuickTaskForm({ open, onClose, initial, defaultProjectId
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder={t('taskPlaceholder')}
-              className={`${fieldClass} py-3 text-base font-medium`}
+              className={`${fieldClass} h-12 py-3 font-medium`}
               autoFocus
               autoComplete="off"
+              enterKeyHint="done"
               disabled={saving}
               required
             />
@@ -253,7 +258,7 @@ export default function QuickTaskForm({ open, onClose, initial, defaultProjectId
               <button
                 type="button"
                 onClick={() => setShowDescription(true)}
-                className="mt-2 rounded-md text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="mt-1 inline-flex h-10 items-center rounded-md px-1 text-sm font-medium text-primary hover:underline active:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 {tt('addDescription')}
               </button>
@@ -269,7 +274,7 @@ export default function QuickTaskForm({ open, onClose, initial, defaultProjectId
                 id="quick-task-project"
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
-                className={fieldClass}
+                className={`${fieldClass} h-11`}
                 disabled={busy || projects.length === 0}
                 required
               >
@@ -290,32 +295,23 @@ export default function QuickTaskForm({ open, onClose, initial, defaultProjectId
                 type="date"
                 value={when}
                 onChange={(event) => setWhen(event.target.value)}
-                className={fieldClass}
+                className={`${fieldClass} h-11`}
                 disabled={saving}
               />
             </div>
 
             <div>
-              <label htmlFor="quick-task-who" className="mb-1.5 block text-xs font-medium text-text-secondary">
+              <span id="quick-task-who-label" className="mb-1.5 block text-xs font-medium text-text-secondary">
                 {t('who')}
-              </label>
-              <select
-                id="quick-task-who"
-                value={who}
-                onChange={(event) => setWho(event.target.value)}
-                className={fieldClass}
+              </span>
+              <AssigneePicker
+                variant="form"
+                members={people}
+                value={who === 'me' ? userId : who === 'unassigned' ? '' : who}
+                currentUserId={userId}
                 disabled={saving}
-              >
-                <option value="me">{t('me')}</option>
-                <option value="unassigned">{t('unassigned')}</option>
-                {people
-                  .filter((person) => person.id !== userId)
-                  .map((person) => (
-                    <option key={person.id} value={person.id}>
-                      {person.username}
-                    </option>
-                  ))}
-              </select>
+                onChange={(id) => setWho(id === '' ? 'unassigned' : id === userId ? 'me' : id)}
+              />
             </div>
 
             <fieldset>
@@ -328,7 +324,7 @@ export default function QuickTaskForm({ open, onClose, initial, defaultProjectId
                     aria-pressed={priority === value}
                     disabled={saving}
                     onClick={() => setPriority(value)}
-                    className={`flex h-9 min-w-0 items-center justify-center gap-1 rounded-md px-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    className={`flex h-11 min-w-0 items-center justify-center gap-1 rounded-md px-1 text-xs font-medium active:bg-surface-hover sm:h-9 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                       priority === value
                         ? 'bg-surface text-text-primary shadow-sm'
                         : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'

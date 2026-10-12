@@ -20,7 +20,7 @@ const KINDS: { id: WorkspaceKind; label: 'kindPersonal' | 'kindTeam' | 'kindClie
 ]
 
 const fieldClass =
-  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50'
+  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted sm:text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50'
 
 export default function CreateWorkspaceDialog({ open, onClose }: CreateWorkspaceDialogProps) {
   const t = useTranslations('create')
@@ -116,7 +116,7 @@ export default function CreateWorkspaceDialog({ open, onClose }: CreateWorkspace
                   aria-pressed={selected}
                   onClick={() => setKind(item.id)}
                   disabled={saving}
-                  className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${
+                  className={`inline-flex min-h-10 items-center rounded-full border px-4 py-1.5 text-sm transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${
                     selected
                       ? 'border-primary bg-primary/10 font-medium text-primary'
                       : 'border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary'

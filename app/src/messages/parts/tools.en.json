@@ -247,7 +247,9 @@
     "edit": "Edit",
     "noAccountsBody": "Add an account, then record income and expenses in one tap.",
     "filterByCategory": "Filter by this category",
-    "filterByAccount": "Filter by this account"
+    "filterByAccount": "Filter by this account",
+    "filters": "Filters",
+    "showResults": "Show {count, plural, one {# result} other {# results}}"
   },
   "time": {
     "title": "Time Tracker",
@@ -291,7 +293,9 @@
     "saveFailed": "Failed to save time entry",
     "deleteFailed": "Failed to delete time entry",
     "duration": "{hours}h {minutes}m",
-    "minutesOnly": "{minutes}m"
+    "minutesOnly": "{minutes}m",
+    "searchTasks": "Search tasks",
+    "noTasks": "No tasks found"
   },
   "focus": {
     "title": "Focus",
@@ -381,7 +385,9 @@
     "allPeople": "Everyone",
     "resetFilters": "Reset",
     "noProject": "No project",
-    "unassigned": "Unassigned"
+    "unassigned": "Unassigned",
+    "filters": "Filters",
+    "done": "Done"
   },
   "settings": {
     "title": "Settings",
@@ -430,7 +436,25 @@
     "openTeam": "Team and invitations",
     "openWebhooks": "Webhooks",
     "noWorkspace": "No workspace selected",
-    "signedInAs": "Signed in as {email}"
+    "signedInAs": "Signed in as {email}",
+    "push": {
+      "title": "Push notifications",
+      "help": "Get alerts on this device even when TrackWork is closed.",
+      "stateOn": "On for this device",
+      "stateOff": "Off for this device",
+      "stateBlocked": "Blocked. Allow notifications for this site in your browser settings.",
+      "stateUnsupported": "This browser does not support push notifications.",
+      "stateUnavailable": "Push notifications are not available yet.",
+      "enable": "Enable notifications",
+      "disable": "Disable",
+      "working": "Working...",
+      "iosNote": "On iPhone and iPad, first add TrackWork to your Home Screen (Share, then Add to Home Screen) and open it from there to enable notifications.",
+      "error": "Something went wrong. Please try again.",
+      "digestTitle": "Daily digest",
+      "digestHelp": "Every morning, a summary of the tasks that are due today and overdue.",
+      "digestSaveFailed": "Could not save your preference. Please try again.",
+      "digestUnavailable": "This preference is not available yet."
+    }
   },
   "webhooks": {
     "noWorkspace": "No workspace selected",

@@ -12,6 +12,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconMenu } from '@/components/ui/IconMenu'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Skeleton } from '@/components/ui/Skeleton'
 import CreateWorkspaceDialog from '@/components/create/CreateWorkspaceDialog'
 import WorkspaceFormDialog from '@/components/workspace/WorkspaceFormDialog'
 import { WorkspaceTile, useWorkspaceCategoryLabel } from '@/components/workspace/WorkspaceTile'
@@ -23,7 +24,9 @@ interface WorkspaceStats {
 }
 
 const outlineLink =
-  'inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
+  'inline-flex h-11 flex-1 items-center justify-center rounded-lg border border-border-strong bg-surface px-4 text-center text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-10'
+const primaryLink =
+  'inline-flex h-11 flex-1 items-center justify-center rounded-lg bg-primary px-4 text-center text-sm font-medium text-white shadow-btn-primary transition-colors hover:bg-primary-hover active:bg-primary-active focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:h-10'
 
 function WorkspacesContent() {
   const t = useTranslations('pages.people')
@@ -78,8 +81,12 @@ function WorkspacesContent() {
   }
 
   const createButton = (
-    <Button onClick={() => setShowCreate(true)} className="gap-2" aria-label={t('workspaces.create')}>
-      <Plus className="h-4 w-4" aria-hidden />
+    <Button
+      onClick={() => setShowCreate(true)}
+      className="h-11 w-11 gap-2 px-0 sm:h-10 sm:w-auto sm:px-4"
+      aria-label={t('workspaces.create')}
+    >
+      <Plus className="h-5 w-5 sm:h-4 sm:w-4" aria-hidden />
       <span className="hidden sm:inline">{t('workspaces.create')}</span>
     </Button>
   )
@@ -103,7 +110,7 @@ function WorkspacesContent() {
       {initialLoad ? (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-4" aria-busy>
           {Array.from({ length: 3 }).map((_, index) => (
-            <div key={index} className="h-44 animate-pulse rounded-2xl border border-border bg-surface motion-reduce:animate-none" />
+            <Skeleton key={index} className="h-48 rounded-2xl" />
           ))}
         </div>
       ) : workspaces.length === 0 ? (
@@ -111,7 +118,7 @@ function WorkspacesContent() {
           title={t('workspaces.emptyTitle')}
           body={t('workspaces.emptyBody')}
           action={
-            <Button onClick={() => setShowCreate(true)} className="gap-2">
+            <Button size="lg" onClick={() => setShowCreate(true)} className="gap-2">
               <Plus className="h-4 w-4" aria-hidden />
               {t('workspaces.createFirst')}
             </Button>
@@ -146,7 +153,7 @@ function WorkspacesContent() {
                 <div className="flex items-start gap-3">
                   <WorkspaceTile name={workspace.name} color={workspace.color} />
                   <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-base font-semibold text-text-primary">{workspace.name}</h2>
+                    <h2 className="line-clamp-2 break-words text-base font-semibold text-text-primary">{workspace.name}</h2>
                     <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
                       {workspace.category ? <span>{categoryLabel(workspace.category)}</span> : null}
                       <span>{isAdmin ? t('team.roleAdmin') : t('team.roleMember')}</span>
@@ -158,8 +165,12 @@ function WorkspacesContent() {
                     </Badge>
                   ) : null}
                   {menuItems.length > 0 ? (
-                    <div className="-mr-2 -mt-1">
-                      <IconMenu label={`${t('workspaces.actions')}: ${workspace.name}`} items={menuItems} />
+                    <div className="-mr-2 -mt-2">
+                      <IconMenu
+                        buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover active:bg-tertiary sm:h-9 sm:w-9"
+                        label={`${t('workspaces.actions')}: ${workspace.name}`}
+                        items={menuItems}
+                      />
                     </div>
                   ) : null}
                 </div>
@@ -183,11 +194,11 @@ function WorkspacesContent() {
 
                 <div className="flex gap-2">
                   {!isActive ? (
-                    <Button variant="secondary" className="flex-1" onClick={() => setCurrentWorkspace(workspace)}>
+                    <Button className="h-11 flex-1 sm:h-10" onClick={() => setCurrentWorkspace(workspace)}>
                       {t('workspaces.switch')}
                     </Button>
                   ) : null}
-                  <Link href={`/dashboard/workspace/${workspace.id}`} className={outlineLink} onClick={() => !isActive && setCurrentWorkspace(workspace)}>
+                  <Link href={`/dashboard/workspace/${workspace.id}`} className={isActive ? primaryLink : outlineLink} onClick={() => !isActive && setCurrentWorkspace(workspace)}>
                     {t('workspaces.overview')}
                   </Link>
                 </div>

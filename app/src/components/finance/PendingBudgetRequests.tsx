@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { supabase } from '@/lib/supabase';
 import { useLocaleSwitch } from '@/i18n/LocaleProvider';
 import { Badge } from '@/components/ui/Badge';
+import CollapsibleSection from './CollapsibleSection';
 import { formatMoney, toNumber } from './money';
 
 interface OpenRequest {
@@ -47,20 +48,19 @@ export default function PendingBudgetRequests({ workspaceId, currency }: { works
   if (requests.length === 0) return null;
 
   return (
-    <section className="min-w-0 rounded-2xl border border-border bg-surface">
-      <header className="flex items-center justify-between gap-3 px-4 pb-2 pt-4">
-        <h2 className="text-base font-semibold text-text-primary">{t('finance.openRequests')}</h2>
-        <span className="text-xs text-text-secondary">{t('finance.requestsCount', { count: requests.length })}</span>
-      </header>
+    <CollapsibleSection
+      title={t('finance.openRequests')}
+      meta={t('finance.requestsCount', { count: requests.length })}
+    >
       <ul className="divide-y divide-border">
         {requests.map((request) => (
           <li key={request.id}>
             <Link
               href={request.projects ? `/dashboard/projects/${request.projects.id}` : '/dashboard/projects'}
-              className="flex items-start justify-between gap-3 px-4 py-3 transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+              className="flex min-h-14 items-start justify-between gap-3 px-4 py-3 transition-colors hover:bg-surface-hover active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
             >
               <span className="min-w-0">
-                <span className="block truncate text-sm font-medium text-text-primary">{request.description}</span>
+                <span className="line-clamp-2 break-words text-sm font-medium text-text-primary">{request.description}</span>
                 <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-text-secondary">
                   <span className="truncate">{request.projects?.name}</span>
                   <Badge size="sm" variant={request.status === 'pending' ? 'warning' : 'success'}>
@@ -75,6 +75,6 @@ export default function PendingBudgetRequests({ workspaceId, currency }: { works
           </li>
         ))}
       </ul>
-    </section>
+    </CollapsibleSection>
   );
 }

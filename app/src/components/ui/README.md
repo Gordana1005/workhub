@@ -25,11 +25,19 @@ Legacy `.card .btn-primary .btn-secondary .btn-ghost .input-field .badge-*` stil
 
 ## Components
 - `Button` (+ `buttonClasses()` for links): variant, size, `loading`, `leftIcon/rightIcon`, `iconOnly`, `fullWidth`.
-- `Dialog` (sizes sm|md|lg|xl, focus trap, stacked footer on phone), `ConfirmDialog` and `useConfirm()` (no `window.confirm`).
+- `Dialog` (sizes sm|md|lg|xl, focus trap, stacked footer on phone). On phones sm|md are bottom sheets (grab handle, swipe down to close), lg|xl full-screen; all follow the on-screen keyboard (footer stays reachable). `ConfirmDialog` and `useConfirm()` (no `window.confirm`).
+- `BottomSheet` (portal sheet for pickers / small menus; handle, swipe, scroll lock, safe areas), `useSheetDrag` (the swipe hook).
 - `IconMenu` (portal, keyboard, bottom sheet on phone), `Tooltip`, `Toast` (`useToast()`).
 - `Input` / `Textarea` / `Select` / `Field` (label, hint, error wiring), `inputClasses()`.
 - `SegmentedControl`, `Tabs`, `Chip`, `Badge`, `Kbd`, `Avatar` / `AvatarGroup`.
 - `PageHeader` (breadcrumbs, meta, sticky), `EmptyState` (icon), `TaskRow` (priority/due chips, swipe), `Skeleton*`.
+
+## Mobile conventions (the shell does the heavy lifting)
+- `<main>` already clears the fixed tab bar and FAB: never add bottom padding for them. Custom fixed bottom bars use the `bottom-nav` class.
+- One floating "+" (FAB) exists, owned by AppShell (see its header comment for the route list). Pages never add their own.
+- `hover:` only applies on devices that can hover (`hoverOnlyWhenSupported`), so give pressed feedback with `active:`.
+- Phones: every input/select/textarea renders at >= 16px automatically (no iOS zoom); `Input` derives `inputMode` / `autoComplete` from `type`.
+- Safe areas: `pt-safe` / `pb-safe` / `pl-safe` / `pr-safe` or `env(safe-area-inset-*)`; use `dvh`, never `vh`.
 
 ## Do
 - Phone first: controls >= 40px tall, inputs 16px text on phone, no hover-only actions on touch.

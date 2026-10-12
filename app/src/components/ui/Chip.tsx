@@ -32,7 +32,7 @@ export function Chip({
 }) {
   const classes = clsx(
     'inline-flex max-w-full items-center gap-1.5 rounded-full border font-medium transition-colors [&>svg]:h-3.5 [&>svg]:w-3.5',
-    size === 'sm' ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-[13px]',
+    size === 'sm' ? 'h-8 px-2.5 text-xs sm:h-7' : 'h-9 px-3 text-[13px] sm:h-8',
     selected
       ? 'border-primary/40 bg-primary/10 text-primary'
       : 'border-border-strong bg-surface text-text-secondary',
@@ -72,7 +72,7 @@ export function Chip({
         aria-label={removeLabel}
         onClick={onRemove}
         className={clsx(
-          'inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-current opacity-70 transition hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10',
+          'relative inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-current opacity-70 transition after:absolute after:-inset-1.5 after:content-[""] hover:bg-black/10 hover:opacity-100 active:bg-black/10 dark:hover:bg-white/10 sm:h-5 sm:w-5 sm:after:hidden',
           focus
         )}
       >

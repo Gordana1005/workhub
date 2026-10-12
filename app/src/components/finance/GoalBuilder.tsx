@@ -19,7 +19,7 @@ interface GoalBuilderProps {
 }
 
 const fieldClass =
-  'block w-full min-w-0 max-w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
+  'block w-full min-w-0 max-w-full rounded-lg border border-border-control bg-secondary px-3 py-2.5 min-h-11 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:min-h-10 sm:text-sm';
 
 export default function GoalBuilder({ onSave, onCancel, initialData, currency = 'USD' }: GoalBuilderProps) {
   const t = useTranslations('pages.tools');
@@ -98,19 +98,20 @@ export default function GoalBuilder({ onSave, onCancel, initialData, currency = 
       title={initialData ? t('finance.editGoal') : t('finance.goalCalculator')}
       onClose={onCancel}
       footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={onCancel}>
+        <>
+          <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={onCancel}>
             {t('finance.cancel')}
           </Button>
-          <Button type="submit" form="goal-form" disabled={!goalData.name.trim() || !goalData.targetAmount}>
+          <Button type="submit" form="goal-form" className="h-12 sm:h-10" disabled={!goalData.name.trim() || !goalData.targetAmount}>
             {t('finance.saveGoal')}
           </Button>
-        </div>
+        </>
       }
     >
       <form id="goal-form" onSubmit={handleSave} className="min-w-0 space-y-4">
         <Segmented
           fullWidth
+          large
           label={t('finance.goalCalculator')}
           value={mode}
           onChange={(next) => {
@@ -131,6 +132,7 @@ export default function GoalBuilder({ onSave, onCancel, initialData, currency = 
             id="goal-name"
             type="text"
             autoFocus
+            enterKeyHint="next"
             value={goalData.name}
             onChange={(e) => setGoalData({ ...goalData, name: e.target.value })}
             placeholder={t('finance.goalNamePlaceholder')}
@@ -226,15 +228,15 @@ export default function GoalBuilder({ onSave, onCancel, initialData, currency = 
                 {t('finance.pathTo', { amount: formatMoney(goalData.targetAmount, currency, locale) })}
               </h3>
             </div>
-            <dl className="grid grid-cols-3 gap-2 text-center">
+            <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:text-center">
               {[
                 { label: t('finance.perDay'), value: forecast.perDay },
                 { label: t('finance.perWeek'), value: forecast.perWeek },
                 { label: t('finance.perMonth'), value: forecast.perMonth },
               ].map((item) => (
-                <div key={item.label} className="min-w-0 rounded-lg bg-surface px-2 py-2">
+                <div key={item.label} className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-surface px-3 py-2 sm:block sm:px-2">
                   <dt className="truncate text-xs text-text-secondary">{item.label}</dt>
-                  <dd className="mt-0.5 truncate text-sm font-semibold tabular-nums text-text-primary">
+                  <dd className="truncate text-sm font-semibold tabular-nums text-text-primary sm:mt-0.5">
                     {formatMoney(item.value, currency, locale)}
                   </dd>
                 </div>

@@ -8,6 +8,9 @@
  *   <Input invalid leftIcon? />  <Textarea rows />  <Select><option/></Select>
  * `inputClasses({ invalid, size })` styles any element the same way (e.g. a custom control).
  * Phone: 44px tall and 16px text (prevents iOS zoom); sm+: 40px / 14px. size="sm" = 36px on sm+.
+ * Keyboard hints: Input derives sensible defaults from `type` (email/tel/url/number/search -> inputMode,
+ * autoComplete where unambiguous, no auto-capitalise/correct for email/url); anything you pass wins.
+ * Add enterKeyHint="next" | "done" | "go" | "search" per field for the right return-key label.
  */
 import {
   cloneElement,
@@ -54,6 +57,23 @@ export interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
   leftIcon?: ReactNode
 }
 
+function keyboardDefaults(type: string | undefined): InputHTMLAttributes<HTMLInputElement> {
+  switch (type) {
+    case 'email':
+      return { inputMode: 'email', autoComplete: 'email', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }
+    case 'tel':
+      return { inputMode: 'tel', autoComplete: 'tel' }
+    case 'url':
+      return { inputMode: 'url', autoCapitalize: 'none', autoCorrect: 'off', spellCheck: false }
+    case 'number':
+      return { inputMode: 'decimal' }
+    case 'search':
+      return { inputMode: 'search', enterKeyHint: 'search', autoCapitalize: 'none', autoCorrect: 'off' }
+    default:
+      return {}
+  }
+}
+
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, invalid, size = 'md', leftIcon, 'aria-invalid': ariaInvalid, ...props }, ref) => {
     const input = (
@@ -61,6 +81,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         ref={ref}
         aria-invalid={ariaInvalid ?? (invalid || undefined)}
         className={inputClasses({ invalid, size, className: clsx(leftIcon && 'pl-9', className) })}
+        {...keyboardDefaults(props.type)}
         {...props}
       />
     )

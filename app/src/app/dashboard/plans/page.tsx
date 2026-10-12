@@ -14,7 +14,9 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { IconMenu } from '@/components/ui/IconMenu';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { PlanFormDialog, type Plan } from '@/components/plans/PlanFormDialog';
+import dynamic from 'next/dynamic';
+import { Skeleton } from '@/components/ui/Skeleton';
+import type { Plan } from '@/components/plans/PlanFormDialog';
 import { STATUS_BADGE, parseDay, planProgress } from '@/components/plans/planUtils';
 
 interface MilestoneSummary {
@@ -27,6 +29,11 @@ interface MilestoneSummary {
 
 type Filter = 'all' | Plan['status'];
 
+// The form dialog is only needed once someone opens it.
+const PlanFormDialog = dynamic(() => import('@/components/plans/PlanFormDialog').then((m) => m.PlanFormDialog), {
+  ssr: false,
+});
+
 const STATUS_ORDER: Plan['status'][] = ['active', 'draft', 'completed', 'cancelled'];
 
 export default function PlansPage() {
@@ -37,6 +44,7 @@ export default function PlansPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [milestones, setMilestones] = useState<MilestoneSummary[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [formLoaded, setFormLoaded] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState(true);
@@ -86,11 +94,13 @@ export default function PlansPage() {
 
   const openCreate = () => {
     setEditingPlan(null);
+    setFormLoaded(true);
     setShowForm(true);
   };
 
   const openEdit = (plan: Plan) => {
     setEditingPlan(plan);
+    setFormLoaded(true);
     setShowForm(true);
   };
 
@@ -131,7 +141,7 @@ export default function PlansPage() {
         title={t('title')}
         description={t('subtitle')}
         action={
-          <Button type="button" onClick={openCreate} className="gap-2">
+          <Button type="button" onClick={openCreate} className="h-11 gap-2 sm:h-10">
             <Plus className="h-4 w-4" aria-hidden />
             {t('newPlan')}
           </Button>
@@ -139,14 +149,14 @@ export default function PlansPage() {
       />
 
       {!loading && plans.length > 0 && filters.length > 2 ? (
-        <div className="flex flex-wrap gap-2" role="group" aria-label={t('statusLabel')}>
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 scrollbar-hide sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0" role="group" aria-label={t('statusLabel')}>
           {filters.map((item) => (
             <button
               key={item}
               type="button"
               aria-pressed={activeFilter === item}
               onClick={() => setFilter(item)}
-              className={`inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              className={`inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 text-sm font-medium transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                 activeFilter === item
                   ? 'border-primary bg-primary/10 text-primary'
                   : 'border-border bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -162,7 +172,7 @@ export default function PlansPage() {
       {loading ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {[1, 2, 3, 4].map((item) => (
-            <div key={item} className="h-44 animate-pulse rounded-2xl border border-border bg-surface" />
+            <Skeleton key={item} className="h-40 rounded-2xl" />
           ))}
         </div>
       ) : plans.length === 0 ? (
@@ -170,7 +180,7 @@ export default function PlansPage() {
           title={t('emptyTitle')}
           body={t('emptyBody')}
           action={
-            <Button type="button" onClick={openCreate} className="gap-2">
+            <Button type="button" size="lg" onClick={openCreate} className="gap-2">
               <Plus className="h-4 w-4" aria-hidden />
               {t('createPlan')}
             </Button>
@@ -192,7 +202,7 @@ export default function PlansPage() {
             return (
               <article
                 key={plan.id}
-                className="group relative flex min-w-0 flex-col rounded-2xl border border-border bg-surface p-4 pl-5 transition-[border-color,box-shadow] duration-150 hover:border-primary/40 hover:shadow-md focus-within:border-primary/60"
+                className="group relative flex min-w-0 flex-col rounded-2xl border border-border bg-surface p-4 pl-5 transition-[border-color,box-shadow,background-color] duration-150 hover:border-primary/40 hover:shadow-md focus-within:border-primary/60 active:bg-surface-hover"
               >
                 <span className="absolute inset-y-0 left-0 w-1 rounded-l-2xl" style={{ backgroundColor: accent }} aria-hidden />
 
@@ -200,7 +210,7 @@ export default function PlansPage() {
                   <h2 className="min-w-0 flex-1 text-base font-semibold leading-snug text-text-primary">
                     <Link
                       href={`/dashboard/plans/${plan.id}`}
-                      className="break-words rounded after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-primary focus-visible:after:rounded-2xl"
+                      className="break-words rounded hyphens-auto after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-primary focus-visible:after:rounded-2xl"
                     >
                       {plan.name}
                     </Link>
@@ -271,15 +281,17 @@ export default function PlansPage() {
         </div>
       )}
 
-      <PlanFormDialog
-        open={showForm}
-        plan={editingPlan}
-        onClose={closeForm}
-        onSaved={() => {
-          closeForm();
-          loadPlans();
-        }}
-      />
+      {formLoaded ? (
+        <PlanFormDialog
+          open={showForm}
+          plan={editingPlan}
+          onClose={closeForm}
+          onSaved={() => {
+            closeForm();
+            loadPlans();
+          }}
+        />
+      ) : null}
       {dialog}
     </div>
   );

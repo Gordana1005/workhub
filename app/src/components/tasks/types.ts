@@ -20,6 +20,13 @@ export interface Task {
   created_at?: string;
   tags?: string[] | null;
   recurrence_pattern?: unknown;
+  /** Set on subtasks only (they never appear in task lists). */
+  parent_task_id?: string | null;
+  /** Subtask counts carried by list responses (top-level tasks). */
+  subtask_total?: number;
+  subtask_done?: number;
+  /** Total time logged on the task by everyone, in seconds (only when > 0). */
+  logged_seconds?: number;
 }
 
 export interface Column {
@@ -39,4 +46,5 @@ export interface MemberOption {
   username: string;
   email?: string;
   avatar_url?: string | null;
+  role?: string;
 }

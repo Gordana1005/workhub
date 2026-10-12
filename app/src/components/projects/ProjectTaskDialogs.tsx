@@ -4,6 +4,8 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/Button'
 import { Dialog } from '@/components/ui/Dialog'
+import AssigneePicker from '@/components/tasks/AssigneePicker'
+import { CATEGORY_COLORS } from './projectUtils'
 
 export interface TaskFormValues {
   title: string
@@ -17,6 +19,7 @@ export interface TaskFormValues {
 export interface PickerMember {
   id: string
   username: string
+  avatar_url?: string | null
 }
 
 export interface PickerCategory {
@@ -26,9 +29,9 @@ export interface PickerCategory {
 }
 
 const fieldClass =
-  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50'
+  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted sm:text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50'
 
-export const CATEGORY_COLORS = ['#f97316', '#22c55e', '#3b82f6', '#a855f7', '#e11d48', '#14b8a6', '#f59e0b']
+export { CATEGORY_COLORS }
 
 export function CreateTaskDialog({
   open,
@@ -94,10 +97,10 @@ export function CreateTaskDialog({
       size="lg"
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={close} disabled={saving}>
+          <Button type="button" variant="secondary" className="h-11 w-full sm:h-10 sm:w-auto" onClick={close} disabled={saving}>
             {t('cancel')}
           </Button>
-          <Button type="submit" form="create-task-form" className="w-full sm:w-auto" disabled={saving || !form.title.trim()}>
+          <Button type="submit" form="create-task-form" className="h-11 w-full sm:h-10 sm:w-auto" disabled={saving || !form.title.trim()}>
             {saving ? t('saving') : t('createTask')}
           </Button>
         </div>
@@ -157,20 +160,18 @@ export function CreateTaskDialog({
               className={`${fieldClass} mt-1.5`}
             />
           </label>
-          <label className="block text-sm font-medium text-text-secondary">
-            {t('assignee')}
-            <select
-              value={form.assignee_id}
-              onChange={(event) => setForm({ ...form, assignee_id: event.target.value })}
-              className={`${fieldClass} mt-1.5`}
-            >
-              {members.map((member) => (
-                <option key={member.id} value={member.id}>
-                  {member.username || t('unknownUser')}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div>
+            <span className="block text-sm font-medium text-text-secondary">{t('assignee')}</span>
+            <div className="mt-1.5">
+              <AssigneePicker
+                variant="form"
+                members={members}
+                value={form.assignee_id}
+                currentUserId={defaultAssigneeId}
+                onChange={(id) => setForm({ ...form, assignee_id: id })}
+              />
+            </div>
+          </div>
           <div>
             <div className="flex items-center justify-between gap-2">
               <label htmlFor="create-task-category" className="text-sm font-medium text-text-secondary">
@@ -179,7 +180,7 @@ export function CreateTaskDialog({
               <button
                 type="button"
                 onClick={onNewCategory}
-                className="rounded text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="inline-flex h-10 items-center rounded px-1 text-sm font-medium text-primary hover:underline active:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 {t('newCategory')}
               </button>
@@ -255,7 +256,7 @@ export function CreateCategoryDialog({
       onClose={close}
       footer={
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={close} disabled={saving}>
+          <Button type="button" variant="secondary" className="h-11 w-full sm:h-10 sm:w-auto" onClick={close} disabled={saving}>
             {t('cancel')}
           </Button>
           <Button type="submit" form="create-category-form" className="w-full sm:w-auto" disabled={saving || !name.trim()}>
@@ -292,7 +293,7 @@ export function CreateCategoryDialog({
                 aria-label={swatch}
                 aria-pressed={color === swatch}
                 onClick={() => setColor(swatch)}
-                className={`h-8 w-8 rounded-full border border-border transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
+                className={`h-10 w-10 rounded-full border border-border transition-shadow sm:h-8 sm:w-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
                   color === swatch ? 'ring-2 ring-text-primary ring-offset-2 ring-offset-surface' : ''
                 }`}
                 style={{ backgroundColor: swatch }}

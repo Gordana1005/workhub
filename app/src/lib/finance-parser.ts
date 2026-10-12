@@ -41,7 +41,8 @@ export function parseNaturalLanguageTransaction(input: string): ParsedTransactio
   if (isNaN(amount) || amount <= 0) return null;
   
   // Determine type (income vs expense)
-  const incomeKeywords = /earn|earned|receive|received|income|salary|paid|paycheck|freelance|got|revenue/i;
+  // 'paid'/'got' alone are ambiguous ('paid $20 for lunch', 'got a coffee'), so only unambiguous income words count
+  const incomeKeywords = /earn|earned|receive|received|income|salary|paycheck|freelance|revenue|refund|got paid|paid me|bonus/i;
   const expenseKeywords = /spent|spend|paid|pay|bought|buy|purchase|cost/i;
   
   let type: 'income' | 'expense' = 'expense'; // Default to expense

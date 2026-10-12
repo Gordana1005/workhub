@@ -51,10 +51,10 @@ const RING_RADIUS = 92
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS
 
 const fieldClass =
-  'w-full max-w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+  'w-full max-w-full rounded-lg border border-border bg-secondary min-h-11 px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:min-h-10 sm:text-sm'
 
 const iconButton =
-  'rounded-lg p-2.5 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
+  'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
 
 function safeMinutes(value: number, fallback: number) {
   return Number.isFinite(value) && value > 0 ? Math.min(Math.round(value), 180) : fallback
@@ -210,6 +210,14 @@ export default function FocusMode() {
     setIsRunning(false)
     endAtRef.current = null
 
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        navigator.vibrate([250, 120, 250])
+      }
+    } catch {
+      // vibration is optional
+    }
+
     if (notifyEnabled && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       new Notification(t('focus.notifyTitle'), {
         body: sessionType === 'work' ? t('focus.notifyBreak') : t('focus.notifyReady'),
@@ -254,6 +262,42 @@ export default function FocusMode() {
     tick()
     const interval = window.setInterval(tick, 250)
     return () => window.clearInterval(interval)
+  }, [isRunning])
+
+  // Keep the screen awake while a session runs (Screen Wake Lock API; silently skipped where unsupported).
+  useEffect(() => {
+    if (!isRunning) return
+    type Sentinel = { release: () => Promise<void>; released?: boolean }
+    const wakeLock = (navigator as unknown as { wakeLock?: { request: (type: 'screen') => Promise<Sentinel> } }).wakeLock
+    if (!wakeLock) return
+    let sentinel: Sentinel | null = null
+    let cancelled = false
+
+    const acquire = async () => {
+      try {
+        const lock = await wakeLock.request('screen')
+        if (cancelled) {
+          void lock.release().catch(() => undefined)
+          return
+        }
+        sentinel = lock
+      } catch {
+        // denied (e.g. battery saver) or page hidden: the timer keeps working either way
+      }
+    }
+    // The lock is dropped when the tab is hidden; take it again when the user comes back.
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && (!sentinel || sentinel.released)) void acquire()
+    }
+
+    void acquire()
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVisible)
+      void sentinel?.release().catch(() => undefined)
+      sentinel = null
+    }
   }, [isRunning])
 
   // Show the remaining time in the browser tab while a session runs.
@@ -331,7 +375,7 @@ export default function FocusMode() {
   }, [tasks, taskSearch])
 
   const tabClass = (active: boolean) =>
-    `h-9 flex-1 rounded-lg px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:flex-none ${
+    `min-h-11 flex-1 rounded-lg px-1.5 py-1 text-[13px] font-medium leading-tight transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:min-h-9 sm:flex-none sm:px-3 sm:text-sm ${
       active ? 'bg-surface text-text-primary shadow-sm' : 'text-text-secondary hover:text-text-primary'
     }`
 
@@ -342,7 +386,7 @@ export default function FocusMode() {
       ref={rootRef}
       className={
         isFullscreen
-          ? 'flex min-h-[100dvh] flex-col items-center justify-center overflow-auto bg-background p-6'
+          ? 'flex min-h-[100dvh] flex-col items-center justify-center overflow-auto bg-background px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))]'
           : 'min-w-0 space-y-6'
       }
     >
@@ -370,7 +414,7 @@ export default function FocusMode() {
           className={
             isFullscreen
               ? 'mx-auto flex w-full max-w-2xl flex-col items-center gap-8'
-              : 'flex min-w-0 flex-col items-center gap-6 rounded-2xl border border-border bg-surface px-4 py-8 sm:py-10 xl:col-span-8 2xl:col-span-9'
+              : 'flex min-w-0 flex-col items-center gap-5 rounded-2xl border border-border bg-surface px-4 pb-4 pt-6 sm:gap-6 sm:py-10 xl:col-span-8 2xl:col-span-9'
           }
         >
           <div className="flex w-full max-w-sm gap-0.5 rounded-xl bg-surface-hover p-0.5" role="group" aria-label={t('focus.title')}>
@@ -421,7 +465,7 @@ export default function FocusMode() {
                 <button
                   type="button"
                   onClick={() => setShowTaskSelector(true)}
-                  className="mt-1 max-w-full rounded-lg px-2 py-1 text-sm text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="mt-1 inline-flex min-h-11 max-w-full items-center rounded-lg px-3 py-1 text-sm text-primary transition-colors hover:bg-primary/10 active:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <span className="line-clamp-2 break-words">
                     {selectedTask ? selectedTask.title : t('focus.selectTaskPrompt')}
@@ -431,20 +475,37 @@ export default function FocusMode() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <button type="button" onClick={resetTimer} aria-label={t('focus.reset')} title={t('focus.reset')} className={iconButton}>
+          <div
+            className={
+              isFullscreen
+                ? 'flex items-center gap-3'
+                : 'order-last flex w-full items-center justify-between gap-3 rounded-2xl bg-surface/95 px-1 py-2 backdrop-blur max-lg:sticky max-lg:bottom-[calc(var(--bottom-nav-h)+var(--fab-h)+0.5rem)] max-lg:z-10 lg:order-none lg:w-auto lg:justify-center lg:bg-transparent lg:py-0'
+            }
+          >
+            <button type="button" onClick={resetTimer} aria-label={t('focus.reset')} title={t('focus.reset')} className={`${iconButton} h-12 w-12`}>
               <RotateCcw className="h-5 w-5" aria-hidden />
             </button>
-            <Button onClick={toggleTimer} size="lg" className="min-w-[10rem] gap-2">
+            <Button onClick={toggleTimer} size="lg" className="h-14 min-w-0 max-w-[16rem] flex-1 gap-2 text-base lg:h-12 lg:min-w-[10rem] lg:flex-none">
               {isRunning ? <Pause className="h-5 w-5" aria-hidden /> : <Play className="h-5 w-5" aria-hidden />}
               {primaryLabel}
             </Button>
             {isFullscreen ? (
-              <button type="button" onClick={toggleFullscreen} aria-label={t('focus.exitFullscreen')} title={t('focus.exitFullscreen')} className={iconButton}>
+              <button type="button" onClick={toggleFullscreen} aria-label={t('focus.exitFullscreen')} title={t('focus.exitFullscreen')} className={`${iconButton} h-12 w-12`}>
                 <Minimize2 className="h-5 w-5" aria-hidden />
               </button>
             ) : (
-              <span className="w-10" aria-hidden />
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowSettings(true)}
+                  aria-label={t('focus.settings')}
+                  title={t('focus.settings')}
+                  className={`${iconButton} h-12 w-12 md:hidden`}
+                >
+                  <Settings className="h-5 w-5" aria-hidden />
+                </button>
+                <span className="hidden w-12 md:block" aria-hidden />
+              </>
             )}
           </div>
 
@@ -460,7 +521,7 @@ export default function FocusMode() {
                       aria-pressed={active}
                       disabled={isRunning}
                       onClick={() => choosePreset(sessionType, minutes)}
-                      className={`h-9 rounded-full border px-4 text-sm font-medium tabular-nums transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-50 ${
+                      className={`h-11 rounded-full border px-5 text-sm font-medium tabular-nums transition-colors active:bg-tertiary sm:h-9 sm:px-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:opacity-50 ${
                         active
                           ? 'border-primary bg-primary/10 text-primary'
                           : 'border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -502,7 +563,7 @@ export default function FocusMode() {
             ) : (
               <ul className="mt-4 divide-y divide-border">
                 {todaySessions.map((session) => (
-                  <li key={session.id} className="flex items-center gap-3 py-2.5">
+                  <li key={session.id} className="flex min-h-11 items-center gap-3 py-2.5">
                     <span className="w-12 shrink-0 text-xs tabular-nums text-text-secondary">
                       {format(new Date(session.endedAt), 'HH:mm', { locale: dateLocale })}
                     </span>
@@ -525,7 +586,7 @@ export default function FocusMode() {
         title={t('focus.pomodoroSettings')}
         onClose={closeSettings}
         footer={
-          <Button type="button" className="w-full sm:w-auto" onClick={closeSettings}>
+          <Button type="button" size="lg" className="h-12 w-full sm:h-10 sm:w-auto" onClick={closeSettings}>
             {t('focus.save')}
           </Button>
         }
@@ -535,6 +596,7 @@ export default function FocusMode() {
             {t('focus.workDuration')}
             <input
               type="number"
+              inputMode="numeric"
               value={workDuration}
               onChange={(event) => setWorkDuration(Number(event.target.value))}
               className={`${fieldClass} mt-1.5`}
@@ -546,6 +608,7 @@ export default function FocusMode() {
             {t('focus.shortBreakMinutes')}
             <input
               type="number"
+              inputMode="numeric"
               value={breakDuration}
               onChange={(event) => setBreakDuration(Number(event.target.value))}
               className={`${fieldClass} mt-1.5`}
@@ -557,6 +620,7 @@ export default function FocusMode() {
             {t('focus.longBreakMinutes')}
             <input
               type="number"
+              inputMode="numeric"
               value={longBreakDuration}
               onChange={(event) => setLongBreakDuration(Number(event.target.value))}
               className={`${fieldClass} mt-1.5`}
@@ -564,12 +628,12 @@ export default function FocusMode() {
               max="60"
             />
           </label>
-          <label className="flex items-start gap-3 text-sm text-text-primary">
+          <label className="flex min-h-11 items-center gap-3 text-sm text-text-primary">
             <input
               type="checkbox"
               checked={notifyEnabled}
               onChange={(event) => setNotifyEnabled(event.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
+              className="h-5 w-5 shrink-0 rounded border-border accent-primary"
             />
             <span>{t('focus.notifyToggle')}</span>
           </label>
@@ -594,6 +658,7 @@ export default function FocusMode() {
               onChange={(event) => setTaskSearch(event.target.value)}
               placeholder={t('focus.searchTasks')}
               aria-label={t('focus.searchTasks')}
+              enterKeyHint="search"
               className={`${fieldClass} pl-9`}
             />
           </div>
@@ -605,7 +670,7 @@ export default function FocusMode() {
                 setShowTaskSelector(false)
                 setTaskSearch('')
               }}
-              className="w-full rounded-xl border border-dashed border-border px-3 py-2.5 text-left text-sm text-text-secondary transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="min-h-12 w-full rounded-xl border border-dashed border-border px-3 py-2.5 text-left text-sm text-text-secondary transition-colors hover:bg-surface-hover active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               {t('focus.noTask')}
             </button>
@@ -623,11 +688,11 @@ export default function FocusMode() {
                       setShowTaskSelector(false)
                       setTaskSearch('')
                     }}
-                    className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    className={`min-h-14 w-full rounded-xl border px-3 py-2.5 text-left transition-colors hover:bg-surface-hover active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                       selectedTask?.id === task.id ? 'border-primary bg-primary/5' : 'border-border'
                     }`}
                   >
-                    <span className="block break-words text-sm font-medium text-text-primary">{task.title}</span>
+                    <span className="block break-words text-base font-medium text-text-primary sm:text-sm">{task.title}</span>
                     {task.description ? (
                       <span className="mt-0.5 line-clamp-2 block break-words text-xs text-text-secondary">{task.description}</span>
                     ) : null}

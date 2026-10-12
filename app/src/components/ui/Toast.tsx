@@ -6,8 +6,10 @@
  *   toast.success('Task saved')                                  // string shorthand
  *   toast.error('Could not save', { description: err.message })
  *   toast.show({ title, description?, tone?: 'default'|'success'|'error'|'warning', duration?, action?: { label, onClick } })
- * Auto-dismiss 4s (errors 7s, 0 = sticky), pauses on hover/focus. Bottom-centre above the mobile tab bar,
- * bottom-right on lg+. z-[95] (above dialogs). aria-live: polite (errors: assertive).
+ * Auto-dismiss 4s (errors 7s, 0 = sticky), pauses on hover/focus/press. Bottom-centre above the mobile tab bar
+ * and FAB (CSS vars --bottom-nav-h / --fab-h, see .toast-region in globals.css), moves to the top of the
+ * screen while a sheet/dialog is open on phones, bottom-right on lg+. Swipe sideways to dismiss on touch.
+ * z-[95] (above dialogs). aria-live: polite (errors: assertive).
  * useToast() must be called inside the intl provider (any page/component); outside a provider it no-ops.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
@@ -66,7 +68,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {mounted
         ? createPortal(
             <div
-              className="pointer-events-none fixed inset-x-0 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[95] flex flex-col items-center gap-2 px-4 lg:inset-x-auto lg:bottom-6 lg:right-6 lg:items-end lg:px-0"
+              className="toast-region pointer-events-none fixed inset-x-0 z-[95] flex flex-col items-center gap-2 px-4 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] lg:inset-x-auto lg:right-6 lg:items-end lg:px-0"
             >
               {items.map((item) => (
                 <ToastCard key={item.id} item={item} onDismiss={dismiss} />
@@ -84,6 +86,9 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
   const { Icon, cls } = toneIcon[tone]
   const duration = item.duration ?? (tone === 'error' ? 7000 : 4000)
   const [paused, setPaused] = useState(false)
+  const [dx, setDx] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const dragStart = useRef<number | null>(null)
   const remaining = useRef(duration)
   const startedAt = useRef(0)
 
@@ -105,6 +110,39 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
+      onPointerDown={(event) => {
+        if (event.pointerType === 'mouse') return
+        if ((event.target as HTMLElement).closest('button')) return
+        dragStart.current = event.clientX
+        setDragging(true)
+        setPaused(true)
+      }}
+      onPointerMove={(event) => {
+        if (dragStart.current == null) return
+        setDx(event.clientX - dragStart.current)
+      }}
+      onPointerUp={() => {
+        if (dragStart.current == null) return
+        dragStart.current = null
+        setDragging(false)
+        if (Math.abs(dx) > 72) onDismiss(item.id)
+        else {
+          setDx(0)
+          setPaused(false)
+        }
+      }}
+      onPointerCancel={() => {
+        dragStart.current = null
+        setDragging(false)
+        setDx(0)
+        setPaused(false)
+      }}
+      style={{
+        translate: dx ? `${dx}px 0` : undefined,
+        opacity: dx ? Math.max(0.3, 1 - Math.abs(dx) / 220) : undefined,
+        transition: dragging ? 'none' : 'translate 160ms ease-out, opacity 160ms ease-out',
+        touchAction: 'pan-y',
+      }}
       className="pointer-events-auto flex w-full max-w-sm animate-toast-in items-start gap-3 rounded-xl border border-border bg-surface-raised p-3 pr-2 shadow-pop"
     >
       <Icon className={`mt-0.5 h-5 w-5 shrink-0 ${cls}`} aria-hidden />
@@ -118,7 +156,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
               item.action?.onClick()
               onDismiss(item.id)
             }}
-            className="mt-1.5 rounded text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="-mb-1 mt-0.5 inline-flex min-h-10 items-center rounded px-0.5 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:min-h-0"
           >
             {item.action.label}
           </button>
@@ -128,7 +166,7 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: (id: numbe
         type="button"
         aria-label={item.dismissLabel}
         onClick={() => onDismiss(item.id)}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-8 sm:w-8"
       >
         <X className="h-4 w-4" />
       </button>

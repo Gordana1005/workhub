@@ -1,9 +1,33 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { getWorkspaceRole } from '@/lib/api-access'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
+
+// Admin client, used only for the membership/role lookup
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+/** Masks a webhook secret so only the last 4 characters remain visible. */
+function maskSecret(secret: unknown): string | null {
+  if (typeof secret !== 'string' || !secret) return null
+  return `${'*'.repeat(8)}${secret.slice(-4)}`
+}
+
+/** Admins see the full secret; everyone else gets it masked. */
+async function withSecretVisibility<T extends Record<string, any>>(
+  webhook: T,
+  userId: string
+): Promise<T> {
+  if (!webhook || !('secret' in webhook)) return webhook
+  const role = await getWorkspaceRole(supabaseAdmin, webhook.workspace_id, userId)
+  return role === 'admin' ? webhook : { ...webhook, secret: maskSecret(webhook.secret) }
+}
 
 // Webhook targets must be http(s) and must not point at localhost / private networks (SSRF)
 function isSafeWebhookUrl(raw: string): boolean {
@@ -58,7 +82,7 @@ export async function GET(request: Request) {
 
       if (error) throw error
 
-      return NextResponse.json({ webhook: data })
+      return NextResponse.json({ webhook: await withSecretVisibility(data, user.id) })
     } else if (workspaceId) {
       // List webhooks for workspace
       const { data, error } = await supabase
@@ -66,10 +90,17 @@ export async function GET(request: Request) {
         .select('*')
         .eq('workspace_id', workspaceId)
         .order('created_at', { ascending: false })
+        .limit(200)
 
       if (error) throw error
 
-      return NextResponse.json({ webhooks: data })
+      // One role lookup for the whole list: only admins may see full secrets
+      const role = await getWorkspaceRole(supabaseAdmin, workspaceId, user.id)
+      const webhooks = (data || []).map((w: any) =>
+        role === 'admin' ? w : { ...w, secret: maskSecret(w.secret) }
+      )
+
+      return NextResponse.json({ webhooks })
     } else {
       return NextResponse.json({ error: 'workspace_id required' }, { status: 400 })
     }
@@ -252,9 +283,9 @@ export async function PATCH(request: Request) {
 
     if (error) throw error
 
-    return NextResponse.json({ 
-      webhook: data,
-      message: 'Webhook updated successfully' 
+    return NextResponse.json({
+      webhook: await withSecretVisibility(data, user.id),
+      message: 'Webhook updated successfully'
     })
 
   } catch (error) {

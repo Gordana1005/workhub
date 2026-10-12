@@ -25,7 +25,7 @@ export const VIEWS: { id: ViewId; icon: LucideIcon; labelKey: string }[] = [
 ]
 
 const selectClass =
-  'h-9 w-full rounded-lg border border-border bg-secondary px-2.5 text-sm text-text-primary focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
+  'h-11 w-full rounded-lg border border-border bg-secondary px-2.5 text-base text-text-primary sm:h-9 sm:text-sm focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
 
 const sectionTitle = 'mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted'
 
@@ -181,7 +181,7 @@ export default function TaskFilters({
 
       <section>
         <h3 className={sectionTitle}>{t('priority')}</h3>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-2">
           {PRIORITIES.map((value) => {
             const active = priority === value
             return (
@@ -190,7 +190,7 @@ export default function TaskFilters({
                 type="button"
                 aria-pressed={active}
                 onClick={() => onPriority(active ? '' : value)}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                className={`inline-flex h-10 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors active:bg-tertiary sm:h-8 sm:px-3 sm:text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   active
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -208,7 +208,7 @@ export default function TaskFilters({
         <button
           type="button"
           onClick={onClear}
-          className="rounded-md px-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="inline-flex h-10 items-center rounded-md px-1 text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           {t('clearFilters')}
         </button>

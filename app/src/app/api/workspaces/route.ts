@@ -49,6 +49,7 @@ export async function GET() {
       .from('workspace_members')
       .select('workspace_id, role')
       .eq('user_id', user.id)
+      .limit(500)
 
     if (memberError) {
       console.error('Membership query error:', memberError)
@@ -66,6 +67,7 @@ export async function GET() {
       .from('workspaces')
       .select('*')
       .in('id', workspaceIds)
+      .limit(500)
 
     if (error) {
       console.error('Workspaces query error:', error)
@@ -78,6 +80,7 @@ export async function GET() {
       .from('workspace_members')
       .select('workspace_id')
       .in('workspace_id', workspaceIds)
+      .limit(20000)
     const memberCounts = new Map<string, number>()
     for (const m of allMembers || []) {
       memberCounts.set(m.workspace_id, (memberCounts.get(m.workspace_id) || 0) + 1)

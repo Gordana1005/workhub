@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { sanitizeHtml } from '@/lib/sanitize-html';
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic';
@@ -81,7 +82,8 @@ export async function GET(request: Request) {
         project:projects(name, workspace_id),
         author:profiles(username, avatar_url)
       `)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(1000);
 
     if (projectId) {
       query = query.eq('project_id', projectId);
@@ -200,7 +202,7 @@ export async function POST(request: Request) {
         workspace_id: project.workspace_id,
         author_id: user.id,
         title,
-        content: content || '',
+        content: sanitizeHtml(content),
       })
       .select()
       .single();
@@ -218,17 +220,27 @@ export async function POST(request: Request) {
         
         for (const tag of tags) {
           // If tag already has an ID, use it directly
-          if (tag.id) {
-            tagIds.push(tag.id);
+          if (tag?.id) {
+            // Only reuse a tag that belongs to this workspace
+            const { data: ownTag } = await supabaseAdmin
+              .from('tags')
+              .select('id')
+              .eq('id', tag.id)
+              .eq('workspace_id', project.workspace_id)
+              .maybeSingle();
+            if (ownTag?.id) tagIds.push(ownTag.id);
           } else {
+            const tagName = typeof tag?.name === 'string' ? tag.name.trim().slice(0, 50) : '';
+            if (!tagName) continue;
+            const tagColor = typeof tag.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(tag.color) ? tag.color : '#667eea';
             // Create new tag
             const { data: tagData, error: tagError } = await supabaseAdmin
               .from('tags')
               .upsert(
                 { 
-                  name: tag.name, 
+                  name: tagName, 
                   workspace_id: project.workspace_id, 
-                  color: tag.color || '#667eea' 
+                  color: tagColor 
                 },
                 { onConflict: 'workspace_id,name' }
               )
@@ -310,22 +322,40 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Note ID is required' }, { status: 400 });
     }
 
-    // Update the note
+    // Update the note (content is sanitized on write)
+    const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (title !== undefined) update.title = title;
+    if (content !== undefined) update.content = sanitizeHtml(content);
+
     const { data, error } = await supabaseAdmin
       .from('notes')
-      .update({ title, content, updated_at: new Date().toISOString() })
+      .update(update)
       .eq('id', id)
       .eq('author_id', user.id)
       .select()
       .single();
 
     if (error) {
+      if (error.code === 'PGRST116') {
+        return NextResponse.json({ error: 'Note not found' }, { status: 404 });
+      }
       console.error('Error updating note:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // The workspace always comes from the note itself, never from the client
+    let noteWorkspaceId: string | null = data?.workspace_id ?? null;
+    if (!noteWorkspaceId && data?.project_id) {
+      const { data: noteProject } = await supabaseAdmin
+        .from('projects')
+        .select('workspace_id')
+        .eq('id', data.project_id)
+        .maybeSingle();
+      noteWorkspaceId = noteProject?.workspace_id ?? null;
+    }
+
     // Handle tags if provided
-    if (tags && Array.isArray(tags)) {
+    if (tags && Array.isArray(tags) && noteWorkspaceId) {
       try {
         // First, delete existing note_tags
         await supabaseAdmin
@@ -339,13 +369,16 @@ export async function PUT(request: Request) {
           
           // Ensure all tags exist and get their IDs
           for (const tag of tags) {
+            const tagName = typeof tag?.name === 'string' ? tag.name.trim().slice(0, 50) : '';
+            if (!tagName) continue;
+            const tagColor = typeof tag.color === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(tag.color) ? tag.color : '#667eea';
             const { data: tagData, error: tagError } = await supabaseAdmin
               .from('tags')
               .upsert(
                 { 
-                  name: tag.name, 
-                  workspace_id: tag.workspace_id, 
-                  color: tag.color || '#667eea' 
+                  name: tagName, 
+                  workspace_id: noteWorkspaceId, 
+                  color: tagColor 
                 },
                 { onConflict: 'workspace_id,name' }
               )

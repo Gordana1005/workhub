@@ -2,17 +2,35 @@
  * AppShell - the frame around every /dashboard page.
  *
  * LAYOUT
- *   < lg  : sticky header (z-40) + fixed bottom tab bar (z-30). "More" lives in the header.
+ *   < lg  : sticky 56px header (z-40, safe-area aware: workspace switcher, timer chip, notifications with
+ *           unread badge, avatar -> account sheet with theme / language / settings / log out) + fixed bottom
+ *           tab bar (z-30: Home, Projects, Notes, People, More -> bottom sheet with Tasks, Plan, Time, Focus,
+ *           Finance, Reports, Webhooks, Workspaces, Settings). The tab bar hides while the on-screen keyboard
+ *           is open.
  *   >= lg : persistent left sidebar (collapsible to an icon rail, remembered in localStorage
  *           under "trackwork-sidebar") with the primary nav, tools, workspace switcher and
  *           account. The header becomes a slim 56px bar: breadcrumb + New / theme / language /
- *           notifications. Dialogs stay at z-[80], header z-40, sidebar z-[41] (so its
- *           dropdowns paint above the header), bottom bar z-30.
+ *           notifications. Dialogs stay at z-[80], sheets z-[70], header z-40, sidebar z-[41] (so its
+ *           dropdowns paint above the header), FAB / bottom bar z-30.
+ *
+ * MOBILE METRICS (globals.css): --bottom-nav-h = tab bar height incl. home-indicator inset (0 at lg+),
+ *   --fab-h = space taken by the FAB while one is visible (set here), --app-header-h = sticky header height.
+ *   <main> already pads its bottom by --bottom-nav-h + --fab-h, so NO page needs its own bottom padding to
+ *   clear the tab bar. Custom fixed bottom bars: use the `bottom-nav` class (bottom: var(--bottom-nav-h)).
+ *
+ * FAB CONVENTION (phone, < sm only; a floating "+" above the tab bar, thumb reachable)
+ *   - The shell owns the one FAB; pages must never render their own floating button.
+ *   - It shows only on the routes listed in FAB_ROUTES below (exact path match): Home and Tasks create a
+ *     task, Projects creates a project - the same create dialogs as the header "New" menu (onCreate).
+ *   - Pages with their own primary action in the page body (Notes, Plan, Time, Money, Team, detail pages,
+ *     forms) are simply not listed; to opt a new page in, add its path to FAB_ROUTES. The FAB is hidden
+ *     while the keyboard is open. Because the page header on a FAB route also has a "+" button, page
+ *     authors may hide that one below sm (`hidden sm:inline-flex`) to avoid two buttons for one action.
  *
  * CONTENT CONTAINER CONVENTION (for page authors)
- *   - The shell already provides the page gutter (px-4 sm:px-6 lg:px-8) and centres the page in
- *     a `max-w-[1680px]` column. Pages should NOT add their own page-level max-w / mx-auto /
- *     horizontal padding; just fill the width (use grids such as `xl:grid-cols-12`,
+ *   - The shell already provides the page gutter (px-4 sm:px-6 lg:px-8, plus landscape safe-area insets)
+ *     and centres the page in a `max-w-[1680px]` column. Pages should NOT add their own page-level
+ *     max-w / mx-auto / horizontal padding; just fill the width (use grids such as `xl:grid-cols-12`,
  *     `2xl:grid-cols-4`). Forms / reading pages may narrow themselves with e.g. `max-w-3xl`.
  *   - Full-height app-style pages (boards, calendars, split panes): wrap the page in
  *     `<PageFill>` from '@/components/shell/PageFill'. At lg+ it is exactly as tall as the
@@ -25,6 +43,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -39,10 +58,15 @@ import {
   FolderKanban,
   Home,
   LogOut,
+  Monitor,
+  Moon,
   MoreHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
+  Plus,
+  Search,
   Settings,
+  Sun,
   Target,
   Timer,
   Users,
@@ -51,14 +75,23 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
+import { BottomSheet } from '@/components/ui/BottomSheet'
+import { Kbd } from '@/components/ui/Kbd'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import WorkspaceSwitcher from '@/components/layout/WorkspaceSwitcher'
-import NotificationCenter from '@/components/notifications/NotificationCenter'
+import { useLocaleSwitch } from '@/i18n/LocaleProvider'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { useVisualViewport } from '@/hooks/useVisualViewport'
 import { supabase } from '@/lib/supabase'
+import { useThemeStore } from '@/stores/useThemeStore'
 import { useTimerStore } from '@/stores/useTimerStore'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import LanguageSwitch from './LanguageSwitch'
 import NewMenu, { type CreateKind } from './NewMenu'
 import ThemeSwitch from './ThemeSwitch'
+
+// The notification panel is only needed after the first tap on the bell: keep it out of the first load.
+const NotificationCenter = dynamic(() => import('@/components/notifications/NotificationCenter'), { ssr: false })
 
 type NavKey =
   | 'home'
@@ -93,9 +126,6 @@ const mainItems: NavItem[] = [
   { href: '/dashboard/team', key: 'people', icon: Users },
 ]
 
-// Phone bottom tab bar keeps the original five tabs (Tasks is reachable from Home and "More").
-const phoneTabs: NavItem[] = mainItems.filter((item) => item.key !== 'tasks')
-
 const toolItems: NavItem[] = [
   { href: '/dashboard/time-tracker', key: 'time', icon: Timer },
   { href: '/dashboard/focus', key: 'focus', icon: Focus },
@@ -109,14 +139,25 @@ const manageItems: NavItem[] = [
   { href: '/dashboard/settings', key: 'settings', icon: Settings },
 ]
 
-// Phone "More" menu: everything that is not a bottom tab.
+// Phone bottom tab bar: four destinations + "More".
+const PHONE_TAB_KEYS: NavKey[] = ['home', 'projects', 'notes', 'people']
+const phoneTabs: NavItem[] = PHONE_TAB_KEYS.map((key) => mainItems.find((item) => item.key === key) as NavItem)
+
+// Phone "More" sheet: everything that is not a bottom tab (3 x 3 grid).
 const phoneMoreItems: NavItem[] = [
-  mainItems.find((item) => item.key === 'tasks') as NavItem,
+  ...mainItems.filter((item) => !PHONE_TAB_KEYS.includes(item.key)),
   ...toolItems,
   ...manageItems,
 ]
 
 const allItems: NavItem[] = [...mainItems, ...toolItems, ...manageItems]
+
+// Pages that get the phone floating "+" (see FAB CONVENTION above). Exact paths.
+const FAB_ROUTES: Record<string, 'task' | 'project'> = {
+  '/dashboard': 'task',
+  '/dashboard/tasks': 'task',
+  '/dashboard/projects': 'project',
+}
 
 function isActive(pathname: string | null, href: string) {
   if (!pathname) return false
@@ -141,16 +182,16 @@ function isTypingTarget(target: EventTarget | null) {
 function useDismiss(open: boolean, ref: { current: HTMLElement | null }, close: () => void) {
   useEffect(() => {
     if (!open) return
-    const onPointer = (event: MouseEvent) => {
+    const onPointer = (event: PointerEvent) => {
       if (!ref.current?.contains(event.target as Node)) close()
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') close()
     }
-    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('pointerdown', onPointer)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('pointerdown', onPointer)
       document.removeEventListener('keydown', onKey)
     }
   }, [open, ref, close])
@@ -158,21 +199,30 @@ function useDismiss(open: boolean, ref: { current: HTMLElement | null }, close: 
 
 const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
 
+const tabBase = `group relative flex min-w-0 flex-1 select-none flex-col items-center justify-center gap-0.5 rounded-xl text-[11px] font-medium leading-none ${focusRing}`
+
+function TabFace({ icon: Icon, label, active }: { icon: LucideIcon; label: string; active: boolean }) {
+  return (
+    <>
+      <span
+        className={`flex h-8 w-14 items-center justify-center rounded-full transition-colors group-active:bg-surface-hover ${
+          active ? 'bg-primary/10 text-primary' : 'text-text-secondary'
+        }`}
+      >
+        <Icon className="h-[22px] w-[22px] shrink-0" />
+      </span>
+      <span className={`max-w-full truncate px-0.5 ${active ? 'text-primary' : 'text-text-secondary'}`}>{label}</span>
+    </>
+  )
+}
+
 function BarLink({ item }: { item: NavItem }) {
   const t = useTranslations('nav')
   const pathname = usePathname()
   const active = isActive(pathname, item.href)
-  const Icon = item.icon
   return (
-    <Link
-      href={item.href}
-      aria-current={active ? 'page' : undefined}
-      className={`flex min-w-0 flex-1 flex-col items-center gap-1 rounded-xl px-1 py-2 text-[11px] leading-tight ${focusRing} ${
-        active ? 'bg-primary/10 text-primary' : 'text-text-secondary hover:bg-surface-hover'
-      }`}
-    >
-      <Icon className="h-5 w-5 shrink-0" />
-      <span className="max-w-full truncate">{t(item.key)}</span>
+    <Link href={item.href} aria-current={active ? 'page' : undefined} className={tabBase}>
+      <TabFace icon={item.icon} label={t(item.key)} active={active} />
     </Link>
   )
 }
@@ -219,57 +269,115 @@ function SideGroup({ label, items, collapsed }: { label?: string; items: NavItem
   )
 }
 
-function MoreMenu() {
+/** Phone "More" tab: opens a bottom sheet with a 3-column grid of everything that is not a tab. */
+function MoreTab() {
   const t = useTranslations('nav')
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
   const close = useCallback(() => setOpen(false), [])
-  const active = phoneMoreItems.some((item) => isActive(pathname, item.href))
-
-  useDismiss(open, ref, close)
+  const active = open || phoneMoreItems.some((item) => isActive(pathname, item.href))
 
   useEffect(() => {
     setOpen(false)
   }, [pathname])
 
   return (
-    <div className="relative" ref={ref}>
+    <>
       <button
         type="button"
-        className={`inline-flex h-9 items-center gap-2 rounded-xl px-2 text-sm ${focusRing} ${
-          active ? 'bg-primary/10 text-primary' : 'text-text-secondary hover:bg-surface-hover'
-        }`}
+        aria-haspopup="dialog"
         aria-expanded={open}
-        aria-haspopup="menu"
-        aria-label={t('more')}
         onClick={() => setOpen((value) => !value)}
+        className={tabBase}
       >
-        <MoreHorizontal className="h-5 w-5" />
-        <span className="hidden sm:inline">{t('more')}</span>
+        <TabFace icon={MoreHorizontal} label={t('more')} active={active} />
       </button>
-      {open && (
-        <div role="menu" className="absolute right-0 z-50 mt-2 w-52 rounded-xl border border-border bg-surface p-1 shadow-lg">
+      <BottomSheet open={open} onClose={close} label={t('more')} title={t('more')}>
+        <ul className="grid grid-cols-3 gap-2 pb-1">
           {phoneMoreItems.map(({ href, key, icon: Icon }) => {
             const itemActive = isActive(pathname, href)
             return (
-              <Link
-                key={href}
-                href={href}
-                role="menuitem"
-                aria-current={itemActive ? 'page' : undefined}
-                className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm ${
-                  itemActive ? 'bg-primary/10 text-primary' : 'text-text-secondary hover:bg-surface-hover'
-                }`}
-                onClick={close}
-              >
-                <Icon className="h-4 w-4" />
-                {t(key)}
-              </Link>
+              <li key={href}>
+                <Link
+                  href={href}
+                  aria-current={itemActive ? 'page' : undefined}
+                  onClick={close}
+                  className={`flex min-h-[5.5rem] flex-col items-center justify-center gap-2 rounded-2xl px-1.5 py-3 text-center text-[13px] font-medium leading-tight active:bg-surface-hover ${focusRing} ${
+                    itemActive ? 'bg-primary/10 text-primary' : 'text-text-primary'
+                  }`}
+                >
+                  <span
+                    className={`flex h-11 w-11 items-center justify-center rounded-xl ${
+                      itemActive ? 'bg-primary/15 text-primary' : 'bg-tertiary text-text-secondary'
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="line-clamp-2 max-w-full break-words">{t(key)}</span>
+                </Link>
+              </li>
             )
           })}
-        </div>
-      )}
+        </ul>
+      </BottomSheet>
+    </>
+  )
+}
+
+const themeOptions: { value: 'light' | 'dark' | 'system'; icon: LucideIcon }[] = [
+  { value: 'light', icon: Sun },
+  { value: 'dark', icon: Moon },
+  { value: 'system', icon: Monitor },
+]
+
+/** Phone account sheet body: theme, language, settings, log out. */
+function AccountSheetBody({ onLogout, close }: { onLogout: () => void; close: () => void }) {
+  const tNav = useTranslations('nav')
+  const tShell = useTranslations('shell')
+  const tTheme = useTranslations('theme')
+  const { theme, setTheme } = useThemeStore()
+  const { locale, setLocale } = useLocaleSwitch()
+  const rowClass = `flex min-h-12 w-full items-center gap-3 rounded-xl px-3 text-left text-base active:bg-surface-hover ${focusRing}`
+
+  return (
+    <div className="space-y-4 pt-1">
+      <div className="space-y-1.5">
+        <p className="px-1 text-xs font-medium text-text-muted">{tShell('theme')}</p>
+        <SegmentedControl
+          fullWidth
+          ariaLabel={tShell('theme')}
+          value={theme}
+          onChange={setTheme}
+          options={themeOptions.map(({ value, icon: Icon }) => ({
+            value,
+            label: tTheme(value),
+            icon: <Icon aria-hidden />,
+          }))}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <p className="px-1 text-xs font-medium text-text-muted">{tShell('language')}</p>
+        <SegmentedControl
+          fullWidth
+          ariaLabel={tShell('language')}
+          value={locale}
+          onChange={setLocale}
+          options={[
+            { value: 'en', label: 'English' },
+            { value: 'mk', label: 'Македонски' },
+          ]}
+        />
+      </div>
+      <div className="border-t border-border pt-2">
+        <Link href="/dashboard/settings" onClick={close} className={`${rowClass} text-text-primary`}>
+          <Settings className="h-5 w-5 text-text-muted" />
+          {tNav('settings')}
+        </Link>
+        <button type="button" onClick={onLogout} className={`${rowClass} text-danger`}>
+          <LogOut className="h-5 w-5" />
+          {tShell('logout')}
+        </button>
+      </div>
     </div>
   )
 }
@@ -284,8 +392,9 @@ function AccountMenu({ placement, collapsed = false }: { placement: 'top' | 'sid
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const ref = useRef<HTMLDivElement>(null)
   const close = useCallback(() => setOpen(false), [])
+  const side = placement === 'side'
 
-  useDismiss(open, ref, close)
+  useDismiss(open && side, ref, close)
 
   useEffect(() => {
     setOpen(false)
@@ -315,7 +424,6 @@ function AccountMenu({ placement, collapsed = false }: { placement: 'top' | 'sid
     router.push('/auth/login')
   }
 
-  const side = placement === 'side'
   const name = username || tShell('account')
 
   return (
@@ -327,53 +435,57 @@ function AccountMenu({ placement, collapsed = false }: { placement: 'top' | 'sid
             ? `flex h-11 w-full items-center rounded-lg text-left text-sm text-text-secondary hover:bg-surface-hover ${focusRing} ${
                 collapsed ? 'justify-center' : 'gap-2.5 px-2'
               }`
-            : `inline-flex h-9 max-w-[9rem] items-center gap-2 rounded-xl px-2 text-sm text-text-secondary hover:bg-surface-hover ${focusRing}`
+            : `inline-flex h-10 w-10 items-center justify-center rounded-full active:bg-surface-hover ${focusRing}`
         }
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup={side ? 'menu' : 'dialog'}
         aria-label={name}
         title={collapsed ? name : undefined}
         onClick={() => setOpen((value) => !value)}
       >
-        <Avatar src={avatarUrl} alt={name} fallback={name.slice(0, 2).toUpperCase()} size="sm" className="h-7 w-7 text-[11px]" />
-        {side ? (
-          !collapsed && (
-            <>
-              <span className="min-w-0 flex-1 truncate font-medium text-text-primary">{name}</span>
-              <ChevronsUpDown className="h-4 w-4 shrink-0 text-text-muted" />
-            </>
-          )
-        ) : (
-          username && <span className="hidden truncate sm:inline">{username}</span>
+        <Avatar src={avatarUrl} alt={name} fallback={name.slice(0, 2).toUpperCase()} size="sm" className="h-8 w-8 text-[11px]" />
+        {side && !collapsed && (
+          <>
+            <span className="min-w-0 flex-1 truncate font-medium text-text-primary">{name}</span>
+            <ChevronsUpDown className="h-4 w-4 shrink-0 text-text-muted" />
+          </>
         )}
       </button>
-      {open && (
-        <div
-          role="menu"
-          className={`absolute z-50 w-56 rounded-xl border border-border bg-surface p-1 shadow-lg ${
-            side ? 'bottom-full left-0 mb-2' : 'right-0 mt-2'
-          }`}
-        >
-          <div className="truncate px-3 py-2 text-sm font-medium text-text-primary">{name}</div>
-          <Link
-            href="/dashboard/settings"
-            role="menuitem"
-            className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-text-secondary hover:bg-surface-hover"
-            onClick={close}
+      {side ? (
+        open && (
+          <div
+            role="menu"
+            className="absolute bottom-full left-0 z-50 mb-2 w-56 rounded-xl border border-border bg-surface p-1 shadow-lg"
           >
-            <Settings className="h-4 w-4" />
-            {tNav('settings')}
-          </Link>
-          <button
-            type="button"
-            role="menuitem"
-            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-hover"
-            onClick={logout}
-          >
-            <LogOut className="h-4 w-4" />
-            {tShell('logout')}
-          </button>
-        </div>
+            <div className="truncate px-3 py-2 text-sm font-medium text-text-primary">{name}</div>
+            <Link
+              href="/dashboard/settings"
+              role="menuitem"
+              className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-text-secondary hover:bg-surface-hover"
+              onClick={close}
+            >
+              <Settings className="h-4 w-4" />
+              {tNav('settings')}
+            </Link>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-hover"
+              onClick={logout}
+            >
+              <LogOut className="h-4 w-4" />
+              {tShell('logout')}
+            </button>
+          </div>
+        )
+      ) : (
+        <BottomSheet open={open} onClose={close} label={name}>
+          <div className="flex items-center gap-3 pb-3">
+            <Avatar src={avatarUrl} alt={name} fallback={name.slice(0, 2).toUpperCase()} size="lg" />
+            <p className="min-w-0 flex-1 truncate text-base font-semibold text-text-primary">{name}</p>
+          </div>
+          <AccountSheetBody onLogout={logout} close={close} />
+        </BottomSheet>
       )}
     </div>
   )
@@ -408,21 +520,62 @@ function Breadcrumb({ mounted }: { mounted: boolean }) {
   )
 }
 
-function formatClock(seconds: number) {
+function formatClock(seconds: number, compact = false) {
   const hours = Math.floor(seconds / 3600)
   const minutes = Math.floor((seconds % 3600) / 60)
   const secs = seconds % 60
-  return [hours, minutes, secs].map((part) => String(part).padStart(2, '0')).join(':')
+  const parts = compact && hours === 0 ? [minutes, secs] : [hours, minutes, secs]
+  return parts.map((part) => String(part).padStart(2, '0')).join(':')
 }
 
 export default function AppShell({ children, onCreate }: { children: ReactNode; onCreate: (kind: CreateKind) => void }) {
   const tNav = useTranslations('nav')
   const tShell = useTranslations('shell')
+  const tSearch = useTranslations('search')
+  const openSearch = useCallback(() => window.dispatchEvent(new Event('trackwork:open-search')), [])
+  const pathname = usePathname()
   const { currentWorkspace } = useWorkspaceStore()
   const { time, isRunning, stop, tick } = useTimerStore()
   const [notificationsOpen, setNotificationsOpen] = useState(false)
+  const [notificationsLoaded, setNotificationsLoaded] = useState(false)
+  const [unread, setUnread] = useState(0)
   const [collapsed, setCollapsed] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const isPhone = useMediaQuery('(max-width: 639px)')
+  const keyboard = useVisualViewport()
+  const keyboardOpen = Boolean(keyboard) && isTypingTarget(typeof document === 'undefined' ? null : document.activeElement)
+
+  const fabKind = pathname ? FAB_ROUTES[pathname.replace(/\/$/, '') || '/'] : undefined
+  const showFab = Boolean(fabKind) && isPhone && !keyboardOpen
+
+  // Tell the CSS how much room the FAB takes (toasts + <main> padding read --fab-h).
+  useEffect(() => {
+    const root = document.documentElement
+    root.style.setProperty('--fab-h', showFab ? '4.5rem' : '0px')
+    return () => {
+      root.style.removeProperty('--fab-h')
+    }
+  }, [showFab])
+
+  const refreshUnread = useCallback(async () => {
+    try {
+      const response = await fetch('/api/notifications?unread_only=true&limit=50')
+      if (!response.ok) return
+      const data = await response.json()
+      setUnread(Array.isArray(data.notifications) ? data.notifications.length : 0)
+    } catch {
+      // the badge is a nicety; stay silent offline
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshUnread()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refreshUnread()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [refreshUnread])
 
   useEffect(() => {
     let stored: string | null = null
@@ -466,10 +619,21 @@ export default function AppShell({ children, onCreate }: { children: ReactNode; 
     return () => window.removeEventListener('keydown', onKey)
   }, [onCreate])
 
+  const openNotifications = () => {
+    setNotificationsLoaded(true)
+    setNotificationsOpen(true)
+  }
+
+  const closeNotifications = () => {
+    setNotificationsOpen(false)
+    refreshUnread()
+  }
+
   const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose
+  const bellLabel = unread > 0 ? `${tShell('notifications')}, ${tShell('unreadCount', { count: unread })}` : tShell('notifications')
 
   return (
-    <div className="flex min-h-dvh min-w-0 overflow-x-clip bg-background text-text-primary [--app-header-h:101px] sm:[--app-header-h:57px] lg:[--app-header-h:3.5rem]">
+    <div className="flex min-h-dvh min-w-0 overflow-x-clip bg-background text-text-primary [--app-header-h:calc(3.5rem_+_env(safe-area-inset-top,0px)_+_1px)] lg:[--app-header-h:3.5rem]">
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[90] focus:rounded-lg focus:border focus:border-border focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:text-text-primary focus:shadow-lg"
@@ -528,15 +692,19 @@ export default function AppShell({ children, onCreate }: { children: ReactNode; 
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 border-b border-border bg-surface">
-          <div className="flex items-center gap-2 px-3 py-2 sm:px-4 lg:h-14 lg:px-8 lg:py-0">
+        <header className="pl-safe pr-safe sticky top-0 z-40 border-b border-border bg-surface pt-[env(safe-area-inset-top)] lg:pt-0">
+          <div className="flex h-14 items-center gap-2 px-3 sm:px-4 lg:px-8">
             <Link
               href="/dashboard"
-              className="shrink-0 text-sm font-semibold tracking-tight text-text-primary sm:text-base lg:hidden"
+              aria-label="TrackWork"
+              className={`inline-flex h-10 shrink-0 items-center rounded-lg lg:hidden ${focusRing}`}
             >
-              Track<span className="text-primary">Work</span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-white sm:hidden">T</span>
+              <span className="hidden text-base font-semibold tracking-tight text-text-primary sm:inline">
+                Track<span className="text-primary">Work</span>
+              </span>
             </Link>
-            <div className="hidden min-w-0 sm:block sm:w-[240px] lg:hidden">
+            <div className="min-w-0 flex-1 sm:w-[240px] sm:flex-none lg:hidden">
               <WorkspaceSwitcher />
             </div>
             <Breadcrumb mounted={mounted} />
@@ -546,69 +714,108 @@ export default function AppShell({ children, onCreate }: { children: ReactNode; 
                 onClick={() => stop()}
                 aria-label={`${tShell('stopTimer')} ${formatClock(time)}`}
                 title={tShell('stopTimer')}
-                className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 text-xs font-medium tabular-nums text-primary ${focusRing}`}
+                className={`inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-primary/10 px-3 text-xs font-medium tabular-nums text-primary active:bg-primary/20 ${focusRing}`}
               >
                 <span className="h-2 w-2 animate-pulse rounded-full bg-primary motion-reduce:animate-none" />
-                {formatClock(time)}
+                <span className="sm:hidden">{formatClock(time, true)}</span>
+                <span className="hidden sm:inline">{formatClock(time)}</span>
               </button>
             ) : null}
             <div className="ml-auto flex shrink-0 items-center gap-0.5 lg:gap-1">
-              <div className="lg:hidden">
-                <MoreMenu />
+              <button
+                type="button"
+                onClick={openSearch}
+                aria-label={tSearch('open')}
+                className={`hidden h-9 w-56 items-center gap-2 rounded-xl border border-border-control bg-background px-3 text-sm text-text-muted hover:bg-surface-hover xl:w-72 lg:flex ${focusRing}`}
+              >
+                <Search className="h-4 w-4 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-left">{tSearch('buttonPlaceholder')}</span>
+                <span className="hidden items-center gap-0.5 xl:flex" aria-hidden>
+                  <Kbd>Ctrl</Kbd>
+                  <Kbd>K</Kbd>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={openSearch}
+                aria-label={tSearch('open')}
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover active:bg-surface-hover lg:hidden ${focusRing}`}
+              >
+                <Search className="h-5 w-5" />
+              </button>
+              <div className="hidden sm:block">
+                <NewMenu onCreate={onCreate} />
               </div>
-              <NewMenu onCreate={onCreate} />
-              <div className="hidden sm:contents">
+              <div className="hidden lg:contents">
                 <ThemeSwitch />
                 <LanguageSwitch />
               </div>
               <button
                 type="button"
-                className={`inline-flex h-9 w-9 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover ${focusRing}`}
+                className={`relative inline-flex h-10 w-10 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover active:bg-surface-hover ${focusRing}`}
                 aria-expanded={notificationsOpen}
-                aria-label={tShell('notifications')}
-                onClick={() => setNotificationsOpen(true)}
+                aria-haspopup="dialog"
+                aria-label={bellLabel}
+                onClick={openNotifications}
               >
                 <Bell className="h-5 w-5" />
+                {unread > 0 ? (
+                  <span
+                    aria-hidden
+                    className="absolute right-0.5 top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-danger px-1 text-[10px] font-semibold leading-none tabular-nums text-white ring-2 ring-surface"
+                  >
+                    {unread > 9 ? '9+' : unread}
+                  </span>
+                ) : null}
               </button>
               <div className="lg:hidden">
                 <AccountMenu placement="top" />
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 px-3 pb-2 sm:hidden">
-            <div className="min-w-0 flex-1">
-              <WorkspaceSwitcher />
-            </div>
-            <LanguageSwitch />
-            <ThemeSwitch />
-          </div>
         </header>
 
         <main
           id="main-content"
           tabIndex={-1}
-          className="min-w-0 flex-1 px-4 pb-24 pt-6 focus:outline-none sm:px-6 lg:px-8 lg:pb-8"
+          className="min-w-0 flex-1 pb-[calc(var(--bottom-nav-h)_+_var(--fab-h,0px)_+_1.5rem)] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-5 focus:outline-none sm:pl-[max(1.5rem,env(safe-area-inset-left))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] lg:px-8 lg:pb-8 lg:pt-6"
         >
           <div className="mx-auto w-full min-w-0 max-w-[1680px]">{children}</div>
         </main>
 
+        {showFab && fabKind ? (
+          <button
+            type="button"
+            onClick={() => onCreate(fabKind)}
+            aria-label={fabKind === 'task' ? tShell('newTask') : tShell('newProject')}
+            className={`fixed bottom-[calc(var(--bottom-nav-h)_+_1rem)] right-[max(1rem,env(safe-area-inset-right))] z-30 flex h-14 w-14 animate-pop-in select-none items-center justify-center rounded-2xl bg-primary text-white shadow-lg transition-transform active:scale-95 active:bg-primary-active ${focusRing} focus-visible:ring-offset-2 focus-visible:ring-offset-background`}
+          >
+            <Plus className="h-6 w-6" />
+          </button>
+        ) : null}
+
         <nav
           aria-label={tShell('mainNav')}
-          className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface px-2 pt-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden"
+          className={`pl-safe pr-safe fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface pb-[env(safe-area-inset-bottom)] lg:hidden ${
+            keyboardOpen ? 'hidden' : ''
+          }`}
         >
-          <div className="flex items-stretch">
+          <div className="mx-auto flex h-14 max-w-2xl items-stretch gap-0.5 px-1">
             {phoneTabs.map((item) => (
               <BarLink key={item.href} item={item} />
             ))}
+            <MoreTab />
           </div>
         </nav>
       </div>
 
-      <NotificationCenter
-        isOpen={notificationsOpen}
-        onClose={() => setNotificationsOpen(false)}
-        workspaceId={currentWorkspace?.id || ''}
-      />
+      {notificationsLoaded ? (
+        <NotificationCenter
+          isOpen={notificationsOpen}
+          onClose={closeNotifications}
+          workspaceId={currentWorkspace?.id || ''}
+        />
+      ) : null}
     </div>
   )
 }

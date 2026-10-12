@@ -11,28 +11,32 @@ import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 interface CreateProjectDialogProps {
   open: boolean
   onClose: () => void
+  /** Starter chip selected when the dialog opens (default: blank). */
+  initialStarter?: StarterId
 }
 
-const STARTERS: StarterId[] = ['blank', 'client', 'product', 'internal', 'personal']
+const STARTERS: StarterId[] = ['blank', 'client', 'product', 'internal', 'personal', 'event']
 
-const STARTER_LABEL: Record<StarterId, 'starterBlank' | 'starterClient' | 'starterProduct' | 'starterInternal' | 'starterPersonal'> = {
+const STARTER_LABEL: Record<StarterId, 'starterBlank' | 'starterClient' | 'starterProduct' | 'starterInternal' | 'starterPersonal' | 'starterEvent'> = {
   blank: 'starterBlank',
   client: 'starterClient',
   product: 'starterProduct',
   internal: 'starterInternal',
   personal: 'starterPersonal',
+  event: 'starterEvent',
 }
 
-const STARTER_HELP: Record<StarterId, 'starterBlankHelp' | 'starterClientHelp' | 'starterProductHelp' | 'starterInternalHelp' | 'starterPersonalHelp'> = {
+const STARTER_HELP: Record<StarterId, 'starterBlankHelp' | 'starterClientHelp' | 'starterProductHelp' | 'starterInternalHelp' | 'starterPersonalHelp' | 'starterEventHelp'> = {
   blank: 'starterBlankHelp',
   client: 'starterClientHelp',
   product: 'starterProductHelp',
   internal: 'starterInternalHelp',
   personal: 'starterPersonalHelp',
+  event: 'starterEventHelp',
 }
 
 const fieldClass =
-  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50'
+  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted sm:text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50'
 
 function apiError(data: unknown, fallback: string) {
   if (data && typeof data === 'object' && 'error' in data && typeof (data as { error: unknown }).error === 'string') {
@@ -42,7 +46,7 @@ function apiError(data: unknown, fallback: string) {
   return fallback
 }
 
-export default function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps) {
+export default function CreateProjectDialog({ open, onClose, initialStarter = 'blank' }: CreateProjectDialogProps) {
   const t = useTranslations('create')
   const tp = useTranslations('pages.projects')
   const common = useTranslations('common')
@@ -60,12 +64,14 @@ export default function CreateProjectDialog({ open, onClose }: CreateProjectDial
   useEffect(() => {
     if (!open) return
     setName('')
-    setStarter('blank')
+    setStarter(initialStarter)
     setSaving(false)
     setError(null)
     setCreatedProjectId(null)
     taskCursor.current = 0
-    starterAtCreate.current = 'blank'
+    starterAtCreate.current = initialStarter
+  // initialStarter is read only at open time
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
   const handleSubmit = async (event: FormEvent) => {
@@ -194,7 +200,7 @@ export default function CreateProjectDialog({ open, onClose }: CreateProjectDial
                     aria-pressed={selected}
                     onClick={() => setStarter(id)}
                     disabled={locked}
-                    className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${
+                    className={`inline-flex min-h-10 items-center rounded-full border px-4 py-1.5 text-sm transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${
                       selected
                         ? 'border-primary bg-primary/10 font-medium text-primary'
                         : 'border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary'

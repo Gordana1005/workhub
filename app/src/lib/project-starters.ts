@@ -1,4 +1,4 @@
-export type StarterId = 'blank' | 'client' | 'product' | 'internal' | 'personal'
+export type StarterId = 'blank' | 'client' | 'product' | 'internal' | 'personal' | 'event'
 
 // Task titles live in the message catalogs (pages.projects.starters.<id>.<n>), so a starter is just
 // a number of steps. Keep these counts in sync with the catalogs.
@@ -8,6 +8,7 @@ const STARTER_STEPS: Record<StarterId, number> = {
   product: 5,
   internal: 5,
   personal: 5,
+  event: 5,
 }
 
 /** Message keys (relative to pages.projects.starters) for a starter's tasks, in natural order. */

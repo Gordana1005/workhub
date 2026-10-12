@@ -53,6 +53,7 @@ export async function GET(request: Request) {
       .select('id, name, color, workspace_id')
       .eq('workspace_id', workspaceId)
       .order('name')
+      .limit(500)
 
     if (error) throw error
 

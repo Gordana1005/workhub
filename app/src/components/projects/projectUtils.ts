@@ -125,3 +125,6 @@ export function readableOn(hex: string | null | undefined): string {
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
   return luminance > 0.68 ? '#16181D' : '#ffffff'
 }
+
+/** Swatches offered when creating a task category. */
+export const CATEGORY_COLORS = ['#f97316', '#22c55e', '#3b82f6', '#a855f7', '#e11d48', '#14b8a6', '#f59e0b']

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFormatter, useTranslations } from 'next-intl'
 import dynamic from 'next/dynamic'
 import { AnimatePresence } from 'framer-motion'
-import { CalendarDays, ChevronDown, ChevronRight, LayoutGrid, List, ListFilter, Plus, Search, X } from 'lucide-react'
+import { CalendarDays, ChevronDown, ChevronRight, LayoutGrid, List, ListChecks, ListFilter, Plus, Search, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { Button } from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
@@ -12,18 +12,19 @@ import { Dialog } from '@/components/ui/Dialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconMenu } from '@/components/ui/IconMenu'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { useToast } from '@/components/ui/Toast'
 import { TaskRow } from '@/components/ui/TaskRow'
 import PageFill from '@/components/shell/PageFill'
-import QuickTaskForm, { type QuickTaskInitial } from '@/components/create/QuickTaskForm'
+import type { QuickTaskInitial } from '@/components/create/QuickTaskForm'
 import { LoadingSkeleton } from '@/components/LoadingSkeleton'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useCurrentUserId } from '@/hooks/useCurrentUserId'
-import DetailSheet from '@/components/tasks/DetailSheet'
-import TaskDetailPanel from '@/components/tasks/TaskDetailPanel'
 import TaskFilters, { VIEWS, type ViewId } from '@/components/tasks/TaskFilters'
 import TaskListRow from '@/components/tasks/TaskListRow'
-import TemplateSelector from '@/components/tasks/TemplateSelector'
+import SubtaskChip from '@/components/tasks/SubtaskChip'
 import {
   compareTasks,
   dayKey,
@@ -48,6 +49,27 @@ const CalendarView = dynamic(() => import('@/components/tasks/CalendarView'), {
   loading: () => <LoadingSkeleton type="calendar" />,
   ssr: false,
 })
+
+// Phones get a lightweight month grid + agenda instead of react-big-calendar
+const MobileCalendar = dynamic(() => import('@/components/tasks/MobileCalendar'), {
+  loading: () => <Skeleton className="h-[22rem] rounded-2xl" />,
+  ssr: false,
+})
+
+// Only needed once a task is opened / a task is being created
+const DetailSheet = dynamic(() => import('@/components/tasks/DetailSheet'), { ssr: false })
+const TaskDetailPanel = dynamic(() => import('@/components/tasks/TaskDetailPanel'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex-1 space-y-4 p-5" aria-busy="true">
+      <Skeleton className="h-9 w-40" />
+      <Skeleton className="h-8 w-3/4" />
+      <Skeleton className="h-20 w-full" />
+    </div>
+  ),
+})
+const TemplateSelector = dynamic(() => import('@/components/tasks/TemplateSelector'), { ssr: false })
+const QuickTaskForm = dynamic(() => import('@/components/create/QuickTaskForm'), { ssr: false })
 
 type Mode = 'list' | 'board' | 'calendar'
 type GroupBy = 'due' | 'project' | 'none'
@@ -87,6 +109,7 @@ function matchesView(task: Task, view: ViewId, userId: string, today: string) {
 export default function TasksPage() {
   const t = useTranslations('pages.tasks')
   const { confirm, dialog } = useConfirm()
+  const toast = useToast()
   const format = useFormatter()
   const currentWorkspace = useWorkspaceStore((state) => state.currentWorkspace)
   const workspaceId = currentWorkspace?.id || ''
@@ -115,6 +138,10 @@ export default function TasksPage() {
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [createInitial, setCreateInitial] = useState<QuickTaskInitial | undefined>(undefined)
+  const [createEver, setCreateEver] = useState(false)
+  const [hiddenIds, setHiddenIds] = useState<string[]>([])
+  const pendingDeletes = useRef(new Map<string, ReturnType<typeof setTimeout>>())
+  const chipsRef = useRef<HTMLDivElement>(null)
 
   const searchRef = useRef<HTMLInputElement>(null)
   const debouncedSearch = useDebounce(searchQuery, 250)
@@ -154,7 +181,7 @@ export default function TasksPage() {
       }
       try {
         if (!silent) setLoading(true)
-        const response = await fetch(`/api/tasks?workspace_id=${workspaceId}`)
+        const response = await fetch(`/api/tasks?workspace_id=${workspaceId}&include_time=1`)
         const result = await response.json()
         if (!response.ok) throw new Error(result?.error || 'Error loading tasks')
         setTasks((Array.isArray(result) ? result : []).map(normalizeTask))
@@ -188,6 +215,57 @@ export default function TasksPage() {
     window.addEventListener('trackwork:task-created', onCreated)
     return () => window.removeEventListener('trackwork:task-created', onCreated)
   }, [loadTasks])
+
+  // Deep link from global search: /dashboard/tasks?task=<id> (or the same-page event)
+  const [deepLinkId, setDeepLinkId] = useState<string | null>(null)
+  useEffect(() => {
+    setDeepLinkId(new URLSearchParams(window.location.search).get('task'))
+    const onOpen = (event: Event) => setDeepLinkId((event as CustomEvent<{ id?: string }>).detail?.id ?? null)
+    window.addEventListener('trackwork:open-task', onOpen)
+    return () => window.removeEventListener('trackwork:open-task', onOpen)
+  }, [])
+  useEffect(() => {
+    if (deepLinkId && tasks.some((task) => task.id === deepLinkId)) {
+      setOpenId(deepLinkId)
+      setDeepLinkId(null)
+    }
+  }, [deepLinkId, tasks])
+
+  // A link to a subtask (e.g. from search) opens its parent task, where the subtask lives
+  useEffect(() => {
+    if (!deepLinkId || loading || !workspaceId || tasks.some((task) => task.id === deepLinkId)) return
+    let cancelled = false
+    fetch(`/api/tasks?workspace_id=${workspaceId}&task_id=${encodeURIComponent(deepLinkId)}`)
+      .then((response) => (response.ok ? response.json() : []))
+      .then((rows) => {
+        const parent = Array.isArray(rows) ? rows[0]?.parent_task_id : null
+        if (!cancelled && typeof parent === 'string' && parent) setDeepLinkId(parent)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [deepLinkId, loading, workspaceId, tasks])
+
+  // Swipe-deleted tasks wait a few seconds for "Undo"; leaving the page commits them
+  useEffect(() => {
+    const pending = pendingDeletes.current
+    return () => {
+      pending.forEach((timer, id) => {
+        clearTimeout(timer)
+        fetch(`/api/tasks?id=${id}`, { method: 'DELETE', keepalive: true }).catch(() => {})
+      })
+      pending.clear()
+    }
+  }, [])
+
+  // Keep the active view chip in sight inside the scrolling row
+  useEffect(() => {
+    const row = chipsRef.current
+    const chip = row?.querySelector<HTMLElement>('[aria-pressed="true"]')
+    if (!row || !chip) return
+    row.scrollTo({ left: Math.max(0, chip.offsetLeft - (row.clientWidth - chip.offsetWidth) / 2), behavior: 'smooth' })
+  }, [view])
 
   // ---- mutations -------------------------------------------------------
 
@@ -247,6 +325,40 @@ export default function TasksPage() {
     }
   }
 
+  // Swipe / row delete on phones: hide at once, delete for real after 5s unless undone
+  const deleteWithUndo = (task: Task) => {
+    setHiddenIds((prev) => [...prev, task.id])
+    setOpenId((prev) => (prev === task.id ? null : prev))
+    const unhide = () => setHiddenIds((prev) => prev.filter((id) => id !== task.id))
+    const timer = setTimeout(async () => {
+      pendingDeletes.current.delete(task.id)
+      try {
+        const response = await fetch(`/api/tasks?id=${task.id}`, { method: 'DELETE' })
+        if (!response.ok) throw new Error('Delete failed')
+        removeTask(task.id)
+        unhide()
+      } catch (error) {
+        console.error('Error deleting task:', error)
+        unhide()
+        toast.error(t('deleteTaskFailed'))
+      }
+    }, 5000)
+    pendingDeletes.current.set(task.id, timer)
+    toast.show({
+      title: t('taskDeleted'),
+      duration: 5000,
+      action: {
+        label: t('undo'),
+        onClick: () => {
+          const pendingTimer = pendingDeletes.current.get(task.id)
+          if (pendingTimer) clearTimeout(pendingTimer)
+          pendingDeletes.current.delete(task.id)
+          unhide()
+        },
+      },
+    })
+  }
+
   const bulkComplete = async () => {
     try {
       await Promise.all(selected.map((id) => patchTask(id, { is_completed: true })))
@@ -285,6 +397,7 @@ export default function TasksPage() {
   const base = useMemo(() => {
     const query = debouncedSearch.trim().toLowerCase()
     return tasks.filter((task) => {
+      if (hiddenIds.includes(task.id)) return false
       if (projectId && task.project_id !== projectId) return false
       if (assigneeId && task.assignee_id !== assigneeId) return false
       if (priority && task.priority !== priority) return false
@@ -295,7 +408,7 @@ export default function TasksPage() {
         (task.tags || []).some((tag) => tag.toLowerCase().includes(query))
       )
     })
-  }, [tasks, debouncedSearch, projectId, assigneeId, priority])
+  }, [tasks, hiddenIds, debouncedSearch, projectId, assigneeId, priority])
 
   const counts = useMemo(() => {
     const result = {} as Record<ViewId, number>
@@ -317,6 +430,14 @@ export default function TasksPage() {
     () => base.filter((task) => matchesView(task, view, currentUserId, today)).sort(compareTasks),
     [base, view, currentUserId, today]
   )
+
+  const assigneeCounts = useMemo(() => {
+    const result: Record<string, number> = {}
+    for (const task of tasks) {
+      if (task.assignee_id && !isDone(task)) result[task.assignee_id] = (result[task.assignee_id] || 0) + 1
+    }
+    return result
+  }, [tasks])
 
   const openCount = useMemo(() => tasks.filter((task) => !isDone(task)).length, [tasks])
   const overdueCount = useMemo(
@@ -403,6 +524,7 @@ export default function TasksPage() {
 
   const startCreate = (initial?: QuickTaskInitial) => {
     setCreateInitial(initial)
+    setCreateEver(true)
     setCreateOpen(true)
   }
 
@@ -497,6 +619,7 @@ export default function TasksPage() {
       projects={projects}
       members={members}
       currentUserId={currentUserId}
+      assigneeCounts={assigneeCounts}
       onChange={replaceTask}
       onDelete={removeTask}
       onClose={() => setOpenId(null)}
@@ -530,6 +653,21 @@ export default function TasksPage() {
     { mode: 'calendar' as const, label: t('calendar'), Icon: CalendarDays },
   ].filter((item) => !(item.mode === 'board' && !isMd))
 
+  const renderPhoneRow = (task: Task) => (
+    <TaskRow
+      key={task.id}
+      title={task.title}
+      detail={taskDetail(task)}
+      done={isDone(task)}
+      completeLabel={t('markComplete')}
+      deleteLabel={t('delete')}
+      onOpen={() => setOpenId(task.id)}
+      onToggle={() => toggleComplete(task)}
+      onDelete={() => deleteWithUndo(task)}
+      meta={task.subtask_total ? <SubtaskChip total={task.subtask_total} done={task.subtask_done} /> : undefined}
+    />
+  )
+
   const renderGroup = (group: Group) => {
     const collapsed = !!group.collapsible && !completedOpen
     return (
@@ -540,7 +678,7 @@ export default function TasksPage() {
               type="button"
               aria-expanded={!collapsed}
               onClick={() => setCompletedOpen((open) => !open)}
-              className="flex w-full items-center gap-1.5 rounded-lg px-1 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:px-3"
+              className="flex min-h-11 w-full items-center gap-1.5 rounded-lg px-1 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:min-h-0 md:px-3"
             >
               {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               {group.label}
@@ -584,21 +722,7 @@ export default function TasksPage() {
             ))}
           </div>
         ) : (
-          <div className="space-y-2">
-            {group.tasks.map((task) => (
-              <TaskRow
-                key={task.id}
-                title={task.title}
-                detail={taskDetail(task)}
-                done={isDone(task)}
-                completeLabel={t('markComplete')}
-                deleteLabel={t('delete')}
-                onOpen={() => setOpenId(task.id)}
-                onToggle={() => toggleComplete(task)}
-                onDelete={() => deleteTask(task.id)}
-              />
-            ))}
-          </div>
+          <div className="space-y-2">{group.tasks.map(renderPhoneRow)}</div>
         )}
       </section>
     )
@@ -607,9 +731,9 @@ export default function TasksPage() {
   let content: React.ReactNode
   if (loading) {
     content = (
-      <div className="space-y-2" aria-busy="true" aria-label={t('loadingTasks')}>
+      <div className="space-y-2" role="status" aria-busy="true" aria-label={t('loadingTasks')}>
         {Array.from({ length: 8 }).map((_, index) => (
-          <div key={index} className="h-11 animate-pulse rounded-lg bg-surface-hover" />
+          <Skeleton key={index} className="h-[3.75rem] rounded-xl md:h-11 md:rounded-lg" />
         ))}
       </div>
     )
@@ -627,6 +751,7 @@ export default function TasksPage() {
   } else if (tasks.length === 0) {
     content = (
       <EmptyState
+        icon={<ListChecks />}
         title={t('noTasksYet')}
         body={t('createFirstTask')}
         action={
@@ -647,6 +772,10 @@ export default function TasksPage() {
           onTaskUpdate={(id, updates) => (updates.status ? moveTask(id, updates.status) : undefined)}
         />
       </div>
+    )
+  } else if (effectiveMode === 'calendar' && !isMd) {
+    content = (
+      <MobileCalendar tasks={visible} renderTask={renderPhoneRow} onAddForDay={(key) => startCreate({ due_date: key })} />
     )
   } else if (effectiveMode === 'calendar') {
     content = (
@@ -691,13 +820,19 @@ export default function TasksPage() {
           loading || tasks.length === 0 ? undefined : t('summary', { open: openCount, overdue: overdueCount })
         }
         action={
-          <div className="flex items-center gap-1">
-            <Button type="button" aria-label={t('newTask')} onClick={() => startCreate()} className="gap-2">
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              aria-label={t('newTask')}
+              onClick={() => startCreate()}
+              className="h-11 gap-2 max-sm:hidden sm:h-10"
+            >
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">{t('newTask')}</span>
+              <span>{t('newTask')}</span>
             </Button>
             <IconMenu
               label={t('moreActions')}
+              buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover sm:h-10 sm:w-10"
               items={[{ label: t('fromTemplate'), onClick: () => setTemplatesOpen(true) }]}
             />
           </div>
@@ -705,38 +840,47 @@ export default function TasksPage() {
       />
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[11rem] flex-1 sm:max-w-md">
+        <div className="relative min-w-0 flex-1 basis-[11rem] sm:max-w-md">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
           <input
             ref={searchRef}
             type="search"
+            enterKeyHint="search"
             placeholder={t('searchTasks')}
             aria-label={t('searchTasks')}
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
-            className="h-10 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            className="h-11 w-full rounded-lg border border-border bg-surface pl-9 pr-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 sm:h-10 sm:text-sm"
           />
         </div>
 
-        <div role="group" aria-label={t('viewMode')} className="inline-flex rounded-lg border border-border bg-surface p-0.5">
-          {modes.map(({ mode: item, label, Icon }) => (
-            <button
-              key={item}
-              type="button"
-              aria-pressed={effectiveMode === item}
-              onClick={() => setMode(item)}
-              className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:px-3 ${
-                effectiveMode === item
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              <span className="hidden sm:inline">{label}</span>
-              <span className="sr-only sm:hidden">{label}</span>
-            </button>
-          ))}
-        </div>
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-11 gap-2 sm:h-10 xl:hidden"
+          onClick={() => setFiltersOpen(true)}
+        >
+          <ListFilter className="h-4 w-4" />
+          {t('filters')}
+          {activeFilterCount > 0 ? (
+            <span className="rounded-full bg-primary px-1.5 text-[11px] font-semibold leading-5 text-white">
+              {activeFilterCount}
+            </span>
+          ) : null}
+        </Button>
+
+        <SegmentedControl
+          ariaLabel={t('viewMode')}
+          value={effectiveMode}
+          onChange={(next) => setMode(next)}
+          fullWidth
+          className="sm:w-auto"
+          options={modes.map(({ mode: item, label, Icon }) => ({
+            value: item,
+            label,
+            icon: <Icon aria-hidden />,
+          }))}
+        />
 
         {effectiveMode === 'list' ? (
           <select
@@ -750,46 +894,39 @@ export default function TasksPage() {
             <option value="none">{t('groupByNone')}</option>
           </select>
         ) : null}
-
-        <Button
-          type="button"
-          variant="secondary"
-          className="gap-2 xl:hidden"
-          onClick={() => setFiltersOpen(true)}
-        >
-          <ListFilter className="h-4 w-4" />
-          {t('filters')}
-          {activeFilterCount > 0 ? (
-            <span className="rounded-full bg-primary px-1.5 text-[11px] font-semibold leading-5 text-white">
-              {activeFilterCount}
-            </span>
-          ) : null}
-        </Button>
       </div>
 
-      <div className="-mx-1 mt-3 flex gap-1.5 overflow-x-auto px-1 pb-1 xl:hidden" role="group" aria-label={t('views')}>
-        {VIEWS.map(({ id, labelKey }) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={view === id}
-            onClick={() => setView(id)}
-            className={`inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-              view === id
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'border-border bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-            }`}
-          >
-            {t(labelKey)}
-            <span
-              className={`tabular-nums ${
-                id === 'overdue' && counts.overdue > 0 && view !== id ? 'font-semibold text-danger' : 'text-text-muted'
+      <div className="relative mt-3 xl:hidden">
+        <div
+          ref={chipsRef}
+          role="group"
+          aria-label={t('views')}
+          className="scrollbar-hide -mx-4 flex gap-2 overflow-x-auto px-4 [-webkit-mask-image:linear-gradient(to_right,transparent,#000_16px,#000_calc(100%-28px),transparent)] [mask-image:linear-gradient(to_right,transparent,#000_16px,#000_calc(100%-28px),transparent)] sm:mx-0 sm:px-0 sm:[-webkit-mask-image:none] sm:[mask-image:none]"
+        >
+          {VIEWS.map(({ id, labelKey }) => (
+            <button
+              key={id}
+              type="button"
+              aria-pressed={view === id}
+              onClick={() => setView(id)}
+              className={`inline-flex h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-4 text-sm font-medium transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-9 sm:px-3.5 ${
+                view === id
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border-strong bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
               }`}
             >
-              {counts[id]}
-            </span>
-          </button>
-        ))}
+              {t(labelKey)}
+              <span
+                className={`tabular-nums ${
+                  id === 'overdue' && counts.overdue > 0 && view !== id ? 'font-semibold text-danger' : 'text-text-muted'
+                }`}
+              >
+                {counts[id]}
+              </span>
+            </button>
+          ))}
+          <span aria-hidden className="w-2 shrink-0 sm:hidden" />
+        </div>
       </div>
 
       <div className="mt-4 flex min-h-0 flex-1 flex-col gap-4 lg:flex-row">
@@ -873,8 +1010,41 @@ export default function TasksPage() {
         </DetailSheet>
       ) : null}
 
-      <Dialog open={filtersOpen} title={t('filters')} onClose={() => setFiltersOpen(false)}>
+      <Dialog
+        open={filtersOpen}
+        title={t('filters')}
+        onClose={() => setFiltersOpen(false)}
+        footer={
+          <>
+            {activeFilterCount > 0 ? (
+              <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={clearFilters}>
+                {t('clearFilters')}
+              </Button>
+            ) : null}
+            <Button type="button" className="h-11 sm:h-10" onClick={() => setFiltersOpen(false)}>
+              {t('showResults', { count: visible.length })}
+            </Button>
+          </>
+        }
+      >
         {filters('sheet')}
+        {effectiveMode === 'list' ? (
+          <section className="mt-5 md:hidden">
+            <h3 className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+              {t('groupBy')}
+            </h3>
+            <select
+              aria-label={t('groupBy')}
+              value={groupBy}
+              onChange={(event) => setGroupBy(event.target.value as GroupBy)}
+              className="h-11 w-full rounded-lg border border-border bg-secondary px-2.5 text-base text-text-primary focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              <option value="due">{t('groupByDue')}</option>
+              <option value="project">{t('groupByProject')}</option>
+              <option value="none">{t('groupByNone')}</option>
+            </select>
+          </section>
+        ) : null}
       </Dialog>
 
       <AnimatePresence>
@@ -883,13 +1053,12 @@ export default function TasksPage() {
             workspaceId={workspaceId}
             onClose={() => setTemplatesOpen(false)}
             onSelectTemplate={(data) => {
-              const checklist = (data.subtasks || [])
-                .filter((subtask) => subtask.title)
-                .map((subtask) => `- [ ] ${subtask.title}`)
-                .join('\n')
+              // The subtasks are created as real subtasks by the API together with the task
+              // (it falls back to a checklist in the description when subtasks are unavailable)
               startCreate({
                 title: data.title,
-                description: [data.description, checklist].filter(Boolean).join('\n\n'),
+                description: data.description,
+                subtasks: (data.subtasks || []).map((subtask) => subtask.title).filter(Boolean),
                 priority: data.priority,
                 category: data.category,
                 estimated_hours: data.estimated_hours,
@@ -901,12 +1070,14 @@ export default function TasksPage() {
         )}
       </AnimatePresence>
 
-      <QuickTaskForm
-        open={createOpen}
-        onClose={() => setCreateOpen(false)}
-        initial={createInitial}
-        defaultProjectId={projectId || undefined}
-      />
+      {createEver ? (
+        <QuickTaskForm
+          open={createOpen}
+          onClose={() => setCreateOpen(false)}
+          initial={createInitial}
+          defaultProjectId={projectId || undefined}
+        />
+      ) : null}
       {dialog}
     </PageFill>
   )

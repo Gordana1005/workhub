@@ -13,6 +13,8 @@ import { Dialog } from '@/components/ui/Dialog';
 import { Textarea } from '@/components/ui/Input';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { formatMoney } from './money';
 
 const BUDGET_CATEGORY_KEYS: Record<string, string> = {
   'Software Subscription': 'finance.budgetCatSoftware',
@@ -59,6 +61,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
   const { confirm, dialog } = useConfirm();
   const { locale } = useLocaleSwitch();
   const dateLocale = locale === 'mk' ? mk : enUS;
+  const money = (value: number) => formatMoney(value, 'USD', locale);
   const [requests, setRequests] = useState<BudgetRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
@@ -181,7 +184,12 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
   };
 
   if (loading) {
-    return <div className="text-text-secondary">{t('finance.loadingRequests')}</div>;
+    return (
+      <div className="space-y-3" role="status" aria-label={t('finance.loadingRequests')}>
+        <Skeleton className="h-16 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+      </div>
+    );
   }
 
   return (
@@ -190,21 +198,21 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
       <dl className="mb-4 grid grid-cols-3 divide-x divide-border rounded-xl border border-border bg-surface-hover text-center">
         <div className="min-w-0 px-2 py-3">
           <dt className="truncate text-xs text-text-secondary">{t('finance.pending')}</dt>
-          <dd className="mt-1 truncate text-base font-semibold text-text-primary">${totals.pending.toLocaleString()}</dd>
+          <dd className="mt-1 truncate text-base font-semibold text-text-primary">{money(totals.pending)}</dd>
           <dd className="truncate text-xs text-text-secondary">
             {t('finance.requestsCount', { count: requests.filter(r => r.status === 'pending').length })}
           </dd>
         </div>
         <div className="min-w-0 px-2 py-3">
           <dt className="truncate text-xs text-text-secondary">{t('finance.approved')}</dt>
-          <dd className="mt-1 truncate text-base font-semibold text-text-primary">${totals.approved.toLocaleString()}</dd>
+          <dd className="mt-1 truncate text-base font-semibold text-text-primary">{money(totals.approved)}</dd>
           <dd className="truncate text-xs text-text-secondary">
             {t('finance.requestsCount', { count: requests.filter(r => r.status === 'approved').length })}
           </dd>
         </div>
         <div className="min-w-0 px-2 py-3">
           <dt className="truncate text-xs text-text-secondary">{t('finance.paid')}</dt>
-          <dd className="mt-1 truncate text-base font-semibold text-text-primary">${totals.paid.toLocaleString()}</dd>
+          <dd className="mt-1 truncate text-base font-semibold text-text-primary">{money(totals.paid)}</dd>
           <dd className="truncate text-xs text-text-secondary">
             {t('finance.paidCount', { count: requests.filter(r => r.is_paid).length })}
           </dd>
@@ -309,7 +317,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
 
                 <div className="flex items-center justify-between gap-3 sm:block sm:shrink-0 sm:text-right">
                   <div className="text-xl font-semibold text-text-primary sm:mb-2 sm:text-2xl">
-                    ${parseFloat(request.amount.toString()).toLocaleString()}
+                    {money(parseFloat(request.amount.toString()))}
                   </div>
 
                   {/* Action Buttons */}
@@ -317,7 +325,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleApprove(request.id)}
-                        className="p-2 bg-success hover:bg-success/90 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        className="inline-flex h-11 w-11 items-center justify-center bg-success hover:bg-success/90 active:bg-success/80 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-9 sm:w-9"
                         title={t('finance.approve')}
                         aria-label={t('finance.approve')}
                       >
@@ -325,7 +333,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
                       </button>
                       <button
                         onClick={() => handleReject(request.id)}
-                        className="p-2 bg-danger hover:bg-danger/90 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        className="inline-flex h-11 w-11 items-center justify-center bg-danger hover:bg-danger/90 active:bg-danger/80 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-9 sm:w-9"
                         title={t('finance.reject')}
                         aria-label={t('finance.reject')}
                       >
@@ -337,7 +345,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
                   {isOwner && request.status === 'approved' && !request.is_paid && (
                     <button
                       onClick={() => handleMarkPaid(request.id)}
-                      className="px-3 py-1.5 bg-primary hover:bg-primary-hover text-white rounded-lg text-sm transition-colors"
+                      className="inline-flex min-h-11 items-center px-4 bg-primary hover:bg-primary-hover active:bg-primary-active text-white rounded-lg text-sm transition-colors sm:min-h-9"
                     >
                       {t('finance.markAsPaid')}
                     </button>
@@ -356,10 +364,10 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
         onClose={() => (rejecting ? undefined : setRejectTarget(null))}
         footer={
           <>
-            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setRejectTarget(null)} disabled={rejecting}>
+            <Button type="button" variant="secondary" className="h-11 w-full sm:h-10 sm:w-auto" onClick={() => setRejectTarget(null)} disabled={rejecting}>
               {t('finance.cancel')}
             </Button>
-            <Button type="button" variant="destructive" className="w-full sm:w-auto" onClick={submitReject} loading={rejecting}>
+            <Button type="button" variant="destructive" className="h-12 w-full sm:h-10 sm:w-auto" onClick={submitReject} loading={rejecting}>
               {t('finance.reject')}
             </Button>
           </>

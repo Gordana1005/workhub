@@ -63,8 +63,8 @@ export default function ReportDetails({ rows }: { rows: DetailRow[] }) {
   return (
     <section className="min-w-0 rounded-2xl border border-border bg-surface">
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <h2 className="text-base font-semibold text-text-primary">{t('reports.detailsTitle')}</h2>
-        <span className="text-xs text-text-secondary">{t('reports.rowsCount', { count: rows.length })}</span>
+        <h2 className="min-w-0 text-base font-semibold text-text-primary">{t('reports.detailsTitle')}</h2>
+        <span className="shrink-0 text-xs tabular-nums text-text-secondary">{t('reports.rowsCount', { count: rows.length })}</span>
       </div>
 
       {rows.length === 0 ? (
@@ -121,7 +121,7 @@ export default function ReportDetails({ rows }: { rows: DetailRow[] }) {
 
           <ul className="divide-y divide-border lg:hidden">
             {visible.map((row) => (
-              <li key={row.id} className="px-4 py-3">
+              <li key={row.id} className="min-h-14 px-4 py-3">
                 <p className="break-words text-sm font-medium text-text-primary">{row.title}</p>
                 <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                   <Badge size="sm" variant={PRIORITY_VARIANT[row.priority] || 'neutral'}>
@@ -140,7 +140,7 @@ export default function ReportDetails({ rows }: { rows: DetailRow[] }) {
               <span className="text-xs text-text-secondary">
                 {t('reports.showing', { shown: visible.length, total: rows.length })}
               </span>
-              <Button type="button" variant="secondary" size="sm" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
+              <Button type="button" variant="secondary" size="sm" className="h-11 sm:h-8" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
                 {t('reports.showMore')}
               </Button>
             </div>

@@ -1,4 +1,18 @@
 const path = require('path');
+// Custom (self-hosted / vanity) Supabase domain must be NetworkOnly too
+const CUSTOM_SUPABASE_RULES = [];
+try {
+  const host = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || '').hostname;
+  if (host && !/(^|\.)supabase\.(co|in)$/i.test(host)) {
+    CUSTOM_SUPABASE_RULES.push({
+      urlPattern: new RegExp('^https://' + host.replace(/\./g, '\\.') + '(/|$)', 'i'),
+      handler: 'NetworkOnly'
+    });
+  }
+} catch (e) {
+  // no/invalid Supabase URL at build time: nothing extra to add
+}
+
 const withPWA = require('next-pwa')({
   dest: 'public',
   register: true,
@@ -7,16 +21,17 @@ const withPWA = require('next-pwa')({
   disable: process.env.NODE_ENV === 'development',
   runtimeCaching: [
     {
-      urlPattern: /^https:\/\/.*\.supabase\.co\/.*$/,
-      handler: 'NetworkFirst',
-      options: {
-        cacheName: 'supabase-api',
-        expiration: {
-          maxEntries: 200,
-          maxAgeSeconds: 24 * 60 * 60 // 24 hours
-        },
-        networkTimeoutSeconds: 10
-      }
+      // Supabase REST / auth / storage / realtime: user data and tokens must
+      // never be served from (or written to) a cache. (urlPattern values are
+      // serialized into the service worker, so they must be self-contained.)
+      urlPattern: /^https:\/\/([^/]*\.)?supabase\.(co|in)(\/|$)/i,
+      handler: 'NetworkOnly'
+    },
+    ...CUSTOM_SUPABASE_RULES,
+    {
+      // Our own API routes are always live, same-origin only
+      urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.startsWith('/api/'),
+      handler: 'NetworkOnly'
     },
     {
       urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,

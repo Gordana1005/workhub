@@ -9,6 +9,7 @@ import Link from 'next/link'
 import { twMerge } from 'tailwind-merge'
 import { clsx } from 'clsx'
 import { Badge } from '@/components/ui/Badge'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 
 export default function WorkspaceSwitcher({ compact = false }: { compact?: boolean }) {
   const t = useTranslations('pages.people')
@@ -21,6 +22,8 @@ export default function WorkspaceSwitcher({ compact = false }: { compact?: boole
   } = useWorkspaceStore()
   
   const [isOpen, setIsOpen] = useState(false)
+  // phone (< 640px): the list opens as a bottom sheet instead of a dropdown under the header
+  const [sheet, setSheet] = useState(false)
   const [mounted, setMounted] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -30,7 +33,7 @@ export default function WorkspaceSwitcher({ compact = false }: { compact?: boole
 
   // Close dropdown when clicking outside or pressing Escape
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: PointerEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false)
       }
@@ -39,16 +42,21 @@ export default function WorkspaceSwitcher({ compact = false }: { compact?: boole
       if (event.key === 'Escape') setIsOpen(false)
     }
 
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside)
+    if (isOpen && !sheet) {
+      document.addEventListener('pointerdown', handleClickOutside)
       document.addEventListener('keydown', handleKey)
     }
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('pointerdown', handleClickOutside)
       document.removeEventListener('keydown', handleKey)
     }
-  }, [isOpen])
+  }, [isOpen, sheet])
+
+  const toggleOpen = () => {
+    if (!isOpen) setSheet(window.innerWidth < 640)
+    setIsOpen(!isOpen)
+  }
 
   const handleWorkspaceSwitch = (workspace: typeof currentWorkspace) => {
     setCurrentWorkspace(workspace)
@@ -93,24 +101,108 @@ export default function WorkspaceSwitcher({ compact = false }: { compact?: boole
 
   if (!mounted) {
     return (
-      <div className={compact ? 'h-10 w-10 rounded-lg bg-surface-hover' : 'h-10 w-full max-w-full rounded-lg bg-surface-hover sm:w-60 lg:w-full'} />
+      <div className={compact ? 'h-10 w-10 rounded-lg bg-surface-hover' : 'h-11 w-full max-w-full rounded-lg bg-surface-hover sm:w-60 lg:w-full'} />
     )
   }
+
+  const list = (
+    <div className={sheet ? '' : 'max-h-[300px] overflow-y-auto custom-scrollbar'}>
+          {workspaces.length === 0 ? (
+            <div className="px-4 py-8 text-center">
+              <Building2 className="w-10 h-10 text-text-muted mx-auto mb-2" />
+              <p className="text-text-secondary text-sm">{t('switcher.empty')}</p>
+            </div>
+          ) : (
+            <div className="py-1">
+              {workspaces.map((workspace) => {
+                const isActive = currentWorkspace?.id === workspace.id
+                
+                return (
+                  <button
+                    key={workspace.id}
+                    onClick={() => handleWorkspaceSwitch(workspace)}
+                    className={twMerge(clsx(
+                        'w-full min-h-14 px-4 py-3 flex items-center gap-3 transition-colors border-l-2 active:bg-surface-hover',
+                        isActive
+                            ? 'bg-primary/5 text-primary border-primary'
+                            : 'hover:bg-surface-hover text-text-primary border-transparent'
+                    ))}
+                  >
+                    {/* Color Indicator */}
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: workspace.color || 'var(--brand-blue)' }}
+                    />
+
+                    {/* Workspace Info */}
+                    <div className="flex-1 min-w-0 text-left">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm truncate">
+                          {workspace.name}
+                        </span>
+                        {workspace.userRole === 'admin' && (
+                          <Badge variant="blue" size="sm" className="px-1.5 py-0">{t('switcher.admin')}</Badge>
+                        )}
+                      </div>
+                      {workspace.memberCount && (
+                        <div className="text-xs text-text-muted mt-0.5">
+                          {memberLabel(workspace.memberCount)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Active Indicator */}
+                    {isActive && (
+                      <Check className="w-4 h-4 text-primary flex-shrink-0" />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+  )
+
+  const footer = (
+    <div className={clsx('p-2 space-y-1', sheet ? 'mt-1 border-t border-border' : 'border-t border-border bg-background/50')}>
+          <Link
+            href="/dashboard/workspaces"
+            className="w-full min-h-11 px-3 py-2 flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors"
+            onClick={() => setIsOpen(false)}
+          >
+            <div className="w-6 h-6 rounded flex items-center justify-center bg-surface border border-border">
+              <Building2 className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-sm font-medium sm:text-xs">{t('switcher.manageAll')}</span>
+          </Link>
+          
+          <Link
+            href="/dashboard/workspaces?create=true"
+            className="w-full min-h-11 px-3 py-2 flex items-center gap-2 text-primary hover:bg-primary/10 rounded-md transition-colors"
+            onClick={() => setIsOpen(false)}
+          >
+            <div className="w-6 h-6 rounded flex items-center justify-center border border-primary/20">
+              <Plus className="w-3.5 h-3.5" />
+            </div>
+            <span className="text-sm font-medium sm:text-xs">{t('switcher.addNew')}</span>
+          </Link>
+        </div>
+  )
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleOpen}
         disabled={loading}
         aria-expanded={isOpen}
-        aria-haspopup="menu"
+        aria-haspopup={sheet ? 'dialog' : 'menu'}
         aria-label={compact ? currentWorkspace?.name || t('switcher.select') : undefined}
         title={compact ? currentWorkspace?.name || t('switcher.select') : undefined}
         className={
           compact
             ? 'flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50'
-            : 'flex w-full min-w-0 max-w-full items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 transition-all duration-200 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-[280px] lg:max-w-none'
+            : 'flex min-h-11 w-full min-w-0 max-w-full items-center justify-between rounded-lg border border-border bg-surface px-3 py-1.5 transition-all duration-200 hover:bg-surface-hover active:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-[280px] lg:max-w-none'
         }
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -151,7 +243,7 @@ export default function WorkspaceSwitcher({ compact = false }: { compact?: boole
       </button>
 
       <AnimatePresence>
-        {isOpen && (
+        {isOpen && !sheet && (
           <motion.div
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
@@ -169,90 +261,22 @@ export default function WorkspaceSwitcher({ compact = false }: { compact?: boole
               </div>
             </div>
 
-            {/* Workspaces List */}
-            <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
-              {workspaces.length === 0 ? (
-                <div className="px-4 py-8 text-center">
-                  <Building2 className="w-10 h-10 text-text-muted mx-auto mb-2" />
-                  <p className="text-text-secondary text-sm">{t('switcher.empty')}</p>
-                </div>
-              ) : (
-                <div className="py-1">
-                  {workspaces.map((workspace) => {
-                    const isActive = currentWorkspace?.id === workspace.id
-                    
-                    return (
-                      <button
-                        key={workspace.id}
-                        onClick={() => handleWorkspaceSwitch(workspace)}
-                        className={twMerge(clsx(
-                            'w-full px-4 py-3 flex items-center gap-3 transition-colors border-l-2',
-                            isActive
-                                ? 'bg-primary/5 text-primary border-primary'
-                                : 'hover:bg-surface-hover text-text-primary border-transparent'
-                        ))}
-                      >
-                        {/* Color Indicator */}
-                        <div
-                          className="w-3 h-3 rounded-full flex-shrink-0"
-                          style={{ backgroundColor: workspace.color || 'var(--brand-blue)' }}
-                        />
+            {list}
 
-                        {/* Workspace Info */}
-                        <div className="flex-1 min-w-0 text-left">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium text-sm truncate">
-                              {workspace.name}
-                            </span>
-                            {workspace.userRole === 'admin' && (
-                              <Badge variant="blue" size="sm" className="px-1.5 py-0">{t('switcher.admin')}</Badge>
-                            )}
-                          </div>
-                          {workspace.memberCount && (
-                            <div className="text-xs text-text-muted mt-0.5">
-                              {memberLabel(workspace.memberCount)}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Active Indicator */}
-                        {isActive && (
-                          <Check className="w-4 h-4 text-primary flex-shrink-0" />
-                        )}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Footer Actions */}
-            <div className="border-t border-border bg-background/50 p-2 space-y-1">
-              <Link
-                href="/dashboard/workspaces"
-                className="w-full px-3 py-2 flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-surface-hover rounded-md transition-colors"
-                onClick={() => setIsOpen(false)}
-              >
-                <div className="w-6 h-6 rounded flex items-center justify-center bg-surface border border-border">
-                  <Building2 className="w-3.5 h-3.5" />
-                </div>
-                <span className="text-xs font-medium">{t('switcher.manageAll')}</span>
-              </Link>
-              
-              <Link
-                href="/dashboard/workspaces?create=true"
-                className="w-full px-3 py-2 flex items-center gap-2 text-primary hover:bg-primary/10 rounded-md transition-colors"
-                onClick={() => setIsOpen(false)}
-              >
-                <div className="w-6 h-6 rounded flex items-center justify-center border border-primary/20">
-                  <Plus className="w-3.5 h-3.5" />
-                </div>
-                <span className="text-xs font-medium">{t('switcher.addNew')}</span>
-              </Link>
-            </div>
+            {footer}
           </motion.div>
         )}
       </AnimatePresence>
+
+      <BottomSheet
+        open={isOpen && sheet}
+        onClose={() => setIsOpen(false)}
+        label={t('switcher.title')}
+        title={t('switcher.title')}
+      >
+        {list}
+        {footer}
+      </BottomSheet>
     </div>
   )
 }

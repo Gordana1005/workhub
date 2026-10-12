@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { createNotifications, type NotificationInput } from '@/lib/notify'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,6 +57,67 @@ async function loadInvitation(token: string) {
     .maybeSingle()
   if (error) throw error
   return invitation
+}
+
+/**
+ * Tells the inviter (and the other workspace admins) that someone joined. Never throws.
+ * Notification text is stored in English: the server does not know each recipient's UI language.
+ */
+async function notifyJoined(
+  invitation: { invited_by?: string | null; email?: string | null },
+  workspaceId: string,
+  workspaceName: string,
+  joiner: { id: string; email?: string | null }
+) {
+  try {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('username')
+      .eq('id', joiner.id)
+      .maybeSingle()
+    const who = profile?.username || joiner.email || invitation.email || 'Someone'
+    const place = workspaceName || 'your workspace'
+
+    const { data: admins } = await supabaseAdmin
+      .from('workspace_members')
+      .select('user_id')
+      .eq('workspace_id', workspaceId)
+      .eq('role', 'admin')
+      .limit(100)
+
+    const inviterId = invitation.invited_by || null
+    const entries: NotificationInput[] = []
+    const notified = new Set<string>([joiner.id])
+    const link = '/dashboard/team'
+
+    if (inviterId && !notified.has(inviterId)) {
+      notified.add(inviterId)
+      entries.push({
+        user_id: inviterId,
+        workspace_id: workspaceId,
+        type: 'invitation_accepted',
+        title: 'Invitation accepted',
+        message: `${who} accepted your invitation and joined ${place}.`,
+        link,
+      })
+    }
+    for (const admin of admins || []) {
+      const id = (admin as { user_id: string }).user_id
+      if (!id || notified.has(id)) continue
+      notified.add(id)
+      entries.push({
+        user_id: id,
+        workspace_id: workspaceId,
+        type: 'member_joined',
+        title: 'New team member',
+        message: `${who} joined ${place}.`,
+        link,
+      })
+    }
+    await createNotifications(entries)
+  } catch (error) {
+    console.error('Error sending join notifications:', error)
+  }
 }
 
 /**
@@ -159,11 +221,24 @@ export async function POST(request: Request) {
       .eq('id', workspaceId)
       .maybeSingle()
 
+    // Only the first accept of a pending invitation announces a new member (re-opened links stay silent)
+    if (state === 'pending' && !existing) {
+      await notifyJoined(invitation, workspaceId, workspace?.name ?? '', user)
+    }
+
+    // Invitees created through the e-mail invite have no username yet: the client sends them to onboarding
+    const { data: ownProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('username')
+      .eq('id', user.id)
+      .maybeSingle()
+
     return json({
       success: true,
       workspaceId,
       workspaceName: workspace?.name ?? null,
       alreadyMember: Boolean(existing),
+      needsProfile: !ownProfile?.username,
     })
   } catch (error) {
     console.error('Error accepting invitation:', error)

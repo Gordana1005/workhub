@@ -8,12 +8,13 @@
  *   clamps left/right inside the viewport; follows scroll/resize while open.
  * - keyboard: Enter/Space/ArrowDown/ArrowUp open, arrows/Home/End/typeahead move, Esc closes and
  *   returns focus to the trigger, Tab closes.
- * - phone (<640px): bottom sheet with 48px rows; sm+: compact popover with 36px rows.
+ * - phone (<640px): bottom sheet with 48px rows, grab handle, swipe down to close; sm+: compact popover with 36px rows.
  * - z-[70] (above the app header, below dialogs); auto-raised to z-[90] inside a dialog.
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { MoreHorizontal } from 'lucide-react'
+import { useSheetDrag } from './useSheetDrag'
 
 export type IconMenuItem = {
   label: string
@@ -47,6 +48,8 @@ export function IconMenu({
   const menuRef = useRef<HTMLDivElement>(null)
   const typeahead = useRef({ text: '', timer: 0 })
   const menuId = useId()
+  const drag = useSheetDrag(() => close(true))
+  const resetDrag = drag.reset
 
   const enabledItems = useCallback(
     () => Array.from(menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]:not([aria-disabled="true"])') ?? []),
@@ -63,12 +66,13 @@ export function IconMenu({
     setSheet(window.matchMedia('(max-width: 639px)').matches)
     setRaised(Boolean(el?.closest('[role="dialog"]')))
     setPos(null)
+    resetDrag()
     setOpen(true)
     window.requestAnimationFrame(() => {
       const list = enabledItems()
       ;(focus === 'last' ? list[list.length - 1] : list[0])?.focus({ preventScroll: true })
     })
-  }, [enabledItems])
+  }, [enabledItems, resetDrag])
 
   const place = useCallback(() => {
     const trig = triggerRef.current
@@ -184,14 +188,15 @@ export function IconMenu({
         aria-label={label}
         onKeyDown={onMenuKeyDown}
         onClick={(event) => event.stopPropagation()}
+        data-sheet={sheet ? '' : undefined}
         style={
           sheet
-            ? undefined
+            ? drag.style
             : { top: pos?.top ?? 0, left: pos?.left ?? 0, transformOrigin: pos?.origin, visibility: pos ? 'visible' : 'hidden' }
         }
         className={
           sheet
-            ? `fixed inset-x-0 bottom-0 max-h-[80dvh] animate-sheet-in overflow-y-auto rounded-t-2xl border-t border-border bg-surface-raised px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 shadow-xl ${
+            ? `fixed inset-x-0 bottom-0 max-h-[80dvh] animate-sheet-in overflow-y-auto overscroll-contain rounded-t-2xl border-t border-border bg-surface-raised px-2 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 shadow-xl ${
                 raised ? 'z-[90]' : 'z-[70]'
               }`
             : `scrollbar-thin fixed max-h-[min(24rem,calc(100dvh-1rem))] min-w-[11rem] max-w-[18rem] animate-pop-in overflow-y-auto rounded-xl border border-border bg-surface-raised p-1 shadow-pop ${
@@ -200,10 +205,10 @@ export function IconMenu({
         }
       >
         {sheet ? (
-          <>
-            <div aria-hidden className="mx-auto mb-2 mt-1 h-1 w-9 rounded-full bg-border-strong" />
+          <div {...drag.handleProps} className="sticky top-0 z-10 -mx-2 -mt-2 rounded-t-2xl bg-surface-raised px-2 pb-1 pt-2">
+            <div aria-hidden className="mx-auto mb-2 mt-1 h-1 w-10 rounded-full bg-border-strong" />
             <p className="truncate px-3 pb-1 text-xs font-medium text-text-muted">{label}</p>
-          </>
+          </div>
         ) : null}
         {items.map((item, i) => (
           <div key={`${item.label}-${i}`}>
@@ -214,7 +219,7 @@ export function IconMenu({
               tabIndex={-1}
               aria-disabled={item.disabled || undefined}
               className={`flex w-full items-center gap-2.5 rounded-lg px-3 text-left transition-colors focus:outline-none ${
-                sheet ? 'min-h-12 text-base' : 'min-h-9 py-1.5 text-sm'
+                sheet ? 'min-h-12 text-base active:bg-surface-hover' : 'min-h-9 py-1.5 text-sm'
               } ${
                 item.disabled
                   ? 'cursor-not-allowed opacity-45'
@@ -233,7 +238,7 @@ export function IconMenu({
               {item.icon ? (
                 <span
                   aria-hidden
-                  className={`inline-flex shrink-0 [&>svg]:h-4 [&>svg]:w-4 ${item.danger ? '' : 'text-text-muted'}`}
+                  className={`inline-flex shrink-0 [&>svg]:h-5 [&>svg]:w-5 sm:[&>svg]:h-4 sm:[&>svg]:w-4 ${item.danger ? '' : 'text-text-muted'}`}
                 >
                   {item.icon}
                 </span>

@@ -91,7 +91,7 @@ export default function ProjectPeople({
   }
 
   const addButton = isAdmin ? (
-    <Button type="button" variant="secondary" className="shrink-0 gap-2" onClick={() => setAdding(true)}>
+    <Button type="button" variant="secondary" className="h-11 shrink-0 gap-2 sm:h-10" onClick={() => setAdding(true)}>
       <Plus className="h-4 w-4" aria-hidden />
       {t('addMember')}
     </Button>
@@ -120,7 +120,7 @@ export default function ProjectPeople({
             const name = member.username || t('unknownUser')
             const open = openTaskCounts[member.id] || 0
             return (
-              <li key={member.id} className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-3">
+              <li key={member.id} className="flex min-h-[4.25rem] items-center gap-3 rounded-2xl border border-border bg-surface p-3">
                 <Avatar src={member.avatar_url} alt={name} fallback={name.slice(0, 2).toUpperCase()} size="md" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-text-primary">{name}</p>
@@ -131,6 +131,7 @@ export default function ProjectPeople({
                 {isAdmin ? (
                   <IconMenu
                     label={`${t('memberActions')}: ${name}`}
+                    buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover sm:h-9 sm:w-9"
                     items={[{ label: t('removeMember'), onClick: () => setRemoving(member), danger: true }]}
                   />
                 ) : null}
@@ -145,7 +146,7 @@ export default function ProjectPeople({
         title={t('addMemberTitle')}
         onClose={closeAdd}
         footer={
-          <Button type="button" variant="secondary" className="w-full sm:ml-auto sm:w-auto" onClick={closeAdd}>
+          <Button type="button" variant="secondary" className="h-11 w-full sm:ml-auto sm:h-10 sm:w-auto" onClick={closeAdd}>
             {t('done')}
           </Button>
         }
@@ -169,7 +170,7 @@ export default function ProjectPeople({
                     onChange={(event) => setSearch(event.target.value)}
                     aria-label={t('searchPeople')}
                     placeholder={t('searchPeople')}
-                    className="h-10 w-full rounded-lg border border-border bg-secondary pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="h-11 w-full rounded-lg border border-border bg-secondary pl-9 pr-3 text-base text-text-primary sm:h-10 sm:text-sm placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
               ) : null}
@@ -180,13 +181,14 @@ export default function ProjectPeople({
                   available.map((person) => {
                     const name = person.username || t('unknownUser')
                     return (
-                      <li key={person.id} className="flex items-center gap-3 px-3 py-2.5">
+                      <li key={person.id} className="flex min-h-14 items-center gap-3 px-3 py-2">
                         <Avatar src={person.avatar_url} alt={name} fallback={name.slice(0, 2).toUpperCase()} size="sm" />
                         <p className="min-w-0 flex-1 truncate text-sm font-medium text-text-primary">{name}</p>
                         <Button
                           type="button"
                           size="sm"
                           variant="secondary"
+                          className="h-11 px-4 sm:h-8"
                           disabled={busyId !== null}
                           onClick={() => add(person.id)}
                         >

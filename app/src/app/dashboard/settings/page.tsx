@@ -24,6 +24,9 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Skeleton } from '@/components/ui/Skeleton'
+import PushToggle from '@/components/settings/PushToggle'
+import NotificationPrefs from '@/components/settings/NotificationPrefs'
 import { supabase } from '@/lib/supabase'
 import { useLocaleSwitch, type AppLocale } from '@/i18n/LocaleProvider'
 import { useThemeStore, type ThemeChoice } from '@/stores/useThemeStore'
@@ -58,7 +61,7 @@ const SECTIONS: { id: SectionId; icon: LucideIcon; label: string; help: string }
 ]
 
 const fieldClass =
-  'mt-1.5 block w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30'
+  'mt-1.5 block min-h-11 w-full min-w-0 rounded-lg border border-border-control bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:min-h-10 sm:text-sm'
 
 const THEMES: { id: ThemeChoice; icon: LucideIcon }[] = [
   { id: 'light', icon: Sun },
@@ -86,7 +89,7 @@ function ChoiceCard({
       role="radio"
       aria-checked={selected}
       onClick={onSelect}
-      className={`relative flex min-w-0 items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+      className={`relative flex min-h-14 min-w-0 items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
         selected ? 'border-primary bg-primary/10' : 'border-border bg-surface hover:bg-surface-hover'
       }`}
     >
@@ -112,7 +115,6 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [showAvatarSelector, setShowAvatarSelector] = useState(false)
-  const [notifPermission, setNotifPermission] = useState<NotificationPermission | 'unsupported'>('unsupported')
 
   const [profile, setProfile] = useState({
     username: '',
@@ -159,9 +161,10 @@ export default function SettingsPage() {
     loadProfile()
   }, [router])
 
+  // Opening a section on a phone starts at its top, like a pushed screen.
   useEffect(() => {
-    setNotifPermission('Notification' in window ? Notification.permission : 'unsupported')
-  }, [])
+    if (section !== null && !window.matchMedia('(min-width: 1024px)').matches) window.scrollTo({ top: 0 })
+  }, [section])
 
   const handleSave = async () => {
     if (!userId) return
@@ -191,21 +194,26 @@ export default function SettingsPage() {
     }
   }
 
-  const requestNotifications = useCallback(async () => {
-    if (!('Notification' in window)) return
-    setNotifPermission(await Notification.requestPermission())
-  }, [])
-
   const signOut = async () => {
     await supabase.auth.signOut()
+    await (await import('@/lib/clear-client-cache')).clearClientCaches()
     router.push('/auth/login')
   }
 
   const active = SECTIONS.find((item) => item.id === (section ?? 'profile')) as (typeof SECTIONS)[number]
 
   const profileForm = loading ? (
-    <div className="flex justify-center py-12">
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
+    <div className="space-y-4" role="status" aria-busy="true">
+      <div className="flex items-center gap-4">
+        <Skeleton className="h-20 w-20 !rounded-full" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton className="h-4 w-2/3" />
+        </div>
+      </div>
+      <Skeleton className="h-11" />
+      <Skeleton className="h-11" />
+      <Skeleton className="h-11" />
     </div>
   ) : (
     <form
@@ -228,7 +236,7 @@ export default function SettingsPage() {
         <div className="min-w-0 space-y-2">
           <p className="text-sm font-medium text-text-primary">{t('settings.profilePhoto')}</p>
           <p className="text-sm text-text-secondary">{t('settings.avatarHelp')}</p>
-          <Button type="button" variant="outline" size="sm" onClick={() => setShowAvatarSelector((open) => !open)}>
+          <Button type="button" variant="outline" size="sm" className="h-11 sm:h-8" onClick={() => setShowAvatarSelector((open) => !open)}>
             {showAvatarSelector ? t('settings.closeSelection') : t('settings.chooseAvatar')}
           </Button>
         </div>
@@ -245,7 +253,7 @@ export default function SettingsPage() {
                 setShowAvatarSelector(false)
               }}
               aria-pressed={profile.avatar_url === url}
-              className={`aspect-square overflow-hidden rounded-xl border-2 bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              className={`aspect-square min-h-11 overflow-hidden rounded-xl border-2 bg-surface-hover active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                 profile.avatar_url === url ? 'border-primary' : 'border-transparent hover:border-border'
               }`}
             >
@@ -260,6 +268,12 @@ export default function SettingsPage() {
           {t('settings.username')}
           <input
             type="text"
+            name="username"
+            autoComplete="nickname"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            enterKeyHint="next"
             value={profile.username}
             onChange={(event) => setProfile({ ...profile, username: event.target.value })}
             className={fieldClass}
@@ -270,6 +284,8 @@ export default function SettingsPage() {
           {t('settings.email')}
           <input
             type="email"
+            inputMode="email"
+            autoComplete="email"
             value={profile.email}
             readOnly
             className={`${fieldClass} cursor-not-allowed text-text-secondary`}
@@ -280,6 +296,8 @@ export default function SettingsPage() {
           {t('settings.jobTitle')}
           <input
             type="text"
+            autoComplete="organization-title"
+            enterKeyHint="next"
             value={profile.job_title}
             onChange={(event) => setProfile({ ...profile, job_title: event.target.value })}
             className={fieldClass}
@@ -290,6 +308,8 @@ export default function SettingsPage() {
           {t('settings.department')}
           <input
             type="text"
+            autoComplete="off"
+            enterKeyHint="done"
             value={profile.department}
             onChange={(event) => setProfile({ ...profile, department: event.target.value })}
             className={fieldClass}
@@ -299,7 +319,7 @@ export default function SettingsPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={saving} className="w-full sm:w-auto">
+        <Button type="submit" loading={saving} className="h-12 w-full sm:h-10 sm:w-auto">
           {saving ? t('settings.saving') : t('settings.saveChanges')}
         </Button>
         {message ? (
@@ -310,13 +330,6 @@ export default function SettingsPage() {
       </div>
     </form>
   )
-
-  const notificationStatus: Record<NotificationPermission | 'unsupported', string> = {
-    granted: t('settings.notifGranted'),
-    denied: t('settings.notifDenied'),
-    default: t('settings.notifDefault'),
-    unsupported: t('settings.notifUnsupported'),
-  }
 
   const panes: Record<SectionId, ReactNode> = {
     profile: profileForm,
@@ -343,17 +356,9 @@ export default function SettingsPage() {
       </div>
     ),
     notifications: (
-      <div className="flex flex-col gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-text-primary">{t('settings.desktopNotifications')}</p>
-          <p className="mt-0.5 text-sm text-text-secondary">{t('settings.desktopHelp')}</p>
-          <p className="mt-2 text-sm font-medium text-text-primary">{notificationStatus[notifPermission]}</p>
-        </div>
-        {notifPermission === 'default' ? (
-          <Button type="button" variant="secondary" onClick={requestNotifications} className="shrink-0">
-            {t('settings.enableNotifications')}
-          </Button>
-        ) : null}
+      <div className="space-y-4">
+        <PushToggle />
+        <NotificationPrefs />
       </div>
     ),
     workspace: currentWorkspace ? (
@@ -376,7 +381,7 @@ export default function SettingsPage() {
             <li key={href}>
               <Link
                 href={href}
-                className="flex items-center gap-3 px-4 py-3 text-sm text-text-primary transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                className="flex min-h-14 items-center gap-3 px-4 py-3 text-sm text-text-primary transition-colors hover:bg-surface-hover active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
               >
                 <Icon className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden="true" />
                 <span className="flex-1">{label}</span>
@@ -397,7 +402,7 @@ export default function SettingsPage() {
             {t('settings.signedInAs', { email: profile.email || '-' })}
           </p>
         </div>
-        <Button type="button" variant="danger" onClick={signOut} className="shrink-0 gap-2">
+        <Button type="button" variant="danger" onClick={signOut} className="h-12 shrink-0 gap-2 sm:h-10">
           <LogOut className="h-4 w-4" aria-hidden="true" />
           {tShell('logout')}
         </Button>
@@ -420,14 +425,14 @@ export default function SettingsPage() {
                     type="button"
                     aria-current={selected ? 'page' : undefined}
                     onClick={() => setSection(id)}
-                    className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary lg:rounded-xl lg:py-2.5 ${
+                    className={`flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary lg:min-h-0 lg:rounded-xl lg:py-2.5 ${
                       selected
                         ? 'font-medium text-text-primary lg:bg-surface-hover'
                         : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                     }`}
                   >
                     <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                    <span className="flex-1">{t(`settings.${label}`)}</span>
+                    <span className="min-w-0 flex-1 break-words">{t(`settings.${label}`)}</span>
                     <ChevronRight className="h-4 w-4 shrink-0 text-text-muted lg:hidden" aria-hidden="true" />
                   </button>
                 </li>
@@ -443,12 +448,12 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => setSection(null)}
-            className="-ml-1 mb-3 inline-flex items-center gap-1 rounded-lg px-1 py-1 text-sm text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden"
+            className="-ml-2 mb-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm text-text-secondary hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden"
           >
             <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             {t('settings.title')}
           </button>
-          <h2 id="settings-pane-title" className="text-lg font-semibold text-text-primary">
+          <h2 id="settings-pane-title" className="break-words text-lg font-semibold text-text-primary">
             {t(`settings.${active.label}`)}
           </h2>
           <p className="mb-5 mt-1 text-sm text-text-secondary">{t(`settings.${active.help}`)}</p>

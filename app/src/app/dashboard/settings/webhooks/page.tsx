@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus } from 'lucide-react'
 import WebhookList from '@/components/webhooks/WebhookList'
-import WebhookForm from '@/components/webhooks/WebhookForm'
-import WebhookDetail from '@/components/webhooks/WebhookDetail'
+import dynamic from 'next/dynamic'
 import type { Webhook } from '@/components/webhooks/shared'
 import useWorkspaceStore from '@/stores/useWorkspaceStore'
 import { useTranslations } from 'next-intl'
@@ -13,6 +12,20 @@ import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { Dialog } from '@/components/ui/Dialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { Skeleton } from '@/components/ui/Skeleton'
+
+// The detail sheet / panel and the form are only needed once a webhook is opened or created.
+const WebhookDetail = dynamic(() => import('@/components/webhooks/WebhookDetail'), {
+  ssr: false,
+  loading: () => (
+    <div className="space-y-3" role="status" aria-busy="true">
+      <Skeleton className="h-6 w-1/2" />
+      <Skeleton className="h-10" />
+      <Skeleton className="h-24" />
+    </div>
+  ),
+})
+const WebhookForm = dynamic(() => import('@/components/webhooks/WebhookForm'), { ssr: false })
 
 /** True once the viewport reaches xl, where the delivery log sits in a side panel instead of a dialog. */
 function useIsWide() {
@@ -139,8 +152,12 @@ export default function WebhooksPage() {
         description={t('webhooks.subtitle')}
         action={
           webhooks.length > 0 ? (
-            <Button onClick={handleCreate} className="gap-2" aria-label={t('webhooks.create')}>
-              <Plus className="h-4 w-4" aria-hidden="true" />
+            <Button
+              onClick={handleCreate}
+              className="h-11 w-11 gap-2 px-0 sm:h-10 sm:w-auto sm:px-4"
+              aria-label={t('webhooks.create')}
+            >
+              <Plus className="h-5 w-5 sm:h-4 sm:w-4" aria-hidden="true" />
               <span className="hidden sm:inline">{t('webhooks.create')}</span>
             </Button>
           ) : undefined
@@ -148,15 +165,17 @@ export default function WebhooksPage() {
       />
 
       {loading ? (
-        <div className="flex justify-center py-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-primary" />
+        <div className="space-y-2" role="status" aria-busy="true">
+          {[1, 2, 3].map((item) => (
+            <Skeleton key={item} className="h-24 rounded-2xl" />
+          ))}
         </div>
       ) : webhooks.length === 0 ? (
         <EmptyState
           title={t('webhooks.emptyTitle')}
           body={t('webhooks.aboutBody')}
           action={
-            <Button onClick={handleCreate} className="gap-2">
+            <Button size="lg" onClick={handleCreate} className="gap-2">
               <Plus className="h-4 w-4" aria-hidden="true" />
               {t('webhooks.create')}
             </Button>

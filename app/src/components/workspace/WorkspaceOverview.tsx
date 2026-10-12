@@ -8,6 +8,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/EmptyState'
+import { Skeleton } from '@/components/ui/Skeleton'
 import CreateProjectDialog from '@/components/create/CreateProjectDialog'
 import ProjectCard from '@/components/projects/ProjectCard'
 import { statusRank, type ProjectSummary } from '@/components/projects/projectUtils'
@@ -118,7 +119,7 @@ export default function WorkspaceOverview({
       <header className="flex items-start gap-3 sm:gap-4">
         <WorkspaceTile name={name} color={color} size="lg" />
         <div className="min-w-0 flex-1">
-          <h1 className="truncate text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">{name}</h1>
+          <h1 className="line-clamp-2 break-words text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">{name}</h1>
           <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary">
             {category ? <span>{categoryLabel(category)}</span> : null}
             <Badge size="sm" variant={role === 'admin' ? 'blue' : 'neutral'}>
@@ -131,8 +132,12 @@ export default function WorkspaceOverview({
             <p className="mt-2 line-clamp-2 max-w-3xl break-words text-sm text-text-secondary">{description}</p>
           ) : null}
         </div>
-        <Button className="shrink-0 gap-2" onClick={() => setShowCreate(true)} aria-label={t('overview.createProject')}>
-          <Plus className="h-4 w-4" aria-hidden />
+        <Button
+          className="h-11 w-11 shrink-0 gap-2 px-0 sm:h-10 sm:w-auto sm:px-4"
+          onClick={() => setShowCreate(true)}
+          aria-label={t('overview.createProject')}
+        >
+          <Plus className="h-5 w-5 sm:h-4 sm:w-4" aria-hidden />
           <span className="hidden sm:inline">{t('overview.createProject')}</span>
         </Button>
       </header>
@@ -146,7 +151,7 @@ export default function WorkspaceOverview({
             {recent.length > 0 ? (
               <Link
                 href="/dashboard/projects"
-                className="rounded text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="-mr-2 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary hover:underline active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 {t('overview.viewAll')}
               </Link>
@@ -156,7 +161,7 @@ export default function WorkspaceOverview({
           {projects === null ? (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-4" aria-busy>
               {Array.from({ length: 3 }).map((_, index) => (
-                <div key={index} className="h-40 animate-pulse rounded-2xl border border-border bg-surface motion-reduce:animate-none" />
+                <Skeleton key={index} className="h-40 rounded-2xl" />
               ))}
             </div>
           ) : recent.length === 0 ? (
@@ -164,7 +169,7 @@ export default function WorkspaceOverview({
               title={t('overview.noProjectsTitle')}
               body={t('overview.noProjectsBody')}
               action={
-                <Button variant="secondary" className="gap-2" onClick={() => setShowCreate(true)}>
+                <Button variant="secondary" size="lg" className="gap-2" onClick={() => setShowCreate(true)}>
                   <Plus className="h-4 w-4" aria-hidden />
                   {t('overview.createProject')}
                 </Button>
@@ -187,7 +192,7 @@ export default function WorkspaceOverview({
               </h2>
               <Link
                 href="/dashboard/team"
-                className="rounded text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="-mr-2 inline-flex min-h-11 items-center rounded-lg px-2 text-sm font-medium text-primary hover:underline active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 {t('overview.viewAll')}
               </Link>
@@ -196,7 +201,7 @@ export default function WorkspaceOverview({
               {(people || []).slice(0, 6).map((person) => {
                 const personName = person.profiles?.username || t('team.unnamed')
                 return (
-                  <li key={person.id} className="flex items-center gap-3 px-3 py-2.5">
+                  <li key={person.id} className="flex min-h-12 items-center gap-3 px-3 py-2.5">
                     <Avatar
                       src={person.profiles?.avatar_url}
                       alt={personName}
@@ -227,7 +232,7 @@ export default function WorkspaceOverview({
                 <li key={href}>
                   <Link
                     href={href}
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                    className="flex min-h-14 items-center gap-3 px-4 py-3 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                   >
                     <Icon className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />
                     <span className="min-w-0 flex-1 truncate">{tNav(navKey)}</span>

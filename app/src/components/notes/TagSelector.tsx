@@ -132,14 +132,14 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
         {selectedTags.map(tag => (
           <span
             key={tag.id}
-            className="inline-flex h-8 max-w-full items-center gap-1 rounded-full pl-3 pr-1.5 text-xs font-medium text-white"
+            className="inline-flex h-10 max-w-full items-center gap-1 rounded-full pl-3 pr-1.5 text-sm font-medium text-white sm:h-8 sm:text-xs"
             style={{ backgroundColor: tag.color }}
           >
             <span className="truncate">{tag.name}</span>
             <button
               type="button"
               onClick={() => removeTag(tag.id)}
-              className="rounded-full p-1 transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors hover:bg-white/25 active:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:h-6 sm:w-6"
               aria-label={t('removeTag')}
             >
               <X className="w-3 h-3" />
@@ -153,7 +153,7 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
             setIsOpen(!isOpen);
           }}
           type="button"
-          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-dashed border-border px-3 text-xs font-medium text-text-secondary transition-colors hover:border-primary/50 hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="inline-flex h-10 items-center gap-1.5 rounded-full border border-dashed border-border-strong px-4 text-sm font-medium text-text-secondary active:bg-tertiary sm:h-8 sm:px-3 sm:text-xs transition-colors hover:border-primary/50 hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <TagIcon className="w-3 h-3" />
           {t('addTag')}
@@ -184,7 +184,7 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('searchTags')}
-              className="w-full min-w-0 flex-1 px-3 py-2 bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary"
+              className="h-11 w-full min-w-0 flex-1 px-3 py-2 bg-surface border border-border rounded-lg text-base sm:h-10 sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary"
               autoFocus
             />
             <button
@@ -194,7 +194,7 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
                 setIsCreating(false);
                 setSearchQuery('');
               }}
-              className="shrink-0 rounded-lg p-2 text-text-secondary hover:bg-surface-hover sm:hidden"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-hover active:bg-tertiary sm:hidden"
               aria-label={t('close')}
             >
               <X className="h-4 w-4" />
@@ -212,13 +212,13 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
                     toggleTag(tag);
                     setSearchQuery('');
                   }}
-                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-text-primary transition-colors hover:bg-surface-hover"
+                  className="flex min-h-12 w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-text-primary transition-colors hover:bg-surface-hover active:bg-tertiary sm:min-h-10"
                 >
                   <div
                     className="w-3 h-3 rounded-full flex-shrink-0"
                     style={{ backgroundColor: tag.color }}
                   />
-                  <span className="text-sm text-text-primary">{tag.name}</span>
+                  <span className="min-w-0 truncate text-base text-text-primary sm:text-sm">{tag.name}</span>
                 </button>
               ))
             ) : searchQuery ? (
@@ -238,7 +238,7 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
               <button
                 onClick={() => setIsCreating(true)}
                 type="button"
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90"
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 text-sm font-medium text-white transition-colors hover:bg-primary/90 active:bg-primary/80 sm:h-10"
               >
                 <Plus className="w-4 h-4" />
                 {t('createNewTag')}
@@ -254,19 +254,19 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
                     if (e.key === 'Escape') setIsCreating(false);
                   }}
                   placeholder={t('tagNamePlaceholder')}
-                  className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary"
+                  className="h-11 w-full px-3 py-2 bg-surface border border-border rounded-lg text-base sm:h-10 sm:text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:border-primary"
                   autoFocus
                 />
                 
                 {/* Color Picker */}
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-2 sm:gap-1">
                   {PRESET_COLORS.map(color => (
                     <button
                       key={color}
                       onClick={() => setNewTagColor(color)}
                       type="button"
                       aria-label={color}
-                      className={`h-6 w-6 rounded-full transition-transform ${
+                      className={`h-10 w-10 rounded-full transition-transform sm:h-6 sm:w-6 ${
                         newTagColor === color ? 'scale-110 ring-2 ring-primary ring-offset-2 ring-offset-surface' : ''
                       }`}
                       style={{ backgroundColor: color }}
@@ -279,7 +279,7 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
                     onClick={createTag}
                     disabled={!newTagName.trim()}
                     type="button"
-                    className="flex-1 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:bg-surface-hover disabled:text-text-muted"
+                    className="h-11 flex-1 rounded-lg bg-primary px-3 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:bg-surface-hover disabled:text-text-muted sm:h-10"
                   >
                     {t('create')}
                   </button>
@@ -289,7 +289,7 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
                       setNewTagName('');
                     }}
                     type="button"
-                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover"
+                    className="h-11 rounded-lg border border-border bg-surface px-4 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover active:bg-tertiary sm:h-10"
                   >
                     {t('cancel')}
                   </button>

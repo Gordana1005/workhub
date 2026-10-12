@@ -53,5 +53,8 @@
   "stopTimer": "Stop",
   "openTimer": "Open time tracker",
   "quickAddLabel": "Quick add a task",
-  "hoursMinutes": "{hours}h {minutes}m"
+  "hoursMinutes": "{hours}h {minutes}m",
+  "nothingDueNow": "Nothing due today or overdue.",
+  "showMoreTasks": "Show {count} more",
+  "showLess": "Show less"
 }

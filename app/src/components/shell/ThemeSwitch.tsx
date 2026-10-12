@@ -20,16 +20,16 @@ export default function ThemeSwitch() {
 
   useEffect(() => {
     if (!open) return
-    const onPointer = (event: MouseEvent) => {
+    const onPointer = (event: PointerEvent) => {
       if (!ref.current?.contains(event.target as Node)) close()
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') close()
     }
-    document.addEventListener('mousedown', onPointer)
+    document.addEventListener('pointerdown', onPointer)
     document.addEventListener('keydown', onKey)
     return () => {
-      document.removeEventListener('mousedown', onPointer)
+      document.removeEventListener('pointerdown', onPointer)
       document.removeEventListener('keydown', onKey)
     }
   }, [open, close])
@@ -41,7 +41,7 @@ export default function ThemeSwitch() {
     <div className="relative" ref={ref}>
       <button
         type="button"
-        className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover active:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={t(current.id)}

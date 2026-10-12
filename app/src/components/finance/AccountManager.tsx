@@ -55,7 +55,7 @@ interface AccountManagerProps {
   onSave: () => void;
 }
 
-const fieldClass = 'block w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
+const fieldClass = 'block w-full min-w-0 rounded-lg border border-border-control bg-secondary px-3 py-2 min-h-11 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:min-h-10 sm:text-sm';
 
 export default function AccountManager({ account, onClose, onSave }: AccountManagerProps) {
   const t = useTranslations('pages.tools');
@@ -126,14 +126,14 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
       title={account ? t('finance.editAccount') : t('finance.createAccount')}
       onClose={onClose}
       footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" onClick={onClose}>
+        <>
+          <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={onClose}>
             {t('finance.cancel')}
           </Button>
-          <Button type="submit" form="account-form" disabled={isSaving || !formData.name.trim()}>
+          <Button type="submit" form="account-form" className="h-12 sm:h-10" disabled={isSaving || !formData.name.trim()}>
             {isSaving ? t('finance.saving') : account ? t('finance.update') : t('finance.create')}
           </Button>
-        </div>
+        </>
       }
     >
       <form id="account-form" onSubmit={handleSubmit} className="space-y-4">
@@ -148,6 +148,7 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             placeholder={t('finance.accountNamePlaceholder')}
             className={fieldClass}
+            enterKeyHint="next"
             autoFocus
             required
           />
@@ -198,6 +199,8 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
                 id="account-balance"
                 type="number"
                 step="0.01"
+                inputMode="decimal"
+                enterKeyHint="done"
                 value={formData.initial_balance}
                 onChange={(e) => setFormData({ ...formData, initial_balance: parseFloat(e.target.value) || 0 })}
                 placeholder="0.00"
@@ -208,15 +211,15 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
           </>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-h-11 items-center gap-3">
           <input
             type="checkbox"
             id="is_active"
             checked={formData.is_active}
             onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-            className="h-4 w-4 rounded border-border bg-surface text-primary focus:ring-primary/40"
+            className="h-5 w-5 rounded border-border bg-surface text-primary focus:ring-primary/40"
           />
-          <label htmlFor="is_active" className="text-sm text-text-secondary">
+          <label htmlFor="is_active" className="flex-1 py-2 text-sm text-text-secondary">
             {t('finance.activeAccount')}
           </label>
         </div>

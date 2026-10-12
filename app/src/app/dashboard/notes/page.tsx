@@ -1,11 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { supabase } from '@/lib/supabase'
 import NotesList from '@/components/notes/NotesList'
-import NotePane from '@/components/notes/NotePane'
-import TemplateSelector from '@/components/notes/TemplateSelector'
 import { stripHtml, type NoteProject, type NoteRecord, type NoteTag } from '@/components/notes/noteUtils'
 import { BookOpen, Plus, Search, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
@@ -16,8 +15,21 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { IconMenu } from '@/components/ui/IconMenu'
 import { PageHeader } from '@/components/ui/PageHeader'
 
+// The reader/editor (and TipTap with it) is only downloaded once a note is opened
+const NotePane = dynamic(() => import('@/components/notes/NotePane'), {
+  ssr: false,
+  loading: () => (
+    <div className="fixed inset-0 z-[80] space-y-4 bg-surface px-4 pt-20 md:static md:z-auto md:flex-1 md:rounded-2xl md:border md:border-border" role="status" aria-busy="true">
+      <div className="skeleton h-8 w-3/4" />
+      <div className="skeleton h-4 w-full" />
+      <div className="skeleton h-4 w-5/6" />
+    </div>
+  ),
+})
+const TemplateSelector = dynamic(() => import('@/components/notes/TemplateSelector'), { ssr: false })
+
 const selectClass =
-  'h-9 w-full min-w-0 rounded-lg border border-border bg-secondary px-2.5 text-[13px] text-text-primary transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+  'h-11 w-full min-w-0 rounded-lg border border-border bg-secondary px-2.5 text-base text-text-primary sm:h-9 sm:text-[13px] transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(false)
@@ -295,12 +307,12 @@ export default function NotesPage() {
   const noNotesAtAll = projectsLoaded && !loading && notes.length === 0 && !hasFilters && !creating
 
   const listBody = loading ? (
-    <div className="space-y-px" aria-busy="true" aria-label={t('loading')}>
+    <div className="space-y-px" role="status" aria-busy="true" aria-label={t('loading')}>
       {[0, 1, 2, 3, 4].map((index) => (
-        <div key={index} className="animate-pulse border-b border-border px-4 py-3 last:border-b-0">
-          <div className="h-3.5 w-2/3 rounded bg-surface-hover" />
-          <div className="mt-2.5 h-3 w-full rounded bg-surface-hover" />
-          <div className="mt-1.5 h-3 w-4/5 rounded bg-surface-hover" />
+        <div key={index} className="border-b border-border px-4 py-3 last:border-b-0">
+          <div className="skeleton h-3.5 w-2/3" />
+          <div className="skeleton mt-2.5 h-3 w-full" />
+          <div className="skeleton mt-1.5 h-3 w-4/5" />
         </div>
       ))}
     </div>
@@ -328,10 +340,11 @@ export default function NotesPage() {
         <PageHeader
           title={t('title')}
           action={
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               {projects.length > 0 ? (
                 <IconMenu
                   label={t('fromTemplateTitle')}
+                  buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover sm:h-10 sm:w-10"
                   items={[{ label: t('fromTemplate'), onClick: () => setShowTemplates(true) }]}
                 />
               ) : null}
@@ -341,7 +354,7 @@ export default function NotesPage() {
                 disabled={projects.length === 0}
                 title={projects.length === 0 ? t('needProjectTitle') : t('newNoteTitle')}
                 aria-label={t('newNote')}
-                className="gap-2"
+                className="h-11 gap-2 sm:h-10"
               >
                 <Plus className="h-4 w-4" />
                 <span className="hidden sm:inline">{t('newNote')}</span>
@@ -357,7 +370,7 @@ export default function NotesPage() {
             title={t('emptyTitle')}
             body={t('emptyBody')}
             action={
-              <Button type="button" onClick={openCreate} className="gap-2">
+              <Button type="button" onClick={openCreate} className="h-11 gap-2 sm:h-10">
                 <Plus className="h-4 w-4" />
                 {t('createNote')}
               </Button>
@@ -371,18 +384,19 @@ export default function NotesPage() {
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
                   <input
                     type="search"
+                    enterKeyHint="search"
                     value={searchQuery}
                     onChange={(event) => setSearchQuery(event.target.value)}
                     placeholder={t('searchPlaceholder')}
                     aria-label={t('searchPlaceholder')}
-                    className="h-10 w-full min-w-0 rounded-lg border border-border bg-secondary pl-9 pr-9 text-sm text-text-primary transition-colors placeholder:text-text-muted hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary [&::-webkit-search-cancel-button]:hidden"
+                    className="h-11 w-full min-w-0 rounded-lg border border-border bg-secondary pl-9 pr-11 text-base text-text-primary sm:h-10 sm:pr-9 sm:text-sm transition-colors placeholder:text-text-muted hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary [&::-webkit-search-cancel-button]:hidden"
                   />
                   {searchQuery ? (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
                       aria-label={t('clearSearch')}
-                      className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-text-primary"
+                      className="absolute right-0.5 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-text-primary active:bg-tertiary sm:right-1.5 sm:h-7 sm:w-7"
                     >
                       <X className="h-4 w-4" />
                     </button>

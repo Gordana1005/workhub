@@ -62,10 +62,10 @@ export default function WebhookList({
               type="button"
               onClick={() => onSelect(webhook)}
               aria-pressed={selected}
-              className="min-w-0 flex-1 rounded-2xl px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="min-h-[4.5rem] min-w-0 flex-1 rounded-2xl px-4 py-3 text-left active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <span className="flex flex-wrap items-center gap-2">
-                <span className="min-w-0 break-words text-sm font-semibold text-text-primary">{webhook.name}</span>
+                <span className="min-w-0 break-words text-sm font-semibold text-text-primary hyphens-auto">{webhook.name}</span>
                 {healthBadge(health)}
               </span>
               <span className="mt-0.5 block truncate text-xs text-text-secondary">{hostOf(webhook.url)}</span>
@@ -85,7 +85,7 @@ export default function WebhookList({
                 ) : null}
               </span>
             </button>
-            <div className="flex shrink-0 items-center gap-0.5 py-2.5 pr-1">
+            <div className="flex shrink-0 items-center gap-0.5 py-1.5 pr-1">
               <button
                 type="button"
                 role="switch"
@@ -93,17 +93,23 @@ export default function WebhookList({
                 aria-label={`${webhook.name}: ${active ? t('webhooks.disable') : t('webhooks.enable')}`}
                 title={active ? t('webhooks.disable') : t('webhooks.enable')}
                 onClick={() => onToggle(webhook)}
-                className={`relative h-6 w-10 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
-                  active ? 'bg-success' : 'bg-border'
-                }`}
+                className="group inline-flex h-11 w-12 shrink-0 items-center justify-center rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <span
-                  className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                    active ? 'translate-x-4' : ''
+                  aria-hidden
+                  className={`relative block h-6 w-10 rounded-full transition-colors group-active:opacity-80 ${
+                    active ? 'bg-success' : 'bg-border-strong'
                   }`}
-                />
+                >
+                  <span
+                    className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                      active ? 'translate-x-4' : ''
+                    }`}
+                  />
+                </span>
               </button>
               <IconMenu
+                buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover active:bg-tertiary sm:h-9 sm:w-9"
                 label={webhook.name}
                 items={[
                   { label: t('webhooks.editAction'), onClick: () => onEdit(webhook) },

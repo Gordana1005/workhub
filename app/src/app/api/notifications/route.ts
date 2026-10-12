@@ -3,6 +3,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { getWorkspaceRole } from '@/lib/api-access'
+import { sendPushToUser } from '@/lib/push'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -313,6 +314,11 @@ export async function POST(request: NextRequest) {
         { error: 'Failed to create notification' },
         { status: 500 }
       )
+    }
+
+    // Also deliver as a web push (never throws; no-op when push is not configured)
+    if (user_id !== user.id) {
+      await sendPushToUser(user_id, { title, body: message, url: safeLink || undefined, tag: type })
     }
 
     return NextResponse.json({ notification }, { status: 201 })

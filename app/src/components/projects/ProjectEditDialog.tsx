@@ -24,7 +24,7 @@ const STATUS_OPTIONS = [
 ] as const
 
 const fieldClass =
-  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50'
+  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted sm:text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50'
 
 const day = (value: string | null) => (value ? value.split('T')[0] : '')
 
@@ -243,7 +243,7 @@ export default function ProjectEditDialog({
 
         <div>
           <p className="text-sm font-medium text-text-secondary">{t('color')}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-2.5 sm:gap-2">
             {colors.map((color) => (
               <button
                 key={color}
@@ -251,7 +251,7 @@ export default function ProjectEditDialog({
                 aria-label={color}
                 aria-pressed={form.color === color}
                 onClick={() => setForm({ ...form, color })}
-                className={`h-8 w-8 rounded-lg transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
+                className={`h-10 w-10 rounded-lg transition-shadow sm:h-8 sm:w-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
                   form.color === color ? 'ring-2 ring-text-primary ring-offset-2 ring-offset-surface' : ''
                 }`}
                 style={{ backgroundColor: color }}
@@ -269,7 +269,7 @@ export default function ProjectEditDialog({
             ) : (
               <ProjectTile project={{ name: form.name || project.name, color: form.color, logo_url: null }} size="lg" />
             )}
-            <label className="inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover focus-within:ring-2 focus-within:ring-primary">
+            <label className="inline-flex h-11 cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 text-sm font-medium active:bg-tertiary sm:h-10 text-text-primary transition-colors hover:bg-surface-hover focus-within:ring-2 focus-within:ring-primary">
               <ImagePlus className="h-4 w-4 shrink-0" aria-hidden />
               <span>{t('chooseLogo')}</span>
               <input

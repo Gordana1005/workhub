@@ -3,7 +3,7 @@
  * --------------------------------
  * <Button variant size fullWidth loading leftIcon rightIcon iconOnly />
  *   variant  primary (default) | secondary | outline | ghost | danger (soft red) | destructive (solid red)
- *   size     sm (32px; 36px on phone) | md (40px, default) | lg (48px)
+ *   size     sm (32px; 40px on phone) | md (40px; 44px on phone, default) | lg (48px)
  *   loading  shows a spinner, sets disabled + aria-busy (label stays so width doesn't jump)
  *   iconOnly square button; ALWAYS pass aria-label. Children = the icon.
  *   leftIcon / rightIcon  any ReactNode (lucide icon); auto-sized to 16px.
@@ -14,7 +14,7 @@
  *
  * Tokens used: bg-primary(+hover/active), bg-surface, border-border-strong, text-text-*,
  * shadow-btn / shadow-btn-primary, ring-primary + ring-offset-surface (focus), radius lg.
- * Tap targets: md = 40px, sm grows to 36px on phone. Disabled = 50% opacity + no pointer events.
+ * Tap targets: md grows to 44px and sm to 40px on phone (sm+ keeps the compact desktop sizes). Disabled = 50% opacity + no pointer events.
  */
 import { forwardRef, type ReactNode } from 'react'
 import { clsx } from 'clsx'
@@ -40,14 +40,14 @@ const base =
   '[&>svg]:shrink-0'
 
 const sizes: Record<ButtonSize, string> = {
-  sm: 'h-9 px-3 text-[13px] sm:h-8',
-  md: 'h-10 px-4 text-sm',
+  sm: 'h-10 px-3 text-[13px] sm:h-8',
+  md: 'h-11 px-4 text-sm sm:h-10',
   lg: 'h-12 px-6 text-base',
 }
 
 const iconSizes: Record<ButtonSize, string> = {
-  sm: 'h-9 w-9 p-0 text-[13px] sm:h-8 sm:w-8',
-  md: 'h-10 w-10 p-0 text-sm',
+  sm: 'h-10 w-10 p-0 text-[13px] sm:h-8 sm:w-8',
+  md: 'h-11 w-11 p-0 text-sm sm:h-10 sm:w-10',
   lg: 'h-12 w-12 p-0 text-base',
 }
 

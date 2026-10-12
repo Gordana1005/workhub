@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { runTopLevel } from '@/lib/subtasks'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -66,14 +67,19 @@ export async function GET(
       .from('projects')
       .select('id')
       .eq('workspace_id', workspaceId)
+      .limit(5000)
 
     let taskCount = 0
     if (projects && projects.length > 0) {
       const projectIds = projects.map(p => p.id)
-      const { count } = await supabaseAdmin
-        .from('tasks')
-        .select('*', { count: 'exact', head: true })
-        .in('project_id', projectIds)
+      const { count } = await runTopLevel((topLevel) => {
+        let q = supabaseAdmin
+          .from('tasks')
+          .select('*', { count: 'exact', head: true })
+          .in('project_id', projectIds)
+        if (topLevel) q = q.is('parent_task_id', null)
+        return q
+      })
       taskCount = count || 0
     }
 

@@ -90,7 +90,7 @@ export function TaskRow({
         </div>
       </div>
       <div
-        className="relative flex items-center gap-2 bg-surface py-1.5 pl-2 pr-3 transition-colors group-hover:bg-surface-hover/60"
+        className="relative flex items-center gap-2 bg-surface py-1.5 pl-2 pr-3 transition-colors group-hover:bg-surface-hover/60 active:bg-surface-hover/60"
         style={{
           transform: `translateX(${offset}px)`,
           transition: dragging ? 'none' : 'transform 160ms ease',

@@ -176,6 +176,14 @@
       "3": "First step",
       "4": "Check progress",
       "5": "Finish"
+    },
+    "event": {
+      "1": "Set the date and goal",
+      "2": "Book the venue",
+      "3": "Invite guests",
+      "4": "Prepare the day",
+      "5": "Run it and follow up"
     }
-  }
+  },
+  "loading": "Loading…"
 }

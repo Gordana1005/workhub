@@ -53,5 +53,8 @@
   "stopTimer": "Запри",
   "openTimer": "Отвори евиденција на време",
   "quickAddLabel": "Брзо додај задача",
-  "hoursMinutes": "{hours} ч {minutes} мин"
+  "hoursMinutes": "{hours} ч {minutes} мин",
+  "nothingDueNow": "Нема задачи за денес или задоцнети.",
+  "showMoreTasks": "Прикажи уште {count}",
+  "showLess": "Прикажи помалку"
 }

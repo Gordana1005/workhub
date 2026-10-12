@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
-import { Check, Copy, Link2, Search, UserPlus, X } from 'lucide-react'
+import { AlertTriangle, Check, Copy, Mail, RefreshCw, Search, UserPlus, X } from 'lucide-react'
 import { Avatar } from '@/components/ui/Avatar'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +10,16 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Dialog } from '@/components/ui/Dialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconMenu } from '@/components/ui/IconMenu'
+import { Field, Input, Textarea } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
+import { useToast } from '@/components/ui/Toast'
+import {
+  INVITE_MESSAGE_MAX,
+  buildJoinLink,
+  invitationState,
+  normalizeInviteEmail,
+  type InvitationState,
+} from '@/lib/invitations'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 
 interface TeamMember {
@@ -27,16 +36,36 @@ interface TeamMember {
   stats?: { projects: number; open_tasks: number; overdue_tasks: number }
 }
 
+interface PendingInvitation {
+  id: string
+  email: string
+  role: 'admin' | 'member'
+  token: string
+  status?: string | null
+  created_at: string | null
+  expires_at: string | null
+  last_sent_at?: string | null
+  state: InvitationState
+}
+
+interface InviteResult {
+  email: string
+  link: string
+  emailSent: boolean
+  emailError?: string
+}
+
 type RoleFilter = 'all' | 'admin' | 'member'
 
 const COLUMNS = 'lg:grid-cols-[minmax(0,2.2fr)_7rem_6rem_minmax(10rem,1.4fr)_7rem_2.5rem]'
 
 const fieldClass =
-  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+  'min-h-11 w-full min-w-0 rounded-lg border border-border-control bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:min-h-10 sm:text-sm'
 
 export default function TeamPage() {
   const t = useTranslations('pages.people')
   const locale = useLocale()
+  const toast = useToast()
   const currentWorkspace = useWorkspaceStore((state) => state.currentWorkspace)
   const [members, setMembers] = useState<TeamMember[]>([])
   const [viewerId, setViewerId] = useState<string | null>(null)
@@ -58,9 +87,14 @@ export default function TeamPage() {
   const [inviteRole, setInviteRole] = useState<'member' | 'admin'>('member')
   const [inviteBusy, setInviteBusy] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
-  const [inviteLink, setInviteLink] = useState<string | null>(null)
-  const [inviteSentTo, setInviteSentTo] = useState('')
+  const [inviteMessage, setInviteMessage] = useState('')
+  const [inviteResult, setInviteResult] = useState<InviteResult | null>(null)
   const [copied, setCopied] = useState(false)
+
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([])
+  const [resendingId, setResendingId] = useState<string | null>(null)
+  const [revoking, setRevoking] = useState<PendingInvitation | null>(null)
+  const [revokeBusy, setRevokeBusy] = useState(false)
 
   const [removing, setRemoving] = useState<TeamMember | null>(null)
   const [removeBusy, setRemoveBusy] = useState(false)
@@ -96,6 +130,28 @@ export default function TeamPage() {
       loadMembers()
     }
   }, [workspaceId, loadMembers])
+
+  const loadInvitations = useCallback(async () => {
+    if (!workspaceId) return
+    try {
+      const response = await fetch(`/api/invitations?workspace_id=${workspaceId}`, { cache: 'no-store' })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) return
+      const rows: Omit<PendingInvitation, 'state'>[] = data.invitations || []
+      setInvitations(
+        rows
+          .map((row) => ({ ...row, state: invitationState(row) }))
+          .filter((row) => row.state === 'pending' || row.state === 'expired')
+      )
+    } catch (error) {
+      console.error('Error loading invitations:', error)
+    }
+  }, [workspaceId])
+
+  useEffect(() => {
+    setInvitations([])
+    if (workspaceId && isAdmin) loadInvitations()
+  }, [workspaceId, isAdmin, loadInvitations])
 
   const counts = useMemo(
     () => ({
@@ -160,17 +216,32 @@ export default function TeamPage() {
     setShowInvite(false)
     setInviteEmail('')
     setInviteRole('member')
+    setInviteMessage('')
     setInviteError(null)
-    setInviteLink(null)
-    setInviteSentTo('')
+    setInviteResult(null)
     setCopied(false)
+  }
+
+  const inviteErrorText = (code?: string) => {
+    switch (code) {
+      case 'invalid_email':
+        return t('team.errInvalidEmail')
+      case 'already_member':
+        return t('team.errAlreadyMember')
+      case 'already_invited':
+        return t('team.errAlreadyInvited')
+      case 'rate_limited':
+        return t('team.errRateLimited')
+      default:
+        return t('team.inviteFailed')
+    }
   }
 
   const handleInvite = async (event: FormEvent) => {
     event.preventDefault()
-    const email = inviteEmail.trim().toLowerCase()
     if (!workspaceId || inviteBusy) return
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    const email = normalizeInviteEmail(inviteEmail)
+    if (!email) {
       setInviteError(t('team.inviteEmailInvalid'))
       return
     }
@@ -180,30 +251,95 @@ export default function TeamPage() {
       const response = await fetch('/api/invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workspace_id: workspaceId, email, role: inviteRole }),
+        body: JSON.stringify({ workspace_id: workspaceId, email, role: inviteRole, message: inviteMessage.trim() }),
       })
       const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.error || t('team.inviteFailed'))
+      if (!response.ok) {
+        setInviteError(inviteErrorText(data.code))
+        if (data.code === 'already_invited') loadInvitations()
+        return
+      }
       const token = data.invitation?.token
-      setInviteLink(token ? `${window.location.origin}/join?token=${encodeURIComponent(token)}` : data.joinLink)
-      setInviteSentTo(email)
+      setInviteResult({
+        email,
+        link: data.link || data.joinLink || (token ? buildJoinLink(window.location.origin, token) : ''),
+        emailSent: Boolean(data.emailSent),
+        emailError: data.emailError,
+      })
       setCopied(false)
-    } catch (error) {
-      setInviteError(error instanceof Error ? error.message : t('team.inviteFailed'))
+      loadInvitations()
+    } catch {
+      setInviteError(t('team.inviteFailed'))
     } finally {
       setInviteBusy(false)
     }
   }
 
   const copyInviteLink = async () => {
-    if (!inviteLink) return
+    if (!inviteResult?.link) return
     try {
-      await navigator.clipboard.writeText(inviteLink)
+      await navigator.clipboard.writeText(inviteResult.link)
       setCopied(true)
       setInviteError(null)
       window.setTimeout(() => setCopied(false), 2000)
     } catch {
       setInviteError(t('team.copyFailed'))
+    }
+  }
+
+  const copyPendingLink = async (invitation: PendingInvitation) => {
+    try {
+      await navigator.clipboard.writeText(buildJoinLink(window.location.origin, invitation.token))
+      toast.success(t('team.linkCopied'))
+    } catch {
+      toast.error(t('team.copyFailed'))
+    }
+  }
+
+  const resendInvitation = async (invitation: PendingInvitation) => {
+    if (resendingId) return
+    setResendingId(invitation.id)
+    try {
+      const response = await fetch('/api/invitations/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: invitation.id }),
+      })
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        toast.error(
+          data.code === 'resend_cooldown'
+            ? t('team.resendWait')
+            : data.code === 'rate_limited'
+              ? t('team.errRateLimited')
+              : t('team.resendFailed')
+        )
+        return
+      }
+      if (data.emailSent) toast.success(t('team.resent', { email: invitation.email }))
+      else toast.warning(t('team.resentNoEmail', { email: invitation.email }), { duration: 9000 })
+      await loadInvitations()
+    } catch {
+      toast.error(t('team.resendFailed'))
+    } finally {
+      setResendingId(null)
+    }
+  }
+
+  const confirmRevoke = async () => {
+    if (!revoking) return
+    setRevokeBusy(true)
+    try {
+      const response = await fetch(`/api/invitations?id=${encodeURIComponent(revoking.id)}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('revoke')
+      setInvitations((list) => list.filter((item) => item.id !== revoking.id))
+      toast.success(t('team.revoked'))
+    } catch {
+      toast.error(t('team.revokeFailed'))
+      loadInvitations()
+    } finally {
+      setRevokeBusy(false)
+      setRevoking(null)
     }
   }
 
@@ -269,12 +405,21 @@ export default function TeamPage() {
         action={
           isAdmin ? (
             <div className="flex items-center gap-2">
-              <Button variant="secondary" onClick={() => setShowInvite(true)} className="gap-2" aria-label={t('team.inviteByLink')}>
-                <Link2 className="h-4 w-4" aria-hidden />
-                <span className="hidden sm:inline">{t('team.inviteByLink')}</span>
+              <Button
+                variant="secondary"
+                onClick={() => setShowInvite(true)}
+                className="h-11 w-11 gap-2 px-0 sm:h-10 sm:w-auto sm:px-4"
+                aria-label={t('team.inviteByEmail')}
+              >
+                <Mail className="h-5 w-5 sm:h-4 sm:w-4" aria-hidden />
+                <span className="hidden sm:inline">{t('team.inviteByEmail')}</span>
               </Button>
-              <Button onClick={() => setShowAdd(true)} className="gap-2" aria-label={t('team.addMember')}>
-                <UserPlus className="h-4 w-4" aria-hidden />
+              <Button
+                onClick={() => setShowAdd(true)}
+                className="h-11 w-11 gap-2 px-0 sm:h-10 sm:w-auto sm:px-4"
+                aria-label={t('team.addMember')}
+              >
+                <UserPlus className="h-5 w-5 sm:h-4 sm:w-4" aria-hidden />
                 <span className="hidden sm:inline">{t('team.addMember')}</span>
               </Button>
             </div>
@@ -289,7 +434,7 @@ export default function TeamPage() {
             type="button"
             aria-label={t('team.close')}
             onClick={() => setNotice(null)}
-            className="rounded p-0.5 hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+            className="-my-2 -mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-danger/10 active:bg-danger/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
           >
             <X className="h-4 w-4" />
           </button>
@@ -306,23 +451,24 @@ export default function TeamPage() {
               placeholder={t('team.searchPlaceholder')}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="h-10 w-full rounded-lg border border-border bg-secondary pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              enterKeyHint="search"
+              className="h-11 w-full rounded-lg border border-border-control bg-secondary pl-9 pr-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:h-10 sm:text-sm"
             />
           </div>
-          <div role="group" aria-label={t('team.roleField')} className="inline-flex self-start rounded-lg border border-border bg-surface p-0.5">
+          <div role="group" aria-label={t('team.roleField')} className="flex w-full rounded-lg border border-border bg-surface p-0.5 md:inline-flex md:w-auto md:self-start">
             {filters.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 aria-pressed={roleFilter === item.id}
                 onClick={() => setRoleFilter(item.id)}
-                className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                className={`inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:h-8 md:flex-none ${
                   roleFilter === item.id
                     ? 'bg-primary/10 text-primary'
                     : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                 }`}
               >
-                {item.label}
+                <span className="truncate">{item.label}</span>
                 <span className={`text-xs tabular-nums ${roleFilter === item.id ? 'text-primary' : 'text-text-muted'}`}>
                   {counts[item.id]}
                 </span>
@@ -351,7 +497,7 @@ export default function TeamPage() {
           body={t('team.emptyBody')}
           action={
             isAdmin ? (
-              <Button onClick={() => setShowAdd(true)} className="gap-2">
+              <Button size="lg" onClick={() => setShowAdd(true)} className="gap-2">
                 <UserPlus className="h-4 w-4" aria-hidden />
                 {t('team.addMember')}
               </Button>
@@ -372,7 +518,7 @@ export default function TeamPage() {
             <span>{t('team.columnJoined')}</span>
             <span />
           </div>
-          <ul className="divide-y divide-border rounded-2xl border border-border bg-surface [&>li:first-child]:rounded-t-2xl [&>li:last-child]:rounded-b-2xl">
+          <ul className="space-y-2.5 lg:space-y-0 lg:divide-y lg:divide-border lg:rounded-2xl lg:border lg:border-border lg:bg-surface lg:[&>li:first-child]:rounded-t-2xl lg:[&>li:last-child]:rounded-b-2xl">
             {visible.map((member) => {
               const name = member.profiles?.username || t('team.unnamed')
               const isSelf = member.user_id === viewerId
@@ -385,7 +531,7 @@ export default function TeamPage() {
               return (
                 <li
                   key={member.id}
-                  className={`flex items-center gap-3 px-3 py-3 transition-colors duration-150 hover:bg-surface-hover sm:px-4 lg:grid lg:gap-x-4 ${COLUMNS}`}
+                  className={`flex min-h-[4.5rem] items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-3 transition-colors duration-150 hover:bg-surface-hover sm:px-4 lg:grid lg:min-h-0 lg:gap-x-4 lg:rounded-none lg:border-0 lg:bg-transparent ${COLUMNS}`}
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <Avatar
@@ -395,19 +541,26 @@ export default function TeamPage() {
                       size="md"
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-text-primary">
+                      <p className="truncate text-[15px] font-medium text-text-primary sm:text-sm">
                         {name}
                         {isSelf ? <span className="ml-1.5 text-xs font-normal text-text-muted">({t('team.you')})</span> : null}
                       </p>
                       {member.profiles?.email ? (
                         <p className="truncate text-xs text-text-secondary">{member.profiles.email}</p>
                       ) : null}
-                      <p className="mt-0.5 truncate text-xs text-text-muted lg:hidden">
-                        {isOwner ? t('team.roleOwner') : member.role === 'admin' ? t('team.roleAdmin') : t('team.roleMember')}
-                        {' · '}
-                        {t('team.projectsCount', { count: stats.projects })}
-                        {' · '}
-                        {t('team.openTasksCount', { count: stats.open_tasks })}
+                      <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted lg:hidden">
+                        {isOwner || member.role === 'admin' ? (
+                          <Badge size="sm" variant="blue">
+                            {isOwner ? t('team.roleOwner') : t('team.roleAdmin')}
+                          </Badge>
+                        ) : (
+                          <span>{t('team.roleMember')}</span>
+                        )}
+                        <span className="min-w-0 truncate">
+                          {t('team.projectsCount', { count: stats.projects })}
+                          {' · '}
+                          {t('team.openTasksCount', { count: stats.open_tasks })}
+                        </span>
                       </p>
                     </div>
                   </div>
@@ -438,6 +591,7 @@ export default function TeamPage() {
                   <div className="flex shrink-0 justify-end">
                     {canManage ? (
                       <IconMenu
+                        buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover active:bg-tertiary lg:h-9 lg:w-9"
                         label={`${t('team.actions')}: ${name}`}
                         items={[
                           {
@@ -448,7 +602,7 @@ export default function TeamPage() {
                         ]}
                       />
                     ) : (
-                      <span className="h-9 w-9" aria-hidden />
+                      <span className="h-11 w-11 lg:h-9 lg:w-9" aria-hidden />
                     )}
                   </div>
                 </li>
@@ -458,19 +612,85 @@ export default function TeamPage() {
         </div>
       )}
 
+      {isAdmin && !loading && invitations.length > 0 ? (
+        <section aria-labelledby="pending-invitations-title" className="space-y-3 pt-2">
+          <div>
+            <h2 id="pending-invitations-title" className="text-base font-semibold text-text-primary">
+              {t('team.pendingTitle')}
+              <span className="ml-2 text-sm font-normal tabular-nums text-text-muted">{invitations.length}</span>
+            </h2>
+            <p className="text-sm text-text-secondary">{t('team.pendingSubtitle')}</p>
+          </div>
+          <ul className="space-y-2.5 lg:space-y-0 lg:divide-y lg:divide-border lg:rounded-2xl lg:border lg:border-border lg:bg-surface lg:[&>li:first-child]:rounded-t-2xl lg:[&>li:last-child]:rounded-b-2xl">
+            {invitations.map((invitation) => {
+              const expired = invitation.state === 'expired'
+              const shortDate = (value: string | null) =>
+                value ? new Date(value).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' }) : ''
+              return (
+                <li
+                  key={invitation.id}
+                  className="flex min-h-[4.5rem] items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-3 transition-colors duration-150 hover:bg-surface-hover sm:px-4 lg:rounded-none lg:border-0 lg:bg-transparent"
+                >
+                  <Avatar alt={invitation.email} fallback={invitation.email.slice(0, 2).toUpperCase()} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[15px] font-medium text-text-primary sm:text-sm">{invitation.email}</p>
+                    <p className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
+                      <Badge size="sm" variant={expired ? 'danger' : 'warning'}>
+                        {expired ? t('team.statusExpired') : t('team.statusPending')}
+                      </Badge>
+                      <span>{invitation.role === 'admin' ? t('team.roleAdmin') : t('team.roleMember')}</span>
+                      <span aria-hidden>·</span>
+                      <span>{t('team.pendingInvited', { date: shortDate(invitation.created_at) })}</span>
+                      <span aria-hidden>·</span>
+                      <span className={expired ? 'text-danger' : undefined}>
+                        {expired
+                          ? t('team.pendingExpired', { date: shortDate(invitation.expires_at) })
+                          : t('team.pendingExpires', { date: shortDate(invitation.expires_at) })}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 justify-end">
+                    <IconMenu
+                      buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover active:bg-tertiary lg:h-9 lg:w-9"
+                      label={t('team.invitationActions', { email: invitation.email })}
+                      items={[
+                        {
+                          label: t('team.resend'),
+                          icon: <RefreshCw />,
+                          disabled: resendingId === invitation.id,
+                          onClick: () => resendInvitation(invitation),
+                        },
+                        { label: t('team.copyLink'), icon: <Copy />, onClick: () => copyPendingLink(invitation) },
+                        {
+                          label: t('team.revoke'),
+                          icon: <X />,
+                          danger: true,
+                          separatorBefore: true,
+                          onClick: () => setRevoking(invitation),
+                        },
+                      ]}
+                    />
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ) : null}
+
       <Dialog
         open={showAdd}
         title={t('team.addTitle')}
         onClose={closeAdd}
         footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={closeAdd} disabled={addBusy}>
+          <>
+            <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={closeAdd} disabled={addBusy}>
               {t('team.cancel')}
             </Button>
-            <Button type="submit" form="add-member-form" className="w-full sm:w-auto" disabled={addBusy || !addUsername.trim()}>
+            <Button type="submit" form="add-member-form" className="h-12 sm:h-10" disabled={addBusy || !addUsername.trim()}>
               {addBusy ? t('team.adding') : t('team.addMember')}
             </Button>
-          </div>
+          </>
         }
       >
         <form id="add-member-form" onSubmit={handleAdd} className="space-y-5">
@@ -490,6 +710,9 @@ export default function TeamPage() {
               autoFocus
               autoComplete="off"
               autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              enterKeyHint="go"
               value={addUsername}
               onChange={(event) => setAddUsername(event.target.value)}
               className={`${fieldClass} mt-1.5`}
@@ -506,7 +729,7 @@ export default function TeamPage() {
                   type="button"
                   aria-pressed={addRole === role}
                   onClick={() => setAddRole(role)}
-                  className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     addRole === role
                       ? 'border-primary bg-primary/10 font-medium text-primary'
                       : 'border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -526,63 +749,89 @@ export default function TeamPage() {
         title={t('team.inviteTitle')}
         onClose={closeInvite}
         footer={
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            {inviteLink ? (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="w-full sm:w-auto"
-                  onClick={() => {
-                    setInviteLink(null)
-                    setInviteEmail('')
-                    setInviteError(null)
-                    setCopied(false)
-                  }}
-                >
-                  {t('team.inviteAnother')}
-                </Button>
-                <Button type="button" className="w-full sm:w-auto" onClick={closeInvite}>
-                  {t('team.done')}
-                </Button>
-              </>
-            ) : (
-              <>
-                <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={closeInvite} disabled={inviteBusy}>
-                  {t('team.cancel')}
-                </Button>
-                <Button type="submit" form="invite-link-form" className="w-full sm:w-auto" disabled={inviteBusy || !inviteEmail.trim()}>
-                  {inviteBusy ? t('team.inviteCreating') : t('team.inviteCreate')}
-                </Button>
-              </>
-            )}
-          </div>
+          inviteResult ? (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-11 sm:h-10"
+                onClick={() => {
+                  setInviteResult(null)
+                  setInviteEmail('')
+                  setInviteMessage('')
+                  setInviteError(null)
+                  setCopied(false)
+                }}
+              >
+                {t('team.inviteAnother')}
+              </Button>
+              <Button type="button" className="h-12 sm:h-10" onClick={closeInvite}>
+                {t('team.done')}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={closeInvite} disabled={inviteBusy}>
+                {t('team.cancel')}
+              </Button>
+              <Button type="submit" form="invite-email-form" className="h-12 sm:h-10" loading={inviteBusy} disabled={!inviteEmail.trim()}>
+                {inviteBusy ? t('team.inviteCreating') : t('team.inviteCreate')}
+              </Button>
+            </>
+          )
         }
       >
-        {inviteLink ? (
+        {inviteResult ? (
           <div className="space-y-4">
-            <p role="status" className="flex items-center gap-2 text-sm font-medium text-success">
-              <Check className="h-4 w-4" aria-hidden />
-              {t('team.inviteReady')}
-            </p>
+            {inviteResult.emailSent ? (
+              <div role="status" className="flex items-start gap-3">
+                <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-success/10 text-success">
+                  <Check className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-medium text-text-primary">
+                    {t('team.inviteSent', { email: inviteResult.email })}
+                  </p>
+                  <p className="mt-0.5 text-sm text-text-secondary">{t('team.inviteSentBody')}</p>
+                </div>
+              </div>
+            ) : (
+              <div role="status" className="flex items-start gap-3">
+                <span aria-hidden className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-warning/10 text-warning">
+                  <AlertTriangle className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-medium text-text-primary">
+                    {t('team.inviteCreatedNoEmail', { email: inviteResult.email })}
+                  </p>
+                  <p className="mt-0.5 text-sm text-text-secondary">
+                    {inviteResult.emailError === 'rate_limited' ? t('team.inviteNoEmailLimited') : t('team.inviteNoEmailBody')}
+                  </p>
+                </div>
+              </div>
+            )}
             <div>
               <label htmlFor="invite-link-output" className="block text-sm font-medium text-text-secondary">
                 {t('team.inviteLinkLabel')}
               </label>
-              <div className="mt-1.5 flex gap-2">
+              <div className="mt-1.5 flex flex-col gap-2 sm:flex-row">
                 <input
                   id="invite-link-output"
                   readOnly
-                  value={inviteLink}
+                  value={inviteResult.link}
                   onFocus={(event) => event.currentTarget.select()}
                   className={`${fieldClass} flex-1 font-mono text-xs`}
                 />
-                <Button type="button" variant="secondary" onClick={copyInviteLink} className="gap-2">
+                <Button
+                  type="button"
+                  variant={inviteResult.emailSent ? 'secondary' : 'primary'}
+                  onClick={copyInviteLink}
+                  className="h-11 gap-2 sm:h-10"
+                >
                   {copied ? <Check className="h-4 w-4" aria-hidden /> : <Copy className="h-4 w-4" aria-hidden />}
-                  {copied ? t('team.copied') : t('team.copy')}
+                  {copied ? t('team.copied') : t('team.copyLink')}
                 </Button>
               </div>
-              <p className="mt-2 text-xs text-text-muted">{t('team.inviteSendTo', { email: inviteSentTo })}</p>
             </div>
             {inviteError ? (
               <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
@@ -591,32 +840,25 @@ export default function TeamPage() {
             ) : null}
           </div>
         ) : (
-          <form id="invite-link-form" onSubmit={handleInvite} className="space-y-5" noValidate>
+          <form id="invite-email-form" onSubmit={handleInvite} className="space-y-5" noValidate>
             {inviteError ? (
               <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
                 {inviteError}
               </p>
             ) : null}
-            <div>
-              <label htmlFor="invite-email" className="block text-sm font-medium text-text-secondary">
-                {t('team.inviteEmail')}
-              </label>
-              <input
-                id="invite-email"
+            <Field label={t('team.inviteEmail')} hint={t('team.inviteHelp')} required>
+              <Input
                 type="email"
-                required
                 autoFocus
                 autoComplete="off"
-                autoCapitalize="none"
+                enterKeyHint="next"
                 value={inviteEmail}
                 onChange={(event) => setInviteEmail(event.target.value)}
-                className={`${fieldClass} mt-1.5`}
                 placeholder={t('team.inviteEmailPlaceholder')}
               />
-              <p className="mt-2 text-xs text-text-muted">{t('team.inviteHelp')}</p>
-            </div>
+            </Field>
             <div>
-              <p className="text-sm font-medium text-text-secondary">{t('team.roleField')}</p>
+              <p className="text-sm font-medium text-text-primary">{t('team.roleField')}</p>
               <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={t('team.roleField')}>
                 {(['member', 'admin'] as const).map((role) => (
                   <button
@@ -624,7 +866,7 @@ export default function TeamPage() {
                     type="button"
                     aria-pressed={inviteRole === role}
                     onClick={() => setInviteRole(role)}
-                    className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                    className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                       inviteRole === role
                         ? 'border-primary bg-primary/10 font-medium text-primary'
                         : 'border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -636,6 +878,15 @@ export default function TeamPage() {
               </div>
               <p className="mt-2 text-xs text-text-muted">{inviteRole === 'admin' ? t('team.roleAdminHelp') : t('team.roleMemberHelp')}</p>
             </div>
+            <Field label={t('team.inviteMessage')} optional>
+              <Textarea
+                rows={3}
+                maxLength={INVITE_MESSAGE_MAX}
+                value={inviteMessage}
+                onChange={(event) => setInviteMessage(event.target.value)}
+                placeholder={t('team.inviteMessagePlaceholder')}
+              />
+            </Field>
           </form>
         )}
       </Dialog>
@@ -649,6 +900,17 @@ export default function TeamPage() {
         busy={removeBusy}
         onConfirm={confirmRemove}
         onClose={() => setRemoving(null)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(revoking)}
+        title={t('team.revoke')}
+        body={revoking ? t('team.confirmRevoke', { email: revoking.email }) : undefined}
+        confirmLabel={t('team.revokeLabel')}
+        cancelLabel={t('team.cancel')}
+        busy={revokeBusy}
+        onConfirm={confirmRevoke}
+        onClose={() => setRevoking(null)}
       />
     </div>
   )

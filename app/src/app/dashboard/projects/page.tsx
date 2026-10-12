@@ -1,17 +1,21 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useTranslations } from 'next-intl'
-import { LayoutGrid, List, Plus, Search, X } from 'lucide-react'
+import { FolderKanban, LayoutGrid, List, Plus, Search, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { Button } from '@/components/ui/Button'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
-import CreateProjectDialog from '@/components/create/CreateProjectDialog'
+import { Skeleton } from '@/components/ui/Skeleton'
 import ProjectCard, { PROJECT_LIST_COLUMNS } from '@/components/projects/ProjectCard'
-import ProjectEditDialog from '@/components/projects/ProjectEditDialog'
 import { statusGroup, statusRank, type ProjectSummary } from '@/components/projects/projectUtils'
+
+// Dialogs are only downloaded once they are first opened
+const CreateProjectDialog = dynamic(() => import('@/components/create/CreateProjectDialog'), { ssr: false })
+const ProjectEditDialog = dynamic(() => import('@/components/projects/ProjectEditDialog'), { ssr: false })
 
 const VIEW_STORAGE_KEY = 'trackwork-projects-view'
 const GROUP_ORDER = ['active', 'planning', 'onHold', 'completed', 'archived']
@@ -27,6 +31,9 @@ export default function ProjectsPage() {
   const [group, setGroup] = useState('all')
   const [view, setView] = useState<ViewMode>('grid')
   const [showCreate, setShowCreate] = useState(false)
+  const [createEver, setCreateEver] = useState(false)
+  const [editEver, setEditEver] = useState(false)
+  const chipsRef = useRef<HTMLDivElement>(null)
   const [editing, setEditing] = useState<ProjectSummary | null>(null)
   const [deleting, setDeleting] = useState<ProjectSummary | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -41,6 +48,21 @@ export default function ProjectsPage() {
       // storage can be unavailable (private mode); the default view is fine
     }
   }, [])
+
+  useEffect(() => {
+    if (showCreate) setCreateEver(true)
+  }, [showCreate])
+  useEffect(() => {
+    if (editing) setEditEver(true)
+  }, [editing])
+
+  // keep the selected status chip in view inside the scrolling row
+  useEffect(() => {
+    const row = chipsRef.current
+    const chip = row?.querySelector<HTMLElement>('[aria-pressed="true"]')
+    if (!row || !chip) return
+    row.scrollTo({ left: Math.max(0, chip.offsetLeft - (row.clientWidth - chip.offsetWidth) / 2), behavior: 'smooth' })
+  }, [group])
 
   const changeView = (next: ViewMode) => {
     setView(next)
@@ -130,9 +152,13 @@ export default function ProjectsPage() {
         description={t('subtitle')}
         action={
           loading || projects.length > 0 ? (
-            <Button onClick={() => setShowCreate(true)} className="gap-2" aria-label={t('newProject')}>
+            <Button
+              onClick={() => setShowCreate(true)}
+              className="h-11 gap-2 max-sm:hidden sm:h-10"
+              aria-label={t('newProject')}
+            >
               <Plus className="h-4 w-4" aria-hidden />
-              <span className="hidden sm:inline">{t('newProject')}</span>
+              <span>{t('newProject')}</span>
             </Button>
           ) : undefined
         }
@@ -148,7 +174,7 @@ export default function ProjectsPage() {
               setNotice(null)
               setLoadFailed(false)
             }}
-            className="rounded p-0.5 hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+            className="-my-2 -mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-danger/10 active:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
           >
             <X className="h-4 w-4" />
           </button>
@@ -161,17 +187,23 @@ export default function ProjectsPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" aria-hidden />
             <input
               type="search"
+              enterKeyHint="search"
               aria-label={t('searchPlaceholder')}
               placeholder={t('searchPlaceholder')}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              className="h-10 w-full rounded-lg border border-border bg-secondary pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="h-11 w-full rounded-lg border border-border bg-secondary pl-9 pr-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:h-10 sm:text-sm"
             />
           </div>
 
           <div className="flex min-w-0 flex-1 items-center gap-3">
             {groups.length > 1 ? (
-              <div role="group" aria-label={t('statusField')} className="-mx-1 flex min-w-0 flex-1 gap-1 overflow-x-auto px-1 py-1">
+              <div
+                ref={chipsRef}
+                role="group"
+                aria-label={t('statusField')}
+                className="scrollbar-hide -mx-4 flex min-w-0 flex-1 gap-2 overflow-x-auto px-4 py-1 [-webkit-mask-image:linear-gradient(to_right,transparent,#000_16px,#000_calc(100%-28px),transparent)] [mask-image:linear-gradient(to_right,transparent,#000_16px,#000_calc(100%-28px),transparent)] sm:-mx-1 sm:px-1 sm:[-webkit-mask-image:none] sm:[mask-image:none]"
+              >
                 {[{ key: 'all', count: projects.length }, ...groups].map((item) => {
                   const selected = group === item.key
                   return (
@@ -180,10 +212,10 @@ export default function ProjectsPage() {
                       type="button"
                       aria-pressed={selected}
                       onClick={() => setGroup(item.key)}
-                      className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      className={`inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-4 text-sm font-medium transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-9 sm:px-3.5 ${
                         selected
                           ? 'border-primary bg-primary/10 text-primary'
-                          : 'border-border bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                          : 'border-border-strong bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                       }`}
                     >
                       {item.key === 'all' ? t('filterAll') : groupLabel(item.key)}
@@ -210,7 +242,7 @@ export default function ProjectsPage() {
                   aria-label={label}
                   title={label}
                   onClick={() => changeView(mode)}
-                  className={`inline-flex h-8 w-8 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-8 sm:w-8 ${
                     view === mode ? 'bg-primary/10 text-primary' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                   }`}
                 >
@@ -223,17 +255,18 @@ export default function ProjectsPage() {
       ) : null}
 
       {loading ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-4" aria-busy>
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(19rem,100%),1fr))] gap-4" role="status" aria-busy aria-label={t('loading')}>
           {Array.from({ length: 6 }).map((_, index) => (
-            <div key={index} className="h-44 animate-pulse rounded-2xl border border-border bg-surface motion-reduce:animate-none" />
+            <Skeleton key={index} className="h-44 rounded-2xl" />
           ))}
         </div>
       ) : projects.length === 0 ? (
         <EmptyState
+          icon={<FolderKanban />}
           title={t('emptyTitle')}
           body={t('emptyBody')}
           action={
-            <Button onClick={() => setShowCreate(true)} className="gap-2">
+            <Button onClick={() => setShowCreate(true)} className="h-11 gap-2 sm:h-10">
               <Plus className="h-4 w-4" aria-hidden />
               {t('createProject')}
             </Button>
@@ -258,7 +291,7 @@ export default function ProjectsPage() {
           }
         />
       ) : view === 'grid' ? (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(19rem,1fr))] gap-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(19rem,100%),1fr))] gap-4">
           {visible.map((project) => (
             <ProjectCard
               key={project.id}
@@ -295,22 +328,26 @@ export default function ProjectsPage() {
         </div>
       )}
 
-      <CreateProjectDialog
-        open={showCreate}
-        onClose={() => {
-          setShowCreate(false)
-          loadProjects()
-        }}
-      />
+      {createEver ? (
+        <CreateProjectDialog
+          open={showCreate}
+          onClose={() => {
+            setShowCreate(false)
+            loadProjects()
+          }}
+        />
+      ) : null}
 
-      <ProjectEditDialog
-        project={editing}
-        onClose={() => setEditing(null)}
-        onSaved={(saved) => {
-          setEditing(null)
-          setProjects((list) => list.map((project) => (project.id === saved.id ? { ...project, ...saved } : project)))
-        }}
-      />
+      {editEver ? (
+        <ProjectEditDialog
+          project={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(saved) => {
+            setEditing(null)
+            setProjects((list) => list.map((project) => (project.id === saved.id ? { ...project, ...saved } : project)))
+          }}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={Boolean(deleting)}

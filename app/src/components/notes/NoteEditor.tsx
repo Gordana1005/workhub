@@ -1,13 +1,15 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { ArrowLeft, ChevronDown, FolderOpen, History, Info, Save } from 'lucide-react'
 import RichTextEditor from './RichTextEditor'
 import TagSelector from './TagSelector'
-import VersionHistory from './VersionHistory'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
+
+const VersionHistory = dynamic(() => import('./VersionHistory'), { ssr: false })
 
 interface Tag {
   id: string
@@ -104,6 +106,57 @@ export default function NoteEditor({
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [dirty])
 
+  // Android back button / back gesture: on phones and tablets the editor is a full-screen layer, so
+  // "back" should leave the editor (asking first when there are unsaved changes), not the page.
+  const dirtyRef = useRef(dirty)
+  dirtyRef.current = dirty
+  const guardRef = useRef({ confirm, onCancel, title: t('discardConfirm'), label: t('discard') })
+  guardRef.current = { confirm, onCancel, title: t('discardConfirm'), label: t('discard') }
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.innerWidth >= 1024) return
+    const marker = `note-editor-${noteId ?? 'new'}-${Date.now()}`
+    let pushed = false
+    let closing = false
+    const push = () => {
+      try {
+        window.history.pushState({ ...(window.history.state || {}), __noteEditor: marker }, '', window.location.href)
+        pushed = true
+      } catch {
+        // history is a nicety only
+      }
+    }
+    // deferred so React strict-mode's mount/unmount/mount only pushes once
+    const timer = window.setTimeout(push, 0)
+
+    const onPop = async () => {
+      if (closing) return
+      pushed = false
+      if (!dirtyRef.current) {
+        guardRef.current.onCancel()
+        return
+      }
+      push() // stay on the editor while we ask
+      const { confirm: ask, title: question, label } = guardRef.current
+      if (await ask({ title: question, confirmLabel: label })) {
+        closing = true
+        pushed = false
+        window.history.go(-1)
+        guardRef.current.onCancel()
+      }
+    }
+    window.addEventListener('popstate', onPop)
+
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('popstate', onPop)
+      if (pushed && window.history.state?.__noteEditor === marker) {
+        closing = true
+        window.history.back()
+      }
+    }
+  }, [noteId])
+
   const handleSave = async () => {
     if (isSaving) return
     if (!title.trim()) {
@@ -164,7 +217,7 @@ export default function NoteEditor({
               setSelectedProjectId(event.target.value)
               setProjectError(false)
             }}
-            className={`h-8 max-w-[14rem] appearance-none rounded-full border bg-surface-hover pl-8 pr-8 text-xs font-medium text-text-primary transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-default disabled:opacity-100 ${
+            className={`h-10 max-w-[14rem] appearance-none rounded-full border bg-surface-hover pl-8 pr-8 text-base font-medium sm:h-8 sm:text-xs text-text-primary transition-colors focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-default disabled:opacity-100 ${
               projectError ? 'border-danger' : 'border-border hover:border-primary/50'
             }`}
           >
@@ -220,7 +273,7 @@ export default function NoteEditor({
         <button
           type="button"
           onClick={handleCancel}
-          className={`inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${backClass}`}
+          className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${backClass}`}
           aria-label={t('back')}
         >
           <ArrowLeft className="h-5 w-5" />
@@ -242,7 +295,7 @@ export default function NoteEditor({
           <button
             type="button"
             onClick={() => setShowVersionHistory(true)}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-10 sm:w-10"
             title={t('versionHistory')}
             aria-label={t('versionHistory')}
           >
@@ -259,7 +312,7 @@ export default function NoteEditor({
         >
           {t('cancel')}
         </Button>
-        <Button type="button" onClick={handleSave} disabled={!title.trim() || isSaving} className="shrink-0 gap-2">
+        <Button type="button" onClick={handleSave} disabled={!title.trim() || isSaving} className="h-11 shrink-0 gap-2 sm:h-10">
           <Save className="h-4 w-4" />
           {isSaving ? t('saving') : t('save')}
         </Button>

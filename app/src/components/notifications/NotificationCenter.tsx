@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { IconMenu } from '@/components/ui/IconMenu'
 import { Segmented } from '@/components/tools/Segmented'
+import { Skeleton, SkeletonAvatar } from '@/components/ui/Skeleton'
 
 interface Notification {
   id: string
@@ -66,6 +67,7 @@ const TYPE_TONES: Record<string, string> = {
 
 export default function NotificationCenter({ isOpen, onClose }: NotificationCenterProps) {
   const t = useTranslations('pages.tools')
+  const tCommon = useTranslations('common')
   const { confirm, dialog } = useConfirm()
   const { locale } = useLocaleSwitch()
   const dateLocale = locale === 'mk' ? mk : enUS
@@ -248,9 +250,9 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
         role="dialog"
         aria-modal="true"
         aria-label={t('notifications.title')}
-        className="absolute inset-0 flex h-[100dvh] w-full flex-col bg-surface text-text-primary sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:max-w-[26rem] sm:border-l sm:border-border sm:shadow-xl"
+        className="absolute inset-0 flex h-full w-full animate-fade-in flex-col overscroll-contain bg-surface text-text-primary sm:inset-y-0 sm:left-auto sm:right-0 sm:max-w-[26rem] sm:border-l sm:border-border sm:shadow-xl"
       >
-        <header className="border-b border-border px-4 pb-3 pt-4">
+        <header className="border-b border-border pb-3 pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] pt-[max(1rem,env(safe-area-inset-top))] sm:pl-4 sm:pr-4 sm:pt-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="text-lg font-semibold text-text-primary">{t('notifications.title')}</h2>
@@ -277,7 +279,7 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
                 type="button"
                 onClick={onClose}
                 aria-label={t('finance.close')}
-                className="rounded-lg p-2 text-text-secondary hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-text-secondary hover:bg-surface-hover hover:text-text-primary active:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -298,10 +300,18 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           {loading ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <div role="status" aria-label={tCommon('loading')} className="divide-y divide-border">
+              {Array.from({ length: 6 }, (_, index) => (
+                <div key={index} className="flex items-start gap-3 px-4 py-3">
+                  <SkeletonAvatar size={32} className="!rounded-lg" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-3.5 w-2/3" />
+                    <Skeleton className="h-3 w-full" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : groups.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center p-8 text-center">
@@ -332,7 +342,7 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
                         <button
                           type="button"
                           onClick={() => handleNotificationClick(notification)}
-                          className="flex min-w-0 flex-1 gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                          className="flex min-w-0 flex-1 gap-3 px-4 py-3 text-left active:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                         >
                           <span
                             className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
@@ -369,7 +379,7 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
                           type="button"
                           onClick={() => deleteNotification(notification.id)}
                           aria-label={t('finance.remove')}
-                          className="mr-2 mt-2 shrink-0 rounded-lg p-2 text-text-muted transition-opacity hover:bg-surface hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:opacity-0 sm:group-hover:opacity-100"
+                          className="mr-1 mt-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-text-muted transition-opacity hover:bg-surface hover:text-danger active:bg-surface-hover focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>

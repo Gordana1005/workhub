@@ -2,11 +2,28 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslations } from 'next-intl'
+import dynamic from 'next/dynamic'
 import { useCurrentUserId } from '@/hooks/useCurrentUserId'
 import DetailSheet from './DetailSheet'
-import TaskDetailPanel from './TaskDetailPanel'
-import { fetchMembers, fetchProjects, normalizeTask } from './taskUtils'
+import { getWorkspaceMembers, fetchProjects, normalizeTask } from './taskUtils'
 import type { MemberOption, ProjectOption, Task } from './types'
+
+// The editor is only needed once a task is opened
+const TaskDetailPanel = dynamic(() => import('./TaskDetailPanel'), {
+  ssr: false,
+  loading: () => <PanelSkeleton />,
+})
+
+function PanelSkeleton() {
+  return (
+    <div className="flex-1 space-y-4 p-6" aria-busy="true">
+      <div className="skeleton h-9 w-40" />
+      <div className="skeleton h-8 w-3/4" />
+      <div className="skeleton h-20 w-full" />
+      <div className="skeleton h-10 w-full" />
+    </div>
+  )
+}
 
 interface TaskDetailModalProps {
   task: any
@@ -42,8 +59,8 @@ export default function TaskDetailModal({
   useEffect(() => {
     if (!workspaceId) return
     if (!externalProjects?.length) fetchProjects(workspaceId).then(setProjects).catch(() => {})
-    if (!externalMembers?.length) fetchMembers(workspaceId, t('unknownUser')).then(setMembers).catch(() => {})
-  }, [workspaceId, externalProjects, externalMembers, t])
+    getWorkspaceMembers(workspaceId, t('unknownUser')).then(setMembers).catch(() => {})
+  }, [workspaceId, externalProjects, t])
 
   const handleChange = useCallback(
     (next: Task) => {
@@ -55,7 +72,7 @@ export default function TaskDetailModal({
   )
 
   return (
-    <DetailSheet label={t('editTask')} variant="center" onClose={onClose}>
+    <DetailSheet label={t('editTask')} variant="wide" onClose={onClose}>
       <TaskDetailPanel
         task={current}
         workspaceId={workspaceId}

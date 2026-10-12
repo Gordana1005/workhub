@@ -3,6 +3,8 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { getWorkspaceRole, getRowWorkspaceId, omitKeys } from '@/lib/api-access'
+import { createNotifications } from '@/lib/notify'
+import { fetchSubtaskIds } from '@/lib/subtasks'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -12,11 +14,6 @@ const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-async function notifyUsers(entries: Array<{ user_id: string; workspace_id: string; type: string; title: string; message: string; link?: string }>) {
-  if (!entries.length) return
-  await supabaseAdmin.from('notifications').insert(entries.map(e => ({ ...e, read: false })))
-}
 
 // Create auth client
 async function createAuthClient() {
@@ -70,6 +67,10 @@ export async function GET(request: NextRequest) {
       if (!role) {
         return NextResponse.json({ error: 'Access denied' }, { status: 403 })
       }
+      const subtaskIds = await fetchSubtaskIds(supabaseAdmin, (project as any).workspace_id)
+      if (subtaskIds.size > 0 && Array.isArray((project as any).tasks)) {
+        ;(project as any).tasks = (project as any).tasks.filter((t: any) => !subtaskIds.has(t.id))
+      }
       return NextResponse.json({ project })
     }
 
@@ -94,6 +95,7 @@ export async function GET(request: NextRequest) {
       `)
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false })
+      .limit(500)
 
     if (error) throw error
 
@@ -105,6 +107,7 @@ export async function GET(request: NextRequest) {
           .select('project_id, user_id, added_at')
           .in('project_id', projectIds)
           .order('added_at', { ascending: true })
+          .limit(5000)
       : { data: [] as any[] }
 
     const memberUserIds = Array.from(new Set((memberRows || []).map((r: any) => r.user_id)))
@@ -122,13 +125,15 @@ export async function GET(request: NextRequest) {
       membersByProject.set(row.project_id, list)
     }
 
-    // Calculate task counts
+    // Calculate task counts (subtasks are not counted as tasks)
+    const subtaskIds = await fetchSubtaskIds(supabaseAdmin, workspaceId as string)
     const projectsWithCounts = projects?.map(p => {
       const members = membersByProject.get(p.id) || []
+      const topLevelTasks = (p.tasks || []).filter((t: any) => !subtaskIds.has(t.id))
       return {
         ...p,
-        taskCount: p.tasks?.length || 0,
-        completedTaskCount: p.tasks?.filter((t: any) => t.is_completed).length || 0,
+        taskCount: topLevelTasks.length,
+        completedTaskCount: topLevelTasks.filter((t: any) => t.is_completed).length,
         memberCount: members.length,
         members: members.slice(0, 4)
       }
@@ -206,7 +211,8 @@ export async function POST(request: NextRequest) {
         link: `/dashboard/projects/${project.id}`
       }))
 
-    await notifyUsers(notifications)
+    // In-app only: a push to every member for each new project would be noise
+    await createNotifications(notifications.map((n: any) => ({ ...n, push: false })))
 
     return NextResponse.json({ project }, { status: 201 })
   } catch (error: any) {

@@ -1,28 +1,23 @@
 'use client'
 
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { Check, Link2, MessageSquare, Paperclip, Repeat, Trash2, Upload, X } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Circle, Copy, Link as LinkIcon, Trash2, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { Button } from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/ConfirmDialog'
 import { IconMenu } from '@/components/ui/IconMenu'
+import { Tabs } from '@/components/ui/Tabs'
+import { useToast } from '@/components/ui/Toast'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import RecurrenceSelector from './RecurrenceSelector'
 import DependencySelector from './DependencySelector'
 import CommentThread from './CommentThread'
-import {
-  PRIORITIES,
-  PRIORITY_TONE,
-  STATUSES,
-  STATUS_DOT,
-  dayKey,
-  isDone,
-  isOverdue,
-  priorityLabel,
-  statusLabel,
-  todayKey,
-} from './taskUtils'
-import type { MemberOption, Priority, ProjectOption, Task } from './types'
+import AttachmentsTab from './AttachmentsTab'
+import SubtaskList from './SubtaskList'
+import TaskTimeSection from './TaskTimeSection'
+import { TaskMoreDetails, TaskProperties } from './TaskProperties'
+import { dayKey, isDone } from './taskUtils'
+import type { MemberOption, ProjectOption, Task } from './types'
 
 interface TaskDetailPanelProps {
   task: Task
@@ -34,31 +29,17 @@ interface TaskDetailPanelProps {
   onChange: (task: Task) => void
   onDelete: (taskId: string) => void
   onClose: () => void
+  /** `auto` picks two columns when the panel is wide (>= 760px) and stacked otherwise. */
+  layout?: 'auto' | 'split' | 'stacked'
+  /** Open (not done) task count per assignee id, shown in the assignee picker. */
+  assigneeCounts?: Record<string, number>
 }
 
 type Tab = 'comments' | 'links' | 'files' | 'repeat'
+type SaveState = 'idle' | 'saving' | 'saved'
 
-const controlBase =
-  'h-9 min-w-0 rounded-lg border border-transparent bg-transparent px-2 text-sm text-text-primary transition-colors hover:border-border hover:bg-surface-hover focus:border-primary focus:bg-surface focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40'
-const control = `${controlBase} w-full`
-
-function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: ReactNode }) {
-  return (
-    <div className="grid min-h-[2.25rem] grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-2">
-      <label htmlFor={htmlFor} className="truncate text-xs font-medium text-text-muted">
-        {label}
-      </label>
-      <div className="min-w-0">{children}</div>
-    </div>
-  )
-}
-
-function formatBytes(bytes?: number) {
-  if (!bytes || bytes <= 0) return '0 B'
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)))
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`
-}
+const iconButton =
+  'inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-9 sm:w-9'
 
 function parseRecurrence(value: unknown) {
   if (!value) return null
@@ -78,43 +59,71 @@ export default function TaskDetailPanel({
   onChange,
   onDelete,
   onClose,
+  layout = 'auto',
+  assigneeCounts,
 }: TaskDetailPanelProps) {
   const t = useTranslations('pages.tasks')
+  const common = useTranslations('common')
+  const toast = useToast()
   const { confirm, dialog } = useConfirm()
   const uid = useId()
   const done = isDone(task)
-  const overdue = isOverdue(task)
 
   const [title, setTitle] = useState(task.title)
   const [description, setDescription] = useState(task.description || '')
-  const [category, setCategory] = useState(task.category || '')
-  const [estimate, setEstimate] = useState(task.estimated_hours ? String(task.estimated_hours) : '')
-  const [tags, setTags] = useState((task.tags || []).join(', '))
   const [tab, setTab] = useState<Tab>('comments')
   const [error, setError] = useState('')
+  const [saveState, setSaveState] = useState<SaveState>('idle')
   const [dependencies, setDependencies] = useState<string[]>([])
   const [recurrence, setRecurrence] = useState<any>(() => parseRecurrence(task.recurrence_pattern))
-  const [attachments, setAttachments] = useState<any[]>([])
-  const [uploading, setUploading] = useState(false)
+  const [attachmentCount, setAttachmentCount] = useState<number | undefined>(undefined)
+  const [commentCount, setCommentCount] = useState<number | undefined>(undefined)
+  const [width, setWidth] = useState(0)
 
+  const rootRef = useRef<HTMLDivElement>(null)
   const titleRef = useRef<HTMLTextAreaElement>(null)
+  const descriptionRef = useRef<HTMLTextAreaElement>(null)
   const taskRef = useRef(task)
   taskRef.current = task
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const recurrenceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingRecurrence = useRef<{ value: string | null } | null>(null)
 
-  useEffect(() => {
-    const el = titleRef.current
+  const isPhone = useMediaQuery('(max-width: 639px)')
+
+  useLayoutEffect(() => {
+    const el = rootRef.current
     if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${el.scrollHeight}px`
-  }, [title])
+    setWidth(el.getBoundingClientRect().width)
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => setWidth(entries[0]?.contentRect.width ?? 0))
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  const split = layout === 'split' || (layout === 'auto' && !isPhone && width >= 760)
+
+  useEffect(() => {
+    for (const el of [titleRef.current, descriptionRef.current]) {
+      if (!el) continue
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight}px`
+    }
+  }, [title, description, split, width])
+
+  useEffect(
+    () => () => {
+      if (savedTimer.current) clearTimeout(savedTimer.current)
+    },
+    []
+  )
 
   const save = useCallback(
     async (patch: Record<string, unknown>, local: Partial<Task> = {}) => {
       const previous = taskRef.current
       onChange({ ...previous, ...patch, ...local } as Task)
       setError('')
+      setSaveState('saving')
       try {
         const response = await fetch('/api/tasks', {
           method: 'PATCH',
@@ -125,8 +134,12 @@ export default function TaskDetailPanel({
           const payload = await response.json().catch(() => null)
           throw new Error(payload?.error || t('updateTaskFailed'))
         }
+        setSaveState('saved')
+        if (savedTimer.current) clearTimeout(savedTimer.current)
+        savedTimer.current = setTimeout(() => setSaveState('idle'), 2200)
       } catch (err) {
         onChange(previous)
+        setSaveState('idle')
         setError(err instanceof Error ? err.message : t('saveTaskFailed'))
       }
     },
@@ -190,61 +203,6 @@ export default function TaskDetailPanel({
     recurrenceTimer.current = setTimeout(flushRecurrence, 600)
   }
 
-  // Attachments
-  const loadAttachments = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({ workspace_id: workspaceId, task_id: task.id })
-      const response = await fetch(`/api/attachments?${params.toString()}`)
-      if (!response.ok) return
-      const payload = await response.json()
-      setAttachments(payload.attachments || [])
-    } catch (err) {
-      console.error('Error loading attachments:', err)
-    }
-  }, [task.id, workspaceId])
-
-  useEffect(() => {
-    if (tab === 'files') loadAttachments()
-  }, [tab, loadAttachments])
-
-  const uploadAttachment = async (file?: File | null) => {
-    if (!file) return
-    setUploading(true)
-    setError('')
-    try {
-      const body = new FormData()
-      body.append('file', file)
-      body.append('workspace_id', workspaceId)
-      body.append('task_id', task.id)
-      const response = await fetch('/api/attachments', { method: 'POST', body })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok) throw new Error(payload?.error || t('uploadFailed'))
-      setAttachments((prev) => [payload.attachment, ...prev])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('uploadFileFailed'))
-    } finally {
-      setUploading(false)
-    }
-  }
-
-  const deleteAttachment = async (id: string) => {
-    setError('')
-    try {
-      const response = await fetch('/api/attachments', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      })
-      if (!response.ok) {
-        const payload = await response.json().catch(() => null)
-        throw new Error(payload?.error || t('deleteFailed'))
-      }
-      setAttachments((prev) => prev.filter((item) => item.id !== id))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('deleteFileFailed'))
-    }
-  }
-
   const deleteTask = async () => {
     if (!(await confirm({ title: t('confirmDeleteTask'), confirmLabel: t('deleteTask') }))) return
     try {
@@ -256,6 +214,46 @@ export default function TaskDetailPanel({
     }
   }
 
+  const duplicateTask = async () => {
+    if (!task.project_id) {
+      setError(t('selectProject'))
+      return
+    }
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          workspace_id: workspaceId,
+          project_id: task.project_id,
+          title: `${task.title} (${t('copySuffix')})`,
+          description: task.description || null,
+          priority: task.priority,
+          due_date: dayKey(task.due_date),
+          assignee_id: task.assignee_id || null,
+          category: task.category || null,
+          estimated_hours: task.estimated_hours || null,
+          tags: task.tags || [],
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(data?.error || t('saveTaskFailed'))
+      window.dispatchEvent(new CustomEvent('trackwork:task-created', { detail: data }))
+      toast.success(t('taskDuplicated'))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('saveTaskFailed'))
+    }
+  }
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}/dashboard/tasks?task=${task.id}`)
+      toast.success(t('linkCopied'))
+    } catch {
+      toast.error(t('linkCopyFailed'))
+    }
+  }
+
   const toggleComplete = () => {
     const next = !done
     save(
@@ -263,6 +261,27 @@ export default function TaskDetailPanel({
       { is_completed: next, status: next ? 'Done' : task.status === 'Done' ? 'To Do' : task.status }
     )
   }
+
+  // Subtasks / time sections report their numbers so the lists behind the panel stay in step
+  const handleSubtaskCounts = useCallback(
+    (total: number, doneCount: number) => {
+      onChange({ ...taskRef.current, subtask_total: total, subtask_done: doneCount })
+    },
+    [onChange]
+  )
+
+  const handleLoggedSeconds = useCallback(
+    (seconds: number) => {
+      if ((taskRef.current.logged_seconds || 0) === seconds) return
+      onChange({ ...taskRef.current, logged_seconds: seconds })
+    },
+    [onChange]
+  )
+
+  const completeParent = useCallback(() => {
+    if (isDone(taskRef.current)) return
+    save({ is_completed: true }, { is_completed: true, status: 'Done' })
+  }, [save])
 
   const commitTitle = () => {
     const next = title.trim()
@@ -279,396 +298,277 @@ export default function TaskDetailPanel({
     if (next !== (task.description || '').trim()) save({ description: next || null })
   }
 
-  const commitCategory = () => {
-    const next = category.trim()
-    if (next !== (task.category || '')) save({ category: next || null })
-  }
-
-  const commitEstimate = () => {
-    const parsed = parseFloat(estimate)
-    const next = Number.isFinite(parsed) && parsed > 0 ? parsed : null
-    if (next !== (task.estimated_hours || null)) save({ estimated_hours: next })
-    setEstimate(next ? String(next) : '')
-  }
-
-  const commitTags = () => {
-    const next = tags
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean)
-    if (next.join('|') !== (task.tags || []).join('|')) save({ tags: next })
-  }
-
-  const dueValue = dayKey(task.due_date) || ''
-  const setDue = (value: string) => save({ due_date: value || null })
-
-  const tabs: { id: Tab; label: string; icon: typeof Link2 }[] = [
-    { id: 'comments', label: t('comments'), icon: MessageSquare },
-    { id: 'links', label: t('dependencies'), icon: Link2 },
-    { id: 'files', label: t('files'), icon: Paperclip },
-    { id: 'repeat', label: t('recurrence'), icon: Repeat },
+  const tabs = [
+    { id: 'comments', label: t('comments'), count: commentCount || undefined },
+    { id: 'links', label: t('dependencies'), count: dependencies.length || undefined },
+    { id: 'files', label: t('files'), count: attachmentCount || undefined },
+    { id: 'repeat', label: t('recurrence') },
   ]
 
-  return (
-    <div data-task-panel className="flex h-full min-h-0 flex-1 flex-col bg-surface">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-3">
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={toggleComplete}
-          className={`gap-1.5 ${done ? 'border-success/40 text-success' : ''}`}
-        >
-          <Check className="h-4 w-4" />
-          {done ? t('reopen') : t('markComplete')}
-        </Button>
+  const completeButton = (
+    <button
+      type="button"
+      onClick={toggleComplete}
+      aria-pressed={done}
+      className={`inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-9 ${
+        done
+          ? 'border-success/40 bg-success/10 text-success'
+          : 'border-border-strong bg-surface text-text-primary hover:bg-surface-hover'
+      }`}
+    >
+      {done ? (
+        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-success text-white">
+          <Check className="h-3 w-3" strokeWidth={3} />
+        </span>
+      ) : (
+        <Circle className="h-5 w-5 text-text-muted" strokeWidth={1.75} />
+      )}
+      {done ? t('statusDone') : t('markDone')}
+    </button>
+  )
+
+  const saveIndicator = (
+    <span
+      role="status"
+      aria-live="polite"
+      className={`inline-flex shrink-0 items-center gap-1 text-xs text-text-muted transition-opacity ${
+        saveState === 'idle' ? 'opacity-0' : 'opacity-100'
+      }`}
+    >
+      {saveState === 'saved' ? (
+        <>
+          <Check className="h-3.5 w-3.5 text-success" aria-hidden />
+          {t('saved')}
+        </>
+      ) : saveState === 'saving' ? (
+        t('saving')
+      ) : null}
+    </span>
+  )
+
+  const menu = (
+    <IconMenu
+      label={t('manage')}
+      buttonClassName={`${iconButton} aria-expanded:bg-surface-hover`}
+      items={[
+        { label: t('duplicateTask'), icon: <Copy />, onClick: duplicateTask },
+        { label: t('copyLink'), icon: <LinkIcon />, onClick: copyLink },
+        { label: t('deleteTask'), icon: <Trash2 />, onClick: deleteTask, danger: true, separatorBefore: true },
+      ]}
+    />
+  )
+
+  const header = (
+    <div
+      className={`flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 sm:px-4 ${
+        isPhone ? 'pt-[max(0.5rem,env(safe-area-inset-top))]' : ''
+      }`}
+    >
+      {isPhone ? (
+        <button type="button" onClick={onClose} aria-label={common('back')} className={`${iconButton} -ml-1`}>
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+      ) : null}
+      {completeButton}
+      {!isPhone ? (
+        <nav aria-label={common('breadcrumb')} className="flex min-w-0 flex-1 items-center gap-1 text-sm text-text-muted">
+          {task.project?.name ? (
+            <>
+              <span className="min-w-0 max-w-[40%] truncate">{task.project.name}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            </>
+          ) : null}
+          <span className="min-w-0 truncate text-text-secondary">{task.title}</span>
+        </nav>
+      ) : (
         <span className="flex-1" />
-        <IconMenu label={t('manage')} items={[{ label: t('deleteTask'), onClick: deleteTask, danger: true }]} />
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={t('close')}
-          className="rounded-lg p-2 text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
+      )}
+      {saveIndicator}
+      {menu}
+      {!isPhone ? (
+        <button type="button" onClick={onClose} aria-label={t('close')} className={iconButton}>
           <X className="h-4 w-4" />
         </button>
-      </div>
+      ) : null}
+    </div>
+  )
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-5 px-4 py-4 sm:px-5">
-          {error ? (
-            <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
-              {error}
-            </p>
-          ) : null}
+  const titleField = (
+    <textarea
+      ref={titleRef}
+      rows={1}
+      value={title}
+      aria-label={t('taskTitle')}
+      placeholder={t('enterTaskTitle')}
+      onChange={(event) => setTitle(event.target.value.replace(/\n/g, ' '))}
+      onBlur={commitTitle}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          event.currentTarget.blur()
+        }
+      }}
+      className="-mx-2 block w-[calc(100%+1rem)] resize-none overflow-hidden break-words rounded-lg border border-transparent bg-transparent px-2 py-1 text-[22px] font-semibold leading-snug tracking-tight text-text-primary transition-colors placeholder:text-text-muted hover:bg-surface-hover/60 focus:border-border focus:bg-secondary focus:outline-none sm:text-2xl"
+    />
+  )
 
-          <textarea
-            ref={titleRef}
-            rows={1}
-            value={title}
-            aria-label={t('taskTitle')}
-            placeholder={t('enterTaskTitle')}
-            onChange={(event) => setTitle(event.target.value.replace(/\n/g, ' '))}
-            onBlur={commitTitle}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                event.currentTarget.blur()
-              }
-            }}
-            className={`block w-full resize-none overflow-hidden rounded-lg border border-transparent bg-transparent px-2 py-1 text-xl font-semibold leading-snug tracking-tight transition-colors hover:border-border focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
-              done ? 'text-text-muted line-through' : 'text-text-primary'
-            }`}
-          />
+  const descriptionField = (
+    <textarea
+      ref={descriptionRef}
+      id={`${uid}-description`}
+      rows={2}
+      value={description}
+      aria-label={t('description')}
+      placeholder={t('descriptionPlaceholder')}
+      onChange={(event) => setDescription(event.target.value)}
+      onBlur={commitDescription}
+      className="-mx-2 block min-h-[4.5rem] w-[calc(100%+1rem)] resize-none overflow-hidden rounded-lg border border-transparent bg-transparent px-2 py-2 text-base leading-relaxed text-text-primary placeholder:text-text-muted hover:bg-surface-hover/60 focus:border-border focus:bg-secondary focus:outline-none sm:text-sm"
+    />
+  )
 
-          <div className="space-y-0.5">
-            <Field label={t('status')} htmlFor={`${uid}-status`}>
-              <div className="relative">
-                <span
-                  aria-hidden
-                  className={`pointer-events-none absolute left-2.5 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full ${
-                    STATUS_DOT[task.status] || 'bg-text-muted'
-                  }`}
-                />
-                <select
-                  id={`${uid}-status`}
-                  value={task.status}
-                  onChange={(event) => {
-                    const status = event.target.value
-                    save({ status }, { status, is_completed: status === 'Done' })
-                  }}
-                  className={`${control} pl-6`}
-                >
-                  {STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {statusLabel(t, status)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </Field>
-
-            <Field label={t('assignee')} htmlFor={`${uid}-assignee`}>
-              <select
-                id={`${uid}-assignee`}
-                value={task.assignee_id || ''}
-                onChange={(event) => {
-                  const id = event.target.value
-                  const member = members.find((m) => m.id === id)
-                  save(
-                    { assignee_id: id },
-                    { assignee_id: id, assignee: member ? { id: member.id, username: member.username } : null }
-                  )
-                }}
-                className={control}
-              >
-                {!task.assignee_id ? (
-                  <option value="" disabled>
-                    {t('selectAssignee')}
-                  </option>
-                ) : null}
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.username}
-                    {member.id === currentUserId ? ` (${t('you')})` : ''}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label={t('dueDate')} htmlFor={`${uid}-due`}>
-              <div className="flex flex-wrap items-center gap-x-1 gap-y-0.5">
-                <input
-                  id={`${uid}-due`}
-                  type="date"
-                  value={dueValue}
-                  onChange={(event) => setDue(event.target.value)}
-                  className={`${controlBase} w-auto min-w-[9.5rem] ${overdue ? 'text-danger' : ''}`}
-                />
-                {dueValue !== todayKey() ? (
-                  <button
-                    type="button"
-                    onClick={() => setDue(todayKey())}
-                    className="rounded-md px-1.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    {t('today')}
-                  </button>
-                ) : null}
-                {dueValue !== todayKey(1) ? (
-                  <button
-                    type="button"
-                    onClick={() => setDue(todayKey(1))}
-                    className="rounded-md px-1.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    {t('tomorrow')}
-                  </button>
-                ) : null}
-                {dueValue ? (
-                  <button
-                    type="button"
-                    onClick={() => setDue('')}
-                    className="rounded-md px-1.5 py-1 text-xs font-medium text-text-muted hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                  >
-                    {t('clear')}
-                  </button>
-                ) : null}
-              </div>
-            </Field>
-
-            <Field label={t('priority')} htmlFor={`${uid}-priority`}>
-              <div className="relative">
-                <span
-                  aria-hidden
-                  className={`pointer-events-none absolute left-2.5 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full ${
-                    PRIORITY_TONE[task.priority]?.dot || 'bg-text-muted'
-                  }`}
-                />
-                <select
-                  id={`${uid}-priority`}
-                  value={task.priority}
-                  onChange={(event) => save({ priority: event.target.value }, { priority: event.target.value as Priority })}
-                  className={`${control} pl-6`}
-                >
-                  {[...PRIORITIES].reverse().map((priority) => (
-                    <option key={priority} value={priority}>
-                      {priorityLabel(t, priority)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </Field>
-
-            <Field label={t('project')} htmlFor={`${uid}-project`}>
-              <select
-                id={`${uid}-project`}
-                value={task.project_id || ''}
-                onChange={(event) => {
-                  const id = event.target.value
-                  if (!id) return
-                  const project = projects.find((p) => p.id === id)
-                  save(
-                    { project_id: id },
-                    { project_id: id, project: project ? { name: project.name, color: project.color || undefined } : null }
-                  )
-                }}
-                className={control}
-              >
-                {!task.project_id ? (
-                  <option value="" disabled>
-                    {t('selectProject')}
-                  </option>
-                ) : null}
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label={t('estimatedHours')} htmlFor={`${uid}-estimate`}>
-              <input
-                id={`${uid}-estimate`}
-                type="number"
-                min="0"
-                step="0.5"
-                inputMode="decimal"
-                value={estimate}
-                placeholder="0.0"
-                onChange={(event) => setEstimate(event.target.value)}
-                onBlur={commitEstimate}
-                className={`${controlBase} w-28`}
-              />
-            </Field>
-
-            <Field label={t('category')} htmlFor={`${uid}-category`}>
-              <input
-                id={`${uid}-category`}
-                type="text"
-                value={category}
-                placeholder={t('categoryExample')}
-                onChange={(event) => setCategory(event.target.value)}
-                onBlur={commitCategory}
-                className={control}
-              />
-            </Field>
-
-            <Field label={t('tags')} htmlFor={`${uid}-tags`}>
-              <input
-                id={`${uid}-tags`}
-                type="text"
-                value={tags}
-                placeholder={t('tagsExample')}
-                onChange={(event) => setTags(event.target.value)}
-                onBlur={commitTags}
-                className={control}
-              />
-            </Field>
-          </div>
-
-          <div>
-            <label htmlFor={`${uid}-description`} className="mb-1.5 block text-xs font-medium text-text-muted">
-              {t('description')}
-            </label>
-            <textarea
-              id={`${uid}-description`}
-              rows={5}
-              value={description}
-              placeholder={t('enterTaskDescription')}
-              onChange={(event) => setDescription(event.target.value)}
-              onBlur={commitDescription}
-              className="w-full resize-y rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+  const tabArea = (
+    <div className="mt-4 flex min-h-0 flex-1 flex-col">
+      <Tabs
+        ariaLabel={t('details')}
+        idPrefix={`${uid}-tt`}
+        value={tab}
+        onChange={(id) => setTab(id as Tab)}
+        tabs={tabs}
+      />
+      <div
+        role="tabpanel"
+        aria-labelledby={`${uid}-tt-tab-${tab}`}
+        className={`flex flex-1 flex-col ${tab === 'comments' ? 'pt-4' : 'py-4'}`}
+      >
+        {tab === 'comments' ? (
+          currentUserId ? (
+            <CommentThread
+              key={task.id}
+              taskId={task.id}
+              currentUserId={currentUserId}
+              members={members}
+              workspaceId={workspaceId}
+              onCount={setCommentCount}
             />
-          </div>
+          ) : null
+        ) : null}
 
-          <div>
-            <div role="tablist" className="-mx-1 mb-4 flex gap-1 overflow-x-auto border-b border-border px-1">
-              {tabs.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === id}
-                  onClick={() => setTab(id)}
-                  className={`-mb-px inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                    tab === id
-                      ? 'border-primary text-text-primary'
-                      : 'border-transparent text-text-secondary hover:text-text-primary'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  {label}
-                </button>
-              ))}
-            </div>
+        {tab === 'links' ? (
+          <DependencySelector
+            taskId={task.id}
+            projectId={task.project_id || undefined}
+            workspaceId={workspaceId}
+            selectedDependencies={dependencies}
+            onChange={persistDependencies}
+          />
+        ) : null}
 
-            {tab === 'comments' ? (
-              currentUserId ? (
-                <CommentThread taskId={task.id} currentUserId={currentUserId} />
-              ) : null
-            ) : null}
+        {tab === 'repeat' ? <RecurrenceSelector value={recurrence} onChange={changeRecurrence} /> : null}
 
-            {tab === 'links' ? (
-              <DependencySelector
-                taskId={task.id}
-                projectId={task.project_id || undefined}
-                workspaceId={workspaceId}
-                selectedDependencies={dependencies}
-                onChange={persistDependencies}
-              />
-            ) : null}
+        <div hidden={tab !== 'files'}>
+          <AttachmentsTab
+            key={task.id}
+            workspaceId={workspaceId}
+            taskId={task.id}
+            currentUserId={currentUserId}
+            members={members}
+            active={tab === 'files'}
+            onCount={setAttachmentCount}
+          />
+        </div>
+      </div>
+    </div>
+  )
 
-            {tab === 'repeat' ? <RecurrenceSelector value={recurrence} onChange={changeRecurrence} /> : null}
+  const errorBanner = error ? (
+    <p role="alert" className="mb-3 rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
+      {error}
+    </p>
+  ) : null
 
-            {tab === 'files' ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="min-w-0 text-xs text-text-secondary">{t('taskFilesHelp')}</p>
-                  <label
-                    className={`inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs font-medium text-text-primary transition-colors focus-within:ring-2 focus-within:ring-primary ${
-                      uploading ? 'pointer-events-none opacity-60' : 'hover:bg-surface-hover'
-                    }`}
-                  >
-                    <Upload className="h-4 w-4" />
-                    {t('upload')}
-                    <input
-                      type="file"
-                      className="sr-only"
-                      disabled={uploading}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0]
-                        if (file) uploadAttachment(file)
-                        event.target.value = ''
-                      }}
-                    />
-                  </label>
-                </div>
-                {attachments.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-border px-4 py-3 text-sm text-text-secondary">
-                    {t('noAttachments')}
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {attachments.map((file) => (
-                      <li
-                        key={file.id}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-border bg-tertiary px-3 py-2"
-                      >
-                        <div className="flex min-w-0 items-center gap-3">
-                          <Paperclip className="h-4 w-4 shrink-0 text-text-muted" />
-                          <div className="min-w-0">
-                            {file.url ? (
-                              <a
-                                href={file.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block truncate text-sm text-text-primary hover:underline"
-                              >
-                                {file.file_name}
-                              </a>
-                            ) : (
-                              <p className="truncate text-sm text-text-primary">{file.file_name}</p>
-                            )}
-                            <p className="text-xs text-text-muted">{formatBytes(file.file_size)}</p>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          aria-label={t('delete')}
-                          onClick={() => deleteAttachment(file.id)}
-                          disabled={uploading}
-                          className="shrink-0 rounded-lg p-2 text-danger transition-colors hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+  return (
+    <div ref={rootRef} data-task-panel className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-surface">
+      {header}
+
+      <div className="flex min-h-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="flex min-h-full flex-col px-4 pt-4 sm:px-6 sm:pt-5">
+            {errorBanner}
+            {titleField}
+
+            {split ? null : (
+              <div
+                role="group"
+                aria-label={t('properties')}
+                className="scrollbar-hide -mx-4 mt-3 flex items-center gap-2 overflow-x-auto px-4 pb-1 [-webkit-mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)] [mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)] sm:-mx-6 sm:px-6"
+              >
+                <TaskProperties
+                  variant="chips"
+                  task={task}
+                  members={members}
+                  projects={projects}
+                  currentUserId={currentUserId}
+                  assigneeCounts={assigneeCounts}
+                  onSave={save}
+                />
+                <span aria-hidden className="w-4 shrink-0" />
               </div>
-            ) : null}
+            )}
+
+            <div className="mt-3">{descriptionField}</div>
+
+            {task.parent_task_id ? null : (
+              <SubtaskList
+                key={task.id}
+                taskId={task.id}
+                workspaceId={workspaceId}
+                members={members}
+                currentUserId={currentUserId}
+                parentDone={done}
+                knownTotal={task.subtask_total}
+                knownDone={task.subtask_done}
+                onCounts={handleSubtaskCounts}
+                onCompleteParent={completeParent}
+              />
+            )}
+
+            <TaskTimeSection
+              key={`time-${task.id}`}
+              task={task}
+              workspaceId={workspaceId}
+              currentUserId={currentUserId}
+              onLoggedSeconds={handleLoggedSeconds}
+            />
+
+            {split ? null : (
+              <div className="mt-2">
+                <TaskMoreDetails task={task} onSave={save} />
+              </div>
+            )}
+
+            {tabArea}
           </div>
         </div>
+
+        {split ? (
+          <aside
+            aria-label={t('properties')}
+            className="scrollbar-thin hidden w-[320px] shrink-0 overflow-y-auto overscroll-contain border-l border-border bg-surface-hover/40 p-4 sm:block"
+          >
+            <TaskProperties
+              variant="sidebar"
+              task={task}
+              members={members}
+              projects={projects}
+              currentUserId={currentUserId}
+              assigneeCounts={assigneeCounts}
+              onSave={save}
+            />
+            <div className="mt-4 border-t border-border pt-3">
+              <TaskMoreDetails task={task} onSave={save} />
+            </div>
+          </aside>
+        ) : null}
       </div>
       {dialog}
     </div>

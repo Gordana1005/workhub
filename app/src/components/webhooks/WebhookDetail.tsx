@@ -7,6 +7,7 @@ import { Check, CheckCircle2, Copy, RefreshCw, XCircle } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { useLocaleSwitch } from '@/i18n/LocaleProvider'
 import { Button } from '@/components/ui/Button'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { EVENT_LABEL_KEYS, successRate, type Webhook } from './shared'
 
 interface WebhookLog {
@@ -90,7 +91,7 @@ export default function WebhookDetail({
             <p className="mt-2 break-words text-sm text-text-secondary">{webhook.description}</p>
           ) : null}
         </div>
-        <Button type="button" variant="secondary" size="sm" onClick={() => onEdit(webhook)}>
+        <Button type="button" variant="secondary" size="sm" className="h-11 sm:h-8" onClick={() => onEdit(webhook)}>
           {t('webhooks.editAction')}
         </Button>
       </div>
@@ -102,7 +103,7 @@ export default function WebhookDetail({
           onClick={copyUrl}
           aria-label={t('webhooks.copyUrl')}
           title={t('webhooks.copyUrl')}
-          className="shrink-0 rounded-lg p-1.5 text-text-secondary hover:bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          className="-my-1 -mr-1 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary hover:bg-surface hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:h-9 sm:w-9"
         >
           {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
         </button>
@@ -133,14 +134,18 @@ export default function WebhookDetail({
       <div>
         <div className="mb-2 flex items-center justify-between gap-3">
           <h3 className="text-sm font-medium text-text-primary">{t('webhooks.deliveries')}</h3>
-          <Button type="button" variant="ghost" size="sm" onClick={() => void loadLogs()} className="gap-1.5">
+          <Button type="button" variant="ghost" size="sm" onClick={() => void loadLogs()} className="h-11 gap-1.5 sm:h-8">
             <RefreshCw className={`h-3.5 w-3.5 ${logs === 'loading' ? 'animate-spin' : ''}`} aria-hidden="true" />
             {t('webhooks.refresh')}
           </Button>
         </div>
 
         {logs === 'loading' ? (
-          <p className="py-6 text-center text-sm text-text-secondary">{t('webhooks.logsLoading')}</p>
+          <div className="space-y-2" role="status" aria-label={t('webhooks.logsLoading')}>
+            <Skeleton className="h-14 rounded-xl" />
+            <Skeleton className="h-14 rounded-xl" />
+            <Skeleton className="h-14 rounded-xl" />
+          </div>
         ) : logs === 'error' ? (
           <p className="py-6 text-center text-sm text-danger">{t('webhooks.logsFailed')}</p>
         ) : logs.length === 0 ? (
@@ -152,7 +157,7 @@ export default function WebhookDetail({
             {logs.map((log) => {
               const detail = snippet(log.error_message) || (log.success ? null : snippet(log.response_body))
               return (
-                <li key={log.id} className="flex items-start gap-3 px-3 py-2.5">
+                <li key={log.id} className="flex items-start gap-3 px-3 py-3">
                   {log.success ? (
                     <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" aria-label={t('webhooks.success')} />
                   ) : (

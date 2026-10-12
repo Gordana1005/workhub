@@ -97,6 +97,17 @@
     "mismatchBody": "It was sent to another email address. Sign in with the invited account to accept it.",
     "switchAccount": "Sign in with another account",
     "loadFailed": "Could not load the invitation. Please try again.",
-    "acceptFailed": "Could not accept the invitation. Please try again."
+    "acceptFailed": "Could not accept the invitation. Please try again.",
+    "linkExpired": "The sign-in link from your email has expired. Ask the person who invited you to resend the invitation.",
+    "setPasswordTitle": "Set your password",
+    "setPasswordBody": "You joined {workspace}. Choose a password so you can sign in next time.",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "passwordTooShort": "Password must be at least 8 characters",
+    "passwordMismatch": "Passwords do not match",
+    "savePassword": "Save password",
+    "savingPassword": "Saving...",
+    "skipPassword": "Skip for now",
+    "passwordFailed": "Could not save the password. Please try again."
   }
 }

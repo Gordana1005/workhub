@@ -11,6 +11,7 @@ import { useTranslations } from 'next-intl';
 import { useLocaleSwitch } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { Segmented } from '@/components/tools/Segmented';
 import { FINANCE_CATEGORY_KEYS, formatMoney, toNumber } from './money';
 
@@ -31,7 +32,13 @@ interface QuickAddTransactionProps {
 }
 
 const fieldClass =
-  'block w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
+  'block w-full min-w-0 rounded-lg border border-border-control bg-secondary px-3 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
+
+/** "12,50" and "12.50" both work on phone keypads that only offer one separator. */
+function parseAmount(value: string) {
+  const parsed = parseFloat(value.replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : null;
+}
 
 export default function QuickAddTransaction({
   accountId,
@@ -44,6 +51,8 @@ export default function QuickAddTransaction({
   const { locale } = useLocaleSwitch();
   const dateLocale = locale === 'mk' ? mk : enUS;
   const [input, setInput] = useState('');
+  const [amountText, setAmountText] = useState('');
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [manualType, setManualType] = useState<'income' | 'expense'>(defaultType);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [accountsLoaded, setAccountsLoaded] = useState(false);
@@ -94,8 +103,33 @@ export default function QuickAddTransaction({
     }
   }, [currentWorkspace?.id, loadAccounts, loadCategories]);
 
+  // A category picked for the other type no longer applies after switching expense/income.
+  useEffect(() => {
+    setCategoryId((current) => {
+      if (!current) return current;
+      const match = categories.find((category) => category.id === current);
+      return match && match.type === manualType ? current : null;
+    });
+  }, [manualType, categories]);
+
+  const typedCategories = categories.filter((category) => category.type === manualType);
+  const pickedCategory = categoryId ? categories.find((category) => category.id === categoryId) : undefined;
+
+  // The amount field wins when filled; otherwise the sentence is parsed as before ("coffee 5 yesterday").
   const parsed = parseNaturalLanguageTransaction(input);
-  const preview: ParsedTransaction | null = parsed ? { ...parsed, type: manualType } : null;
+  const typedAmount = parseAmount(amountText);
+  let preview: ParsedTransaction | null = null;
+  if (typedAmount !== null) {
+    preview = {
+      amount: typedAmount,
+      description: parsed?.description || input.trim() || (manualType === 'income' ? 'Income' : 'Expense'),
+      category: pickedCategory?.name ?? parsed?.category,
+      date: parsed?.date ?? new Date(),
+      type: manualType,
+    };
+  } else if (parsed) {
+    preview = { ...parsed, category: pickedCategory?.name ?? parsed.category, type: manualType };
+  }
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId);
   const currency = selectedAccount?.currency || 'USD';
 
@@ -110,7 +144,8 @@ export default function QuickAddTransaction({
     setError(null);
 
     try {
-      const category = categories.find((c) => c.name === preview.category && c.type === preview.type);
+      const category =
+        pickedCategory ?? categories.find((c) => c.name === preview.category && c.type === preview.type);
 
       const { error: insertError } = await supabase.from('finance_transactions').insert({
         workspace_id: currentWorkspace.id,
@@ -143,7 +178,7 @@ export default function QuickAddTransaction({
       onClose={onClose}
       footer={
         noAccounts ? (
-          <Button type="button" variant="secondary" fullWidth onClick={onClose}>
+          <Button type="button" variant="secondary" fullWidth className="h-11 sm:h-10" onClick={onClose}>
             {t('finance.close')}
           </Button>
         ) : (
@@ -151,6 +186,7 @@ export default function QuickAddTransaction({
             type="submit"
             form="quick-add-form"
             fullWidth
+            className="h-12 sm:h-10"
             disabled={!preview || isSubmitting || !selectedAccountId}
           >
             {isSubmitting ? t('finance.adding') : t('finance.addTransaction')}
@@ -159,16 +195,21 @@ export default function QuickAddTransaction({
       }
     >
       {!accountsLoaded ? (
-        <p className="py-6 text-center text-sm text-text-secondary">{t('finance.loading')}</p>
+        <div className="space-y-3 py-2" role="status" aria-busy="true">
+          <Skeleton className="h-12 rounded-xl" />
+          <Skeleton className="h-16 rounded-xl" />
+          <Skeleton className="h-12 rounded-xl" />
+        </div>
       ) : noAccounts ? (
         <div className="py-6 text-center">
           <p className="font-medium text-text-primary">{t('finance.needAccount')}</p>
           <p className="mt-1 text-sm text-text-secondary">{t('finance.needAccountHint')}</p>
         </div>
       ) : (
-        <form id="quick-add-form" onSubmit={handleSubmit} className="min-w-0 space-y-4">
+        <form id="quick-add-form" onSubmit={handleSubmit} className="min-w-0 space-y-5">
           <Segmented
             fullWidth
+            large
             label={t('finance.transactionType')}
             value={manualType}
             onChange={setManualType}
@@ -179,18 +220,70 @@ export default function QuickAddTransaction({
           />
 
           <div>
+            <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="quick-add-amount">
+              {t('finance.amount')}
+            </label>
+            <div className="relative">
+              <input
+                id="quick-add-amount"
+                type="text"
+                inputMode="decimal"
+                enterKeyHint="next"
+                autoComplete="off"
+                autoFocus
+                value={amountText}
+                onChange={(e) => setAmountText(e.target.value.replace(/[^\d.,\s]/g, ''))}
+                placeholder="0.00"
+                className={`${fieldClass} h-16 pr-16 text-3xl font-semibold tabular-nums`}
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-sm font-medium text-text-muted"
+              >
+                {currency}
+              </span>
+            </div>
+          </div>
+
+          {typedCategories.length > 0 ? (
+            <fieldset>
+              <legend className="mb-1.5 block text-sm font-medium text-text-secondary">{t('finance.fieldCategory')}</legend>
+              <div className="flex flex-wrap gap-2">
+                {typedCategories.map((category) => {
+                  const selected = categoryId === category.id;
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setCategoryId(selected ? null : category.id)}
+                      className={`inline-flex min-h-11 max-w-full items-center rounded-full border px-4 text-sm font-medium transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        selected
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border-strong bg-surface text-text-secondary hover:bg-surface-hover'
+                      }`}
+                    >
+                      <span className="truncate">{categoryLabel(category.name)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ) : null}
+
+          <div>
             <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="quick-add-input">
               {t('finance.describeTransaction')}
             </label>
             <input
               id="quick-add-input"
               type="text"
-              autoFocus
+              enterKeyHint="done"
               autoComplete="off"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={t('finance.describePlaceholder')}
-              className={`${fieldClass} py-3 text-base`}
+              className={`${fieldClass} h-12 text-base`}
             />
             <p className="mt-1.5 text-xs text-text-muted">{t('finance.describeHint')}</p>
           </div>
@@ -232,7 +325,7 @@ export default function QuickAddTransaction({
                 id="quick-add-account"
                 value={selectedAccountId}
                 onChange={(e) => setSelectedAccountId(e.target.value)}
-                className={fieldClass}
+                className={`${fieldClass} h-12 text-base`}
               >
                 {accounts.map((account) => (
                   <option key={account.id} value={account.id}>

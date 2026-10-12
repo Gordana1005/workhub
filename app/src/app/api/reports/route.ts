@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { topLevelOnly } from '@/lib/subtasks'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -62,13 +63,15 @@ export async function GET(request: NextRequest) {
 
     switch (reportType) {
       case 'tasks': {
-        const { data: tasks, error } = await supabaseAdmin
+        const { data: taskRows, error } = await supabaseAdmin
           .from('tasks')
           .select('*')
           .eq('workspace_id', workspaceId)
           .limit(MAX_ROWS)
 
         if (error) throw error
+        // Subtasks are not tasks for reporting purposes
+        const tasks = topLevelOnly(taskRows)
 
         const stats = {
           total: tasks?.length || 0,
@@ -117,11 +120,12 @@ export async function GET(request: NextRequest) {
 
       case 'productivity': {
         // Get tasks with completion dates
-        const { data: tasks } = await supabaseAdmin
+        const { data: taskRows } = await supabaseAdmin
           .from('tasks')
           .select('*')
           .eq('workspace_id', workspaceId)
           .limit(MAX_ROWS)
+        const tasks = topLevelOnly(taskRows)
 
         // Get time entries
         const { data: timeEntries } = await supabaseAdmin
@@ -161,11 +165,12 @@ export async function GET(request: NextRequest) {
 
       default: {
         // Return overview of all data
-        const [tasks, timeEntries, projects] = await Promise.all([
+        const [taskResult, timeEntries, projects] = await Promise.all([
           supabaseAdmin.from('tasks').select('*').eq('workspace_id', workspaceId).limit(MAX_ROWS),
           supabaseAdmin.from('time_entries').select('*').eq('workspace_id', workspaceId).limit(MAX_ROWS),
           supabaseAdmin.from('projects').select('*').eq('workspace_id', workspaceId).limit(MAX_ROWS)
         ])
+        const tasks = { ...taskResult, data: topLevelOnly(taskResult.data) }
 
         const totalDuration = timeEntries.data?.reduce((sum, e) => sum + (e.duration || 0), 0) || 0
 

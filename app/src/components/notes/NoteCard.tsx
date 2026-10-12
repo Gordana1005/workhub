@@ -49,10 +49,10 @@ export default function NoteCard({
         type="button"
         onClick={() => onOpen(note)}
         aria-current={active ? 'true' : undefined}
-        className="block min-w-0 flex-1 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+        className="block min-h-[4.5rem] min-w-0 flex-1 px-4 py-3 text-left active:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
       >
         <span className="flex items-baseline gap-3">
-          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary">
+          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text-primary sm:text-sm">
             {note.title || t('untitled')}
           </span>
           <span className="shrink-0 text-xs text-text-muted">
@@ -88,9 +88,10 @@ export default function NoteCard({
       </button>
 
       {showMenu ? (
-        <div className="shrink-0 pr-1 pt-1.5">
+        <div className="shrink-0 pr-1 pt-1">
           <IconMenu
             label={t('moreActions')}
+            buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover sm:h-9 sm:w-9"
             items={[
               { label: t('openNote'), onClick: () => onOpen(note) },
               { label: t('deleteNote'), onClick: () => onDelete(note.id), danger: true },

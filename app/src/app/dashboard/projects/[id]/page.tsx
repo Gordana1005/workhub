@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useLocale, useTranslations } from 'next-intl'
-import { AnimatePresence } from 'framer-motion'
 import { ArrowLeft, Plus, SlidersHorizontal, X } from 'lucide-react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { Avatar } from '@/components/ui/Avatar'
@@ -13,23 +13,43 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Dialog } from '@/components/ui/Dialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconMenu } from '@/components/ui/IconMenu'
-import ProjectBudgetCard from '@/components/finance/ProjectBudgetCard'
+import { SegmentedControl } from '@/components/ui/SegmentedControl'
+import { Skeleton } from '@/components/ui/Skeleton'
+import { Tabs } from '@/components/ui/Tabs'
 import NotesList from '@/components/notes/NotesList'
-import NotePane from '@/components/notes/NotePane'
 import type { NoteRecord, NoteTag } from '@/components/notes/noteUtils'
-import TaskDetailModal from '@/components/tasks/TaskDetailModal'
 import { AvatarStack, DueLabel, ProgressBar, ProjectTile, useProjectStatusLabel } from '@/components/projects/ProjectCard'
-import ProjectEditDialog, { type EditableProject } from '@/components/projects/ProjectEditDialog'
+import type { EditableProject } from '@/components/projects/ProjectEditDialog'
 import ProjectPeople, { type ProjectMember, type WorkspacePerson } from '@/components/projects/ProjectPeople'
 import ProjectTaskRow, { type ProjectTask } from '@/components/projects/ProjectTaskRow'
+import type { PickerCategory, TaskFormValues } from '@/components/projects/ProjectTaskDialogs'
 import {
   CATEGORY_COLORS,
-  CreateCategoryDialog,
-  CreateTaskDialog,
-  type PickerCategory,
-  type TaskFormValues,
-} from '@/components/projects/ProjectTaskDialogs'
-import { daysUntil, parseDay, progressOf, statusDotClass, statusKey } from '@/components/projects/projectUtils'
+  daysUntil,
+  parseDay,
+  progressOf,
+  statusDotClass,
+  statusKey,
+} from '@/components/projects/projectUtils'
+
+// Heavy / rarely-needed pieces load on demand (the note editor pulls in TipTap, the budget card the charts)
+const ProjectBudgetCard = dynamic(() => import('@/components/finance/ProjectBudgetCard'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-64 rounded-2xl" />,
+})
+const NotePane = dynamic(() => import('@/components/notes/NotePane'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-64 rounded-2xl" />,
+})
+const TaskDetailModal = dynamic(() => import('@/components/tasks/TaskDetailModal'), { ssr: false })
+const ProjectEditDialog = dynamic(() => import('@/components/projects/ProjectEditDialog'), { ssr: false })
+const CreateTaskDialog = dynamic(() => import('@/components/projects/ProjectTaskDialogs').then((m) => m.CreateTaskDialog), {
+  ssr: false,
+})
+const CreateCategoryDialog = dynamic(
+  () => import('@/components/projects/ProjectTaskDialogs').then((m) => m.CreateCategoryDialog),
+  { ssr: false }
+)
 
 interface Project extends EditableProject {
   created_at: string
@@ -46,8 +66,11 @@ const PRIORITY_RANK: Record<string, number> = { urgent: 4, high: 3, medium: 2, l
 const selectClass =
   'h-9 min-w-0 rounded-lg border border-border bg-secondary px-2.5 text-sm text-text-primary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
 
+const sheetSelectClass =
+  'h-11 w-full min-w-0 rounded-lg border border-border bg-secondary px-2.5 text-base text-text-primary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+
 const inputClass =
-  'h-10 w-full min-w-0 rounded-lg border border-border bg-secondary px-3 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+  'h-11 w-full min-w-0 rounded-lg border border-border bg-secondary px-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:h-10 sm:text-sm'
 
 export default function ProjectDetailPage() {
   const t = useTranslations('pages.projects')
@@ -90,6 +113,9 @@ export default function ProjectDetailPage() {
   const [showCreateCategory, setShowCreateCategory] = useState(false)
   const [openTask, setOpenTask] = useState<ProjectTask | null>(null)
   const [deletingTask, setDeletingTask] = useState<ProjectTask | null>(null)
+  const [createTaskEver, setCreateTaskEver] = useState(false)
+  const [createCategoryEver, setCreateCategoryEver] = useState(false)
+  const [editEver, setEditEver] = useState(false)
 
   // Project actions
   const [editingProject, setEditingProject] = useState(false)
@@ -98,6 +124,21 @@ export default function ProjectDetailPage() {
 
   const workspaceId = project?.workspace_id || currentWorkspace?.id || ''
   const isAdmin = viewerRole === 'admin'
+
+  useEffect(() => {
+    if (showCreateTask) setCreateTaskEver(true)
+  }, [showCreateTask])
+  useEffect(() => {
+    if (showCreateCategory) setCreateCategoryEver(true)
+  }, [showCreateCategory])
+  useEffect(() => {
+    if (editingProject) setEditEver(true)
+  }, [editingProject])
+
+  // keep the active tab visible inside the scrolling tab bar
+  useEffect(() => {
+    document.getElementById(`project-tab-${tab}`)?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' })
+  }, [tab])
 
   const loadProjectMembers = useCallback(async () => {
     if (!projectId) return
@@ -131,7 +172,7 @@ export default function ProjectDetailPage() {
     async (ws: string) => {
       if (!projectId || !ws) return
       try {
-        const response = await fetch(`/api/tasks?project_id=${projectId}&workspace_id=${ws}`)
+        const response = await fetch(`/api/tasks?project_id=${projectId}&workspace_id=${ws}&include_time=1`)
         const result = await response.json()
         setTasks(response.ok && Array.isArray(result) ? result : [])
       } catch (error) {
@@ -459,15 +500,16 @@ export default function ProjectDetailPage() {
 
   if (loading) {
     return (
-      <div className="space-y-6" aria-busy>
+      <div className="space-y-6" role="status" aria-busy aria-label={t('loading')}>
         <div className="flex items-center gap-4">
-          <div className="h-12 w-12 animate-pulse rounded-xl bg-border motion-reduce:animate-none" />
-          <div className="space-y-2">
-            <div className="h-6 w-56 animate-pulse rounded bg-border motion-reduce:animate-none" />
-            <div className="h-4 w-80 max-w-full animate-pulse rounded bg-border motion-reduce:animate-none" />
+          <Skeleton className="h-12 w-12 rounded-xl" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-6 w-56 max-w-full" />
+            <Skeleton className="h-4 w-80 max-w-full" />
           </div>
         </div>
-        <div className="h-64 animate-pulse rounded-2xl border border-border bg-surface motion-reduce:animate-none" />
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-64 rounded-2xl" />
       </div>
     )
   }
@@ -511,7 +553,7 @@ export default function ProjectDetailPage() {
   const filterFields = (compact: boolean) => {
     const wrap = compact ? '' : 'block'
     const label = compact ? 'sr-only' : 'mb-1.5 block text-sm font-medium text-text-secondary'
-    const field = compact ? selectClass : `${selectClass} h-10 w-full`
+    const field = compact ? selectClass : sheetSelectClass
     return (
       <>
         <label className={wrap}>
@@ -551,15 +593,29 @@ export default function ProjectDetailPage() {
     )
   }
 
+  const projectMenu = (
+    <IconMenu
+      label={t('projectActions')}
+      buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover sm:h-9 sm:w-9"
+      items={[
+        { label: t('editProject'), onClick: () => setEditingProject(true) },
+        { label: t('deleteProject'), onClick: () => setDeletingProject(true), danger: true },
+      ]}
+    />
+  )
+
   return (
-    <div className="min-w-0 max-w-full space-y-5">
-      <Link
-        href="/dashboard/projects"
-        className="inline-flex max-w-full items-center gap-1.5 rounded text-sm text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden"
-      >
-        <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
-        <span className="truncate">{t('backToProjects')}</span>
-      </Link>
+    <div className="min-w-0 max-w-full space-y-4 sm:space-y-5">
+      <div className="flex items-center justify-between gap-2 lg:hidden">
+        <Link
+          href="/dashboard/projects"
+          className="-ml-2 inline-flex h-11 min-w-0 max-w-full items-center gap-1.5 rounded-lg px-2 text-sm text-text-secondary transition-colors hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          <ArrowLeft className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="truncate">{t('backToProjects')}</span>
+        </Link>
+        <div className="-mr-2 shrink-0 sm:hidden">{projectMenu}</div>
+      </div>
 
       {notice ? (
         <div role="alert" className="flex items-start gap-3 rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">
@@ -568,7 +624,7 @@ export default function ProjectDetailPage() {
             type="button"
             aria-label={t('close')}
             onClick={() => setNotice(null)}
-            className="rounded p-0.5 hover:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
+            className="-my-2 -mr-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-danger/10 active:bg-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger"
           >
             <X className="h-4 w-4" />
           </button>
@@ -580,7 +636,9 @@ export default function ProjectDetailPage() {
         <div className="flex items-start gap-3 sm:gap-4">
           <ProjectTile project={project} size="lg" />
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">{project.name}</h1>
+            <h1 className="line-clamp-2 break-words text-xl font-semibold leading-tight tracking-tight text-text-primary sm:text-2xl">
+              {project.name}
+            </h1>
             <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary">
               <span className="inline-flex items-center gap-1.5">
                 <span aria-hidden className={`h-2 w-2 rounded-full ${statusDotClass(project.status)}`} />
@@ -592,28 +650,22 @@ export default function ProjectDetailPage() {
               ) : null}
             </p>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="hidden shrink-0 items-center gap-2 sm:flex">
             {projectMembers.length > 0 ? (
               <button
                 type="button"
                 onClick={() => setTab('people')}
                 aria-label={t('peopleTab')}
-                className="hidden rounded-full p-1 transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:block"
+                className="hidden rounded-full p-1.5 transition-colors hover:bg-surface-hover active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:block"
               >
                 <AvatarStack members={projectMembers} total={projectMembers.length} max={5} />
               </button>
             ) : null}
             <Button type="button" className="gap-2" onClick={() => setShowCreateTask(true)} aria-label={t('addTask')}>
               <Plus className="h-4 w-4" aria-hidden />
-              <span className="hidden sm:inline">{t('addTask')}</span>
+              <span>{t('addTask')}</span>
             </Button>
-            <IconMenu
-              label={t('projectActions')}
-              items={[
-                { label: t('editProject'), onClick: () => setEditingProject(true) },
-                { label: t('deleteProject'), onClick: () => setDeletingProject(true), danger: true },
-              ]}
-            />
+            {projectMenu}
           </div>
         </div>
 
@@ -634,39 +686,22 @@ export default function ProjectDetailPage() {
             </p>
           </div>
         ) : null}
+
+        <Button type="button" className="h-11 w-full gap-2 sm:hidden" onClick={() => setShowCreateTask(true)}>
+          <Plus className="h-4 w-4" aria-hidden />
+          {t('addTask')}
+        </Button>
       </header>
 
       {/* Tabs */}
-      <div role="tablist" aria-label={project.name} className="-mx-1 flex gap-1 overflow-x-auto border-b border-border px-1">
-        {tabs.map((item) => {
-          const selected = tab === item.id
-          return (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              id={`project-tab-${item.id}`}
-              aria-selected={selected}
-              aria-controls={`project-panel-${item.id}`}
-              onClick={() => setTab(item.id)}
-              className={`-mb-px inline-flex h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
-                selected ? 'border-primary text-text-primary' : 'border-transparent text-text-secondary hover:text-text-primary'
-              }`}
-            >
-              {item.label}
-              {item.count ? (
-                <span
-                  className={`rounded-full px-1.5 text-xs tabular-nums ${
-                    selected ? 'bg-primary/10 text-primary' : 'bg-background text-text-muted'
-                  }`}
-                >
-                  {item.count}
-                </span>
-              ) : null}
-            </button>
-          )
-        })}
-      </div>
+      <Tabs
+        ariaLabel={project.name}
+        idPrefix="project"
+        value={tab}
+        onChange={(id) => setTab(id as TabId)}
+        tabs={tabs.map((item) => ({ ...item, count: item.count || undefined }))}
+        className="-mx-4 px-4 [-webkit-mask-image:linear-gradient(to_right,transparent,#000_12px,#000_calc(100%-28px),transparent)] [mask-image:linear-gradient(to_right,transparent,#000_12px,#000_calc(100%-28px),transparent)] sm:-mx-0 sm:px-0 sm:[-webkit-mask-image:none] sm:[mask-image:none]"
+      />
 
       {tab === 'tasks' && (
         <div
@@ -685,48 +720,45 @@ export default function ProjectDetailPage() {
                   onChange={(event) => setQuickTitle(event.target.value)}
                   placeholder={t('quickAddPlaceholder')}
                   aria-label={t('quickAddPlaceholder')}
+                  enterKeyHint="done"
                   className={`${inputClass} pl-9`}
                 />
               </div>
-              <Button type="submit" variant="secondary" disabled={!quickTitle.trim() || quickBusy} className="shrink-0">
+              <Button type="submit" variant="secondary" disabled={!quickTitle.trim() || quickBusy} className="h-11 shrink-0 sm:h-10">
                 {t('quickAddSubmit')}
               </Button>
             </form>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <div role="group" aria-label={t('tasksTab')} className="inline-flex rounded-lg border border-border bg-surface p-0.5">
-                {scopes.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    aria-pressed={scope === item.id}
-                    onClick={() => setScope(item.id)}
-                    className={`inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                      scope === item.id
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                    }`}
-                  >
-                    {item.label}
-                    <span className={`text-xs tabular-nums ${scope === item.id ? 'text-primary' : 'text-text-muted'}`}>
-                      {item.count}
-                    </span>
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center gap-2">
+              <SegmentedControl
+                ariaLabel={t('tasksTab')}
+                value={scope}
+                onChange={setScope}
+                fullWidth
+                className="min-w-0 flex-1 sm:w-auto sm:flex-none"
+                options={scopes.map((item) => ({
+                  value: item.id,
+                  label: (
+                    <>
+                      {item.label}
+                      <span className="hidden text-xs tabular-nums text-text-muted sm:inline">{item.count}</span>
+                    </>
+                  ),
+                }))}
+              />
 
               <div className="ml-auto hidden items-center gap-2 md:flex">{filterFields(true)}</div>
               <Button
                 type="button"
                 variant="secondary"
-                size="sm"
-                className="ml-auto gap-1.5 md:hidden"
+                aria-label={t('filters')}
+                className="relative h-10 w-10 shrink-0 gap-1.5 p-0 sm:w-auto sm:px-3 md:hidden"
                 onClick={() => setFiltersOpen(true)}
               >
-                <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
-                {t('filters')}
+                <SlidersHorizontal className="h-4 w-4" aria-hidden />
+                <span className="hidden sm:inline">{t('filters')}</span>
                 {activeFilterCount > 0 ? (
-                  <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold leading-4 text-white">
+                  <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-primary px-1 text-[10px] font-semibold leading-4 text-white sm:static sm:px-1.5">
                     {activeFilterCount}
                   </span>
                 ) : null}
@@ -892,16 +924,18 @@ export default function ProjectDetailPage() {
         <div role="tabpanel" id="project-panel-notes" aria-labelledby="project-tab-notes" className="min-w-0 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 className="min-w-0 truncate text-base font-semibold text-text-primary">{t('notesTab')}</h2>
-            <Button type="button" variant="secondary" className="shrink-0 gap-2" onClick={openNewNote} aria-label={tn('newNote')}>
+            <Button type="button" variant="secondary" className="h-11 shrink-0 gap-2 sm:h-10" onClick={openNewNote} aria-label={tn('newNote')}>
               <Plus className="h-4 w-4" aria-hidden />
               <span>{tn('newNote')}</span>
             </Button>
           </div>
 
           {notesLoading ? (
-            <p className="rounded-2xl border border-border bg-surface px-4 py-12 text-center text-sm text-text-secondary">
-              {tn('loading')}
-            </p>
+            <div className="space-y-2" role="status" aria-busy aria-label={tn('loading')}>
+              {Array.from({ length: 3 }).map((_, index) => (
+                <Skeleton key={index} className="h-[4.5rem] rounded-xl" />
+              ))}
+            </div>
           ) : notes.length === 0 && !noteEditorOpen ? (
             <EmptyState title={t('noNotes')} body={t('noNotesBody')} />
           ) : (
@@ -953,15 +987,17 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      <ProjectEditDialog
-        project={editingProject ? project : null}
-        createdBy={project.owner?.username}
-        onClose={() => setEditingProject(false)}
-        onSaved={(saved) => {
-          setEditingProject(false)
-          setProject((current) => (current ? { ...current, ...saved } : current))
-        }}
-      />
+      {editEver ? (
+        <ProjectEditDialog
+          project={editingProject ? project : null}
+          createdBy={project.owner?.username}
+          onClose={() => setEditingProject(false)}
+          onSaved={(saved) => {
+            setEditingProject(false)
+            setProject((current) => (current ? { ...current, ...saved } : current))
+          }}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={deletingProject}
@@ -1003,7 +1039,7 @@ export default function ProjectDetailPage() {
             <Button
               type="button"
               variant="ghost"
-              className="w-full sm:w-auto"
+              className="h-11 w-full sm:h-10 sm:w-auto"
               onClick={() => {
                 setSelectedCategory('all')
                 setSelectedPriority('all')
@@ -1012,7 +1048,7 @@ export default function ProjectDetailPage() {
             >
               {t('clearFilters')}
             </Button>
-            <Button type="button" className="w-full sm:w-auto" onClick={() => setFiltersOpen(false)}>
+            <Button type="button" className="h-11 w-full sm:h-10 sm:w-auto" onClick={() => setFiltersOpen(false)}>
               {t('done')}
             </Button>
           </div>
@@ -1021,37 +1057,39 @@ export default function ProjectDetailPage() {
         <div className="space-y-4">{filterFields(false)}</div>
       </Dialog>
 
-      <CreateTaskDialog
-        open={showCreateTask}
-        members={workspaceMembers}
-        categories={categories}
-        defaultAssigneeId={viewerId}
-        onClose={() => setShowCreateTask(false)}
-        onSubmit={createTask}
-        onNewCategory={() => setShowCreateCategory(true)}
-      />
+      {createTaskEver ? (
+        <CreateTaskDialog
+          open={showCreateTask}
+          members={workspaceMembers}
+          categories={categories}
+          defaultAssigneeId={viewerId}
+          onClose={() => setShowCreateTask(false)}
+          onSubmit={createTask}
+          onNewCategory={() => setShowCreateCategory(true)}
+        />
+      ) : null}
 
-      <CreateCategoryDialog
-        open={showCreateCategory}
-        initialColor={nextCategoryColor()}
-        onClose={() => setShowCreateCategory(false)}
-        onSubmit={createCategory}
-      />
+      {createCategoryEver ? (
+        <CreateCategoryDialog
+          open={showCreateCategory}
+          initialColor={nextCategoryColor()}
+          onClose={() => setShowCreateCategory(false)}
+          onSubmit={createCategory}
+        />
+      ) : null}
 
-      <AnimatePresence>
-        {openTask && (
-          <TaskDetailModal
-            task={openTask}
-            workspaceId={workspaceId}
-            onClose={() => setOpenTask(null)}
-            onSave={() => loadTasks(workspaceId)}
-            onDelete={(taskId) => {
-              setTasks((list) => list.filter((item) => item.id !== taskId))
-              setOpenTask(null)
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {openTask ? (
+        <TaskDetailModal
+          task={openTask}
+          workspaceId={workspaceId}
+          onClose={() => setOpenTask(null)}
+          onSave={() => loadTasks(workspaceId)}
+          onDelete={(taskId) => {
+            setTasks((list) => list.filter((item) => item.id !== taskId))
+            setOpenTask(null)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

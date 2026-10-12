@@ -116,6 +116,18 @@
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
   --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* Mobile shell metrics. --bottom-nav-h = fixed tab bar incl. home-indicator safe area (0 at lg+,
+     where the sidebar replaces it). --fab-h = height of the floating action button while one is shown
+     (set by AppShell) so toasts and page footers can stay clear of it. */
+  --bottom-nav-h: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  --fab-h: 0px;
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --bottom-nav-h: 0px;
+  }
 }
 
 .dark {
@@ -179,7 +191,12 @@
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
     accent-color: rgb(var(--rgb-primary));
-    scroll-padding-top: 4rem;
+    scroll-padding-top: 4.5rem;
+    scroll-padding-bottom: calc(var(--bottom-nav-h) + 1rem);
+    /* App-like scrolling: no pull-to-refresh / rubber-band fighting inner scrollers and sheets */
+    overscroll-behavior-y: none;
+    /* No 300ms tap delay or double-tap zoom (pinch zoom still works) */
+    touch-action: manipulation;
   }
 
   body {
@@ -195,6 +212,7 @@
     text-rendering: optimizeLegibility;
     -webkit-tap-highlight-color: transparent;
     overflow-wrap: break-word;
+    overscroll-behavior-y: none;
   }
 
   @supports (min-height: 100dvh) {
@@ -219,8 +237,21 @@
     outline-offset: 2px;
   }
 
-  button, [role='button'], a, summary {
+  button, [role='button'], a, summary, label, select, input, textarea {
     touch-action: manipulation;
+  }
+
+  /* iOS Safari zooms the page when a focused field is under 16px. On phones every field is at least
+     16px; larger explicit sizes (text-lg, text-2xl, ...) are left alone. sm+ keeps the compact sizes. */
+  @media (max-width: 639px) {
+    input,
+    textarea,
+    select {
+      font-size: 16px;
+    }
+    :is(input, textarea, select):is([class~='text-xs'], [class~='text-sm'], [class~='text-[11px]'], [class~='text-[12px]'], [class~='text-[13px]'], [class~='text-[14px]'], [class~='text-[15px]']) {
+      font-size: 16px;
+    }
   }
 
   ::placeholder {
@@ -269,6 +300,7 @@
   to { opacity: 0; transform: translateY(8px) scale(0.99); }
 }
 @keyframes tw-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes tw-sheet-out { from { transform: none; } to { transform: translateY(100%); } }
 @keyframes tw-pop-in {
   from { opacity: 0; transform: translateY(-4px) scale(0.97); }
   to { opacity: 1; transform: none; }
@@ -424,6 +456,24 @@
   /* Safe-area helpers */
   .pt-safe { padding-top: env(safe-area-inset-top); }
   .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pl-safe { padding-left: env(safe-area-inset-left); }
+  .pr-safe { padding-right: env(safe-area-inset-right); }
+
+  /* Clearance for the fixed phone tab bar (use on custom fixed/sticky bottom bars: `bottom-nav`) */
+  .pb-nav { padding-bottom: var(--bottom-nav-h); }
+  .bottom-nav { bottom: var(--bottom-nav-h); }
+
+  /* Toast stack: above the tab bar (+ FAB), top of the screen while a sheet/dialog is open on phones */
+  .toast-region { bottom: calc(var(--bottom-nav-h) + var(--fab-h) + 0.75rem); }
+  @media (max-width: 1023px) {
+    html[data-modal] .toast-region {
+      top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+      bottom: auto;
+    }
+  }
+  @media (min-width: 1024px) {
+    .toast-region { bottom: 1.5rem; }
+  }
 
   /* Numbers: use Tailwind's `tabular-nums`; `.num` adds slashed zero + tabular */
   .num {

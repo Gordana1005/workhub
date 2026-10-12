@@ -3,6 +3,8 @@
 import { Check } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { Avatar } from '@/components/ui/Avatar'
+import { formatDuration } from '@/lib/task-time'
+import SubtaskChip from './SubtaskChip'
 import { PRIORITY_TONE, dayKey, isDone, isOverdue, parseDayKey, priorityLabel, todayKey } from './taskUtils'
 import type { Task } from './types'
 
@@ -74,7 +76,7 @@ export default function TaskListRow({
           event.stopPropagation()
           onToggle()
         }}
-        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+        className={`relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors after:absolute after:-inset-3 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
           done
             ? 'border-success bg-success text-white'
             : 'border-text-muted text-transparent hover:border-success hover:text-success'
@@ -99,6 +101,17 @@ export default function TaskListRow({
           {task.title}
         </span>
       </button>
+
+      <SubtaskChip total={task.subtask_total} done={task.subtask_done} />
+
+      {task.logged_seconds && task.logged_seconds > 0 ? (
+        <span
+          className="hidden shrink-0 text-xs tabular-nums text-text-muted md:inline"
+          title={t('timeLogged')}
+        >
+          {formatDuration(task.logged_seconds, t)}
+        </span>
+      ) : null}
 
       {task.project?.name ? (
         <span className="hidden w-32 shrink-0 items-center gap-1.5 text-xs text-text-secondary lg:flex xl:w-40">

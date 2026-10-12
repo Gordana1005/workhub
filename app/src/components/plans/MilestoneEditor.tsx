@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Check, Plus, Search, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { runTopLevel } from '@/lib/subtasks';
 import { useTranslations } from 'next-intl';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { Button } from '@/components/ui/Button';
@@ -34,7 +35,7 @@ interface MilestoneEditorProps {
 }
 
 const fieldClass =
-  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
+  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-11 min-w-0 sm:min-h-10 sm:text-sm';
 
 export default function MilestoneEditor({ planId, milestone, onClose, onSave, onDelete }: MilestoneEditorProps) {
   const t = useTranslations('pages.plans');
@@ -70,14 +71,18 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave, on
   const workspaceId = currentWorkspace?.id;
 
   const loadAvailableTasks = useCallback(async () => {
-    let query = supabase
-      .from('tasks')
-      .select('id, title, is_completed')
-      .order('is_completed', { ascending: true })
-      .order('created_at', { ascending: false })
-      .limit(200);
-    if (workspaceId) query = query.eq('workspace_id', workspaceId);
-    const { data } = await query;
+    // top-level tasks only (subtasks are not linked to milestones)
+    const { data } = await runTopLevel((topLevel) => {
+      let query = supabase
+        .from('tasks')
+        .select('id, title, is_completed')
+        .order('is_completed', { ascending: true })
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (workspaceId) query = query.eq('workspace_id', workspaceId);
+      if (topLevel) query = query.is('parent_task_id', null);
+      return query;
+    });
 
     if (data) {
       setAvailableTasks(data);
@@ -183,26 +188,24 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave, on
       onClose={onClose}
       size="lg"
       footer={
-        <div className="flex items-center gap-3">
+        <>
           {milestone && onDelete ? (
-            <Button type="button" variant="danger" className="shrink-0" onClick={onDelete}>
+            <Button type="button" variant="danger" className="h-11 sm:mr-auto sm:h-10" onClick={onDelete}>
               {t('deleteMilestone')}
             </Button>
           ) : null}
-          <div className="flex flex-1 gap-3 sm:justify-end">
-            <Button type="button" variant="secondary" className="flex-1 sm:flex-none" onClick={onClose}>
-              {t('cancel')}
-            </Button>
-            <Button
-              type="submit"
-              form="milestone-form"
-              className="flex-1 sm:flex-none"
-              disabled={!name.trim() || !targetDate || saving}
-            >
-              {saving ? t('saving') : milestone ? t('saveChanges') : t('createMilestone')}
-            </Button>
-          </div>
-        </div>
+          <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={onClose}>
+            {t('cancel')}
+          </Button>
+          <Button
+            type="submit"
+            form="milestone-form"
+            className="h-12 sm:h-10"
+            disabled={!name.trim() || !targetDate || saving}
+          >
+            {saving ? t('saving') : milestone ? t('saveChanges') : t('createMilestone')}
+          </Button>
+        </>
       }
     >
       <form
@@ -222,6 +225,7 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave, on
               onChange={(event) => setName(event.target.value)}
               className={`${fieldClass} mt-1.5`}
               placeholder={t('milestoneNamePlaceholder')}
+              enterKeyHint="next"
               autoFocus
             />
           </label>
@@ -260,7 +264,7 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave, on
                 size="sm"
                 aria-expanded={showTaskSelector}
                 onClick={() => setShowTaskSelector((open) => !open)}
-                className="gap-1.5"
+                className="h-11 gap-1.5 sm:h-8"
               >
                 {showTaskSelector ? <X className="h-3.5 w-3.5" aria-hidden /> : <Plus className="h-3.5 w-3.5" aria-hidden />}
                 {showTaskSelector ? t('doneLinking') : t('linkTask')}
@@ -277,10 +281,10 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave, on
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder={t('searchTasks')}
                     aria-label={t('searchTasks')}
-                    className="w-full bg-transparent py-2.5 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                    className="min-h-11 w-full bg-transparent py-2.5 pl-9 pr-3 text-base text-text-primary sm:min-h-10 sm:text-sm placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                   />
                 </div>
-                <div className="max-h-56 overflow-y-auto">
+                <div className="max-h-[40dvh] overflow-y-auto overscroll-contain sm:max-h-56">
                   {unlinkedTasks.length === 0 ? (
                     <p className="px-3 py-6 text-center text-sm text-text-secondary">{t('noAvailableTasks')}</p>
                   ) : (
@@ -290,7 +294,7 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave, on
                           <button
                             type="button"
                             onClick={() => linkTask(task.id)}
-                            className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none"
+                            className="flex min-h-11 w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none active:bg-tertiary"
                           >
                             <Plus className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />
                             <span
@@ -316,7 +320,7 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave, on
             ) : (
               <ul className="divide-y divide-border rounded-xl border border-border">
                 {linkedTasks.map((task) => (
-                  <li key={task.id} className="flex items-center gap-3 px-3 py-2">
+                  <li key={task.id} className="flex min-h-11 items-center gap-3 py-1 pl-3 pr-1">
                     <span
                       className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
                         task.is_completed ? 'border-success bg-success text-white' : 'border-text-muted'
@@ -335,7 +339,7 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave, on
                     <button
                       type="button"
                       onClick={() => unlinkTask(task.id)}
-                      className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface-hover hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-hover hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary active:bg-tertiary sm:h-9 sm:w-9"
                       aria-label={t('unlinkTask')}
                     >
                       <X className="h-4 w-4" aria-hidden />

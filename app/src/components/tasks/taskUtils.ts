@@ -138,8 +138,23 @@ export async function fetchMembers(workspaceId: string, unknownLabel: string): P
       username: profile?.username || profile?.email || unknownLabel,
       email: profile?.email || '',
       avatar_url: profile?.avatar_url || null,
+      role: row.role || undefined,
     })
   }
   members.sort((a, b) => a.username.localeCompare(b.username))
   return members
+}
+
+const memberCache = new Map<string, { at: number; promise: Promise<MemberOption[]> }>()
+
+/** Workspace members, fetched once per workspace (cached for a minute) and shared by every picker. */
+export function getWorkspaceMembers(workspaceId: string, unknownLabel: string): Promise<MemberOption[]> {
+  const hit = memberCache.get(workspaceId)
+  if (hit && Date.now() - hit.at < 60_000) return hit.promise
+  const promise = fetchMembers(workspaceId, unknownLabel)
+  memberCache.set(workspaceId, { at: Date.now(), promise })
+  promise.catch(() => {
+    if (memberCache.get(workspaceId)?.promise === promise) memberCache.delete(workspaceId)
+  })
+  return promise
 }

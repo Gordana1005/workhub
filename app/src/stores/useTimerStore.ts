@@ -23,6 +23,8 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   currentProjectId: null,
   start: (taskId, projectId) => {
     set({
+      // a fresh run always starts from zero (stop() used to leave the old total behind)
+      time: get().isRunning ? get().time : 0,
       isRunning: true,
       currentTaskId: taskId || null,
       currentProjectId: projectId || null
@@ -32,7 +34,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     const { time, currentTaskId, currentProjectId, isRunning } = get()
     if (!isRunning) return
 
-    set({ isRunning: false })
+    set({ isRunning: false, time: 0, currentTaskId: null, currentProjectId: null })
 
     // Get current user and workspace
     const { data: { user } } = await supabase.auth.getUser()
@@ -48,6 +50,10 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         date: localDateString()
       })
       if (error) console.error('Failed to save time entry:', error)
+      // Lets open task panels refresh their "Time" section
+      else if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('trackwork:time-entry-saved', { detail: { taskId: currentTaskId } }))
+      }
     }
   },
   reset: () => set({ time: 0, isRunning: false, currentTaskId: null, currentProjectId: null }),

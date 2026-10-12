@@ -67,4 +67,4 @@ export default async function WorkspacePage({
       description={workspace.description ?? null}
     />
   )
-}
+}

@@ -2,6 +2,8 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { createNotification } from '@/lib/notify'
+import { runTopLevel } from '@/lib/subtasks'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -21,10 +23,6 @@ async function isWorkspaceOwner(workspaceId: string, userId: string) {
     .eq('id', workspaceId)
     .maybeSingle()
   return data?.owner_id === userId
-}
-
-async function notifyUser(entry: { user_id: string; workspace_id: string; type: string; title: string; message: string; link?: string }) {
-  await supabaseAdmin.from('notifications').insert({ ...entry, read: false })
 }
 
 export async function GET(request: Request) {
@@ -79,19 +77,25 @@ export async function GET(request: Request) {
         )
       `)
       .eq('workspace_id', workspace_id)
+      .limit(1000)
 
     if (error) throw error
 
     // Per-member workload (additive): projects they belong to / created and their open + overdue tasks
     const [{ data: projectRows }, { data: openTasks }, { data: workspace }] = await Promise.all([
       supabaseAdmin.from('projects').select('id, creator_id').eq('workspace_id', workspace_id),
-      supabaseAdmin
-        .from('tasks')
-        .select('assignee_id, due_date')
-        .eq('workspace_id', workspace_id)
-        .eq('is_completed', false)
-        .not('assignee_id', 'is', null)
-        .limit(5000),
+      // top-level tasks only: subtasks do not count towards a member's workload
+      runTopLevel((topLevel) => {
+        let q = supabaseAdmin
+          .from('tasks')
+          .select('assignee_id, due_date')
+          .eq('workspace_id', workspace_id)
+          .eq('is_completed', false)
+          .not('assignee_id', 'is', null)
+          .limit(5000)
+        if (topLevel) q = q.is('parent_task_id', null)
+        return q
+      }),
       supabaseAdmin.from('workspaces').select('owner_id').eq('id', workspace_id).maybeSingle(),
     ])
 
@@ -373,7 +377,7 @@ export async function POST(request: Request) {
       .eq('id', workspace_id)
       .single()
 
-    await notifyUser({
+    await createNotification({
       user_id: target.id,
       workspace_id,
       type: 'workspace_member_added',

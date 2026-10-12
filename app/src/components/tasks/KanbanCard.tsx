@@ -5,6 +5,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Calendar } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { Avatar } from '@/components/ui/Avatar';
+import SubtaskChip from './SubtaskChip';
 import { PRIORITY_TONE, dayKey, isDone, isOverdue, parseDayKey, priorityLabel } from './taskUtils';
 import { Task } from './types';
 
@@ -81,6 +82,7 @@ export function KanbanCardView({
             </span>
           ) : null}
           <span className="flex-1" />
+          <SubtaskChip total={task.subtask_total} done={task.subtask_done} />
           {due ? (
             <span className={`inline-flex shrink-0 items-center gap-1 ${overdue ? 'font-medium text-danger' : ''}`}>
               <Calendar className="h-3 w-3" aria-hidden />

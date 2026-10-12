@@ -1,11 +1,30 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { twMerge } from 'tailwind-merge'
 import { useTranslations } from 'next-intl'
-import NoteEditor from './NoteEditor'
+import { useVisualViewport } from '@/hooks/useVisualViewport'
 import NoteReader from './NoteReader'
 import type { NoteProject, NoteRecord, NoteTag } from './noteUtils'
+
+// The editor (TipTap + toolbar) is only downloaded when a note is created or edited
+const NoteEditor = dynamic(() => import('./NoteEditor'), {
+  ssr: false,
+  loading: () => (
+    <div className="flex min-h-0 flex-1 flex-col" role="status" aria-busy="true">
+      <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-3">
+        <div className="skeleton h-9 w-9 rounded-lg" />
+        <div className="skeleton h-4 w-32" />
+      </div>
+      <div className="space-y-3 px-5 pt-6">
+        <div className="skeleton h-8 w-3/4" />
+        <div className="skeleton h-4 w-full" />
+        <div className="skeleton h-4 w-5/6" />
+      </div>
+    </div>
+  ),
+})
 
 interface NotePaneProps {
   /** The note to show. Leave empty to create a new one (opens straight in the editor). */
@@ -61,6 +80,11 @@ export default function NotePane({
   const [editSession, setEditSession] = useState(0)
   // What we just saved, so the reader is right even before the parent has refreshed its list.
   const [saved, setSaved] = useState<Partial<NoteRecord> | null>(null)
+  // While the on-screen keyboard is open the full-screen pane shrinks to the visible area,
+  // so the toolbar, title and caret are never hidden behind the keyboard.
+  const keyboard = useVisualViewport(mode === 'edit')
+  const overlay =
+    keyboard && typeof window !== 'undefined' && window.innerWidth < (fullScreenBelow === 'lg' ? 1024 : 768) ? keyboard : null
 
   useEffect(() => {
     setSaved(null)
@@ -96,7 +120,10 @@ export default function NotePane({
   }
 
   return (
-    <section className={twMerge(shellClass[fullScreenBelow], className)}>
+    <section
+      className={twMerge(shellClass[fullScreenBelow], className)}
+      style={overlay ? { top: overlay.top, height: overlay.height, bottom: 'auto' } : undefined}
+    >
       {mode === 'edit' || !current ? (
         <NoteEditor
           key={current ? `edit-${current.id}-${editSession}` : 'create'}

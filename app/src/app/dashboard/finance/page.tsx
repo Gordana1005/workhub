@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Plus, Search, X } from 'lucide-react';
-import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { Plus, Search, SlidersHorizontal, X } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import {
   endOfMonth,
   endOfYear,
@@ -18,18 +18,26 @@ import { useLocaleSwitch } from '@/i18n/LocaleProvider';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
+import { Dialog } from '@/components/ui/Dialog';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { IconMenu } from '@/components/ui/IconMenu';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Segmented } from '@/components/tools/Segmented';
-import { ChartTooltip, OTHER_COLOR, useSeriesColors } from '@/components/tools/chart';
-import AccountManager from '@/components/finance/AccountManager';
+import { OTHER_COLOR, useSeriesColors } from '@/components/tools/chart';
 import GoalsDashboard from '@/components/finance/GoalsDashboard';
-import ImportTransactions from '@/components/finance/ImportTransactions';
 import PendingBudgetRequests from '@/components/finance/PendingBudgetRequests';
-import QuickAddTransaction from '@/components/finance/QuickAddTransaction';
 import { FINANCE_CATEGORY_KEYS, formatMoney, toNumber } from '@/components/finance/money';
+
+// Heavy or on-demand pieces are split out of the first load: recharts, the CSV importer (papaparse) and the forms.
+const SpendingChart = dynamic(() => import('@/components/finance/SpendingChart'), {
+  ssr: false,
+  loading: () => <Skeleton className="mx-auto h-44 w-44 rounded-full" />,
+});
+const AccountManager = dynamic(() => import('@/components/finance/AccountManager'), { ssr: false });
+const ImportTransactions = dynamic(() => import('@/components/finance/ImportTransactions'), { ssr: false });
+const QuickAddTransaction = dynamic(() => import('@/components/finance/QuickAddTransaction'), { ssr: false });
 
 const ACCOUNT_TYPE_KEYS: Record<string, string> = {
   bank: 'finance.typeBank',
@@ -118,6 +126,7 @@ export default function FinancePage() {
     projectId: null,
   });
   const [showImport, setShowImport] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const requestId = useRef(0);
   const workspaceId = currentWorkspace?.id;
@@ -287,6 +296,17 @@ export default function FinancePage() {
   };
 
   const dayLabel = (value: string) => format(parseISO(value), 'd MMM', { locale: dateLocale });
+  const dayHeading = (value: string) => format(parseISO(value), 'EEEE, d MMM', { locale: dateLocale });
+  const groupByDate = (items: Transaction[]) => {
+    const groups: { date: string; items: Transaction[] }[] = [];
+    for (const item of items) {
+      const date = item.date.slice(0, 10);
+      const last = groups[groups.length - 1];
+      if (last && last.date === date) last.items.push(item);
+      else groups.push({ date, items: [item] });
+    }
+    return groups;
+  };
 
   const deleteTransaction = async (transaction: Transaction) => {
     if (!(await confirm({ title: t('finance.deleteTransactionConfirm'), confirmLabel: tc('delete') }))) return;
@@ -330,7 +350,11 @@ export default function FinancePage() {
   ];
 
   const selectClass =
-    'h-9 min-w-0 rounded-lg border border-border bg-secondary px-2.5 text-sm text-text-primary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
+    'h-9 min-w-0 rounded-lg border border-border-control bg-secondary px-2.5 text-sm text-text-primary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
+  const sheetSelectClass =
+    'block h-12 w-full min-w-0 rounded-lg border border-border-control bg-secondary px-3 text-base text-text-primary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
+  const activeFilterCount =
+    (typeFilter !== 'all' ? 1 : 0) + (accountFilter !== 'all' ? 1 : 0) + (categoryFilter !== 'all' ? 1 : 0);
 
   if (!workspaceId) {
     return (
@@ -342,13 +366,27 @@ export default function FinancePage() {
   }
 
   if (loading) {
-    return <div className="py-16 text-center text-sm text-text-secondary">{t('finance.loading')}</div>;
+    return (
+      <div className="min-w-0 space-y-4" role="status" aria-busy="true" aria-label={t('finance.loading')}>
+        <Skeleton className="h-8 w-40" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[1, 2, 3, 4].map((item) => (
+            <Skeleton key={item} className="h-16 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-64 rounded-2xl" />
+      </div>
+    );
   }
 
   const headerAction = (
     <div className="flex items-center gap-1">
-      <Button onClick={() => setQuickAdd({ open: true, type: 'expense', projectId: null })} className="gap-2">
-        <Plus className="h-4 w-4" aria-hidden="true" />
+      <Button
+        onClick={() => setQuickAdd({ open: true, type: 'expense', projectId: null })}
+        className="h-11 w-11 gap-2 px-0 sm:h-10 sm:w-auto sm:px-4"
+      >
+        <Plus className="h-5 w-5 sm:h-4 sm:w-4" aria-hidden="true" />
         <span className="hidden sm:inline">{t('finance.addTransaction')}</span>
         <span className="sr-only sm:hidden">{t('finance.addTransaction')}</span>
       </Button>
@@ -368,7 +406,7 @@ export default function FinancePage() {
         <PageHeader title={t('finance.title')} description={t('finance.subtitle')} />
         <EmptyState
           title={t('finance.loadFailed')}
-          action={<Button onClick={loadFinanceData}>{t('finance.retry')}</Button>}
+          action={<Button size="lg" onClick={loadFinanceData}>{t('finance.retry')}</Button>}
         />
       </div>
     );
@@ -381,7 +419,7 @@ export default function FinancePage() {
         <EmptyState
           title={t('finance.noAccounts')}
           body={t('finance.noAccountsBody')}
-          action={<Button onClick={() => setAccountDialog({ open: true })}>{t('finance.createFirstAccount')}</Button>}
+          action={<Button size="lg" onClick={() => setAccountDialog({ open: true })}>{t('finance.createFirstAccount')}</Button>}
         />
         {accountDialog.open ? (
           <AccountManager
@@ -418,7 +456,7 @@ export default function FinancePage() {
         type="button"
         onClick={() => setCategoryFilter(categoryFilter === key ? 'all' : key)}
         title={t('finance.filterByCategory')}
-        className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface-hover px-2.5 py-0.5 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface-hover px-2.5 py-1 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
       >
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: dot }} aria-hidden="true" />
         <span className="truncate">{categoryName(transaction.category?.name)}</span>
@@ -448,7 +486,7 @@ export default function FinancePage() {
     <div className="min-w-0 space-y-4">
       <PageHeader title={t('finance.title')} description={t('finance.subtitle')} action={headerAction} />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2">
         <Segmented
           className="hidden md:inline-flex"
           label={t('finance.period')}
@@ -456,26 +494,43 @@ export default function FinancePage() {
           onChange={setPeriod}
           options={periodOptions}
         />
-        <select
+        <div
+          role="radiogroup"
           aria-label={t('finance.period')}
-          value={period}
-          onChange={(event) => setPeriod(event.target.value as Period)}
-          className={`${selectClass} w-full sm:w-auto md:hidden`}
+          className="-mx-4 flex min-w-0 flex-1 gap-2 overflow-x-auto px-4 pb-1 scrollbar-hide sm:-mx-6 sm:px-6 md:hidden"
         >
-          {periodOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-        {refreshing ? <span className="text-xs text-text-muted">{t('finance.loading')}</span> : null}
+          {periodOptions.map((option) => {
+            const selected = option.value === period;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                onClick={() => setPeriod(option.value)}
+                className={`inline-flex h-10 shrink-0 items-center whitespace-nowrap rounded-full border px-4 text-sm font-medium transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                  selected
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border-strong bg-surface text-text-secondary'
+                }`}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+        {refreshing ? (
+          <span role="status" className="sr-only md:not-sr-only md:text-xs md:text-text-muted">
+            {t('finance.loading')}
+          </span>
+        ) : null}
       </div>
 
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border lg:grid-cols-4">
         {kpis.map((item) => (
           <div key={item.label} className="min-w-0 bg-surface px-4 py-3">
             <dt className="truncate text-xs font-medium text-text-secondary">{item.label}</dt>
-            <dd className={`mt-1 truncate text-xl font-semibold tabular-nums ${item.tone}`}>{item.value}</dd>
+            <dd className={`mt-1 truncate text-lg font-semibold tabular-nums sm:text-xl ${item.tone}`}>{item.value}</dd>
           </div>
         ))}
       </dl>
@@ -484,7 +539,7 @@ export default function FinancePage() {
         <h2 id="finance-accounts" className="sr-only">
           {t('finance.accounts')}
         </h2>
-        <ul className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 sm:-mx-6 sm:px-6 md:mx-0 md:grid md:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] md:overflow-visible md:px-0">
+        <ul className="-mx-4 flex snap-x scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 scrollbar-hide sm:-mx-6 sm:scroll-px-6 sm:px-6 md:mx-0 md:grid md:grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] md:overflow-visible md:px-0">
           {accounts.map((account) => {
             const selected = accountFilter === account.id;
             return (
@@ -499,7 +554,7 @@ export default function FinancePage() {
                   aria-pressed={selected}
                   title={t('finance.filterByAccount')}
                   onClick={() => setAccountFilter(selected ? 'all' : account.id)}
-                  className="block w-full min-w-0 rounded-xl px-4 py-3 pr-12 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className="block w-full min-w-0 rounded-xl px-4 py-3 pr-12 text-left active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <span className="block truncate text-sm font-medium text-text-primary">{account.name}</span>
                   <span className="mt-0.5 block truncate text-xs text-text-secondary">
@@ -529,7 +584,7 @@ export default function FinancePage() {
             <button
               type="button"
               onClick={() => setAccountDialog({ open: true })}
-              className="flex h-full min-h-[5.5rem] w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              className="flex h-full min-h-[5.5rem] w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong px-4 py-3 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
               {t('finance.addAccount')}
@@ -551,7 +606,39 @@ export default function FinancePage() {
                 {t('finance.transactionCount', { count: filtered.length })}
               </span>
             </div>
-            <div className="flex flex-col gap-2 2xl:flex-row 2xl:items-center">
+            <div className="flex gap-2 md:hidden">
+              <div className="relative min-w-0 flex-1">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted"
+                  aria-hidden="true"
+                />
+                <input
+                  type="search"
+                  inputMode="search"
+                  enterKeyHint="search"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder={t('finance.searchPlaceholder')}
+                  aria-label={t('finance.searchPlaceholder')}
+                  className="h-11 w-full rounded-lg border border-border-control bg-secondary pl-9 pr-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(true)}
+                aria-label={t('finance.filters')}
+                aria-haspopup="dialog"
+                className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border-strong bg-surface text-text-secondary transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <SlidersHorizontal className="h-5 w-5" aria-hidden="true" />
+                {activeFilterCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold tabular-nums text-white">
+                    {activeFilterCount}
+                  </span>
+                ) : null}
+              </button>
+            </div>
+            <div className="hidden flex-col gap-2 md:flex 2xl:flex-row 2xl:items-center">
               <div className="relative min-w-0 2xl:flex-1">
                 <Search
                   className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted"
@@ -563,7 +650,7 @@ export default function FinancePage() {
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder={t('finance.searchPlaceholder')}
                   aria-label={t('finance.searchPlaceholder')}
-                  className="h-9 w-full rounded-lg border border-border bg-secondary pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  className="h-9 w-full rounded-lg border border-border-control bg-secondary pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -675,7 +762,49 @@ export default function FinancePage() {
                 </tbody>
               </table>
 
-              <ul className="divide-y divide-border lg:hidden xl:block 2xl:hidden">
+              <div className="lg:hidden">
+                {groupByDate(visible).map((group) => (
+                  <section key={group.date} aria-label={dayHeading(group.date)}>
+                    <h3 className="border-b border-border bg-surface-hover/60 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-secondary first:border-t-0">
+                      {dayHeading(group.date)}
+                    </h3>
+                    <ul className="divide-y divide-border">
+                      {group.items.map((transaction) => (
+                        <li key={transaction.id} className="flex min-h-[4.25rem] items-center gap-3 py-2.5 pl-4 pr-1.5 active:bg-surface-hover">
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor:
+                                transaction.type === 'income'
+                                  ? 'var(--brand-green)'
+                                  : spending.colorOf.get(transaction.category?.name || UNCATEGORIZED) || OTHER_COLOR,
+                            }}
+                            aria-hidden="true"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-2 break-words text-[15px] font-medium leading-snug text-text-primary">
+                              {transaction.description}
+                            </p>
+                            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-text-secondary">
+                              <span className="truncate">{categoryName(transaction.category?.name)}</span>
+                              {accounts.length > 1 ? (
+                                <>
+                                  <span aria-hidden="true">·</span>
+                                  <span className="truncate">{accountMap.get(transaction.account_id)?.name}</span>
+                                </>
+                              ) : null}
+                            </p>
+                          </div>
+                          <div className="max-w-[40%] shrink-0 truncate text-right text-[15px]">{amountCell(transaction)}</div>
+                          {rowMenu(transaction)}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+
+              <ul className="hidden divide-y divide-border xl:block 2xl:hidden">
                 {visible.map((transaction) => (
                   <li key={transaction.id} className="flex items-start gap-2 py-3 pl-4 pr-2">
                     <div className="min-w-0 flex-1">
@@ -697,7 +826,7 @@ export default function FinancePage() {
                   <span className="text-xs text-text-secondary">
                     {t('finance.showing', { shown: visible.length, total: filtered.length })}
                   </span>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
+                  <Button type="button" variant="secondary" size="sm" className="h-11 sm:h-8" onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}>
                     {t('finance.showMore')}
                   </Button>
                 </div>
@@ -711,42 +840,21 @@ export default function FinancePage() {
             <h2 className="text-base font-semibold text-text-primary">{t('finance.spendingByCategory')}</h2>
             {spending.slices.length > 0 ? (
               <div className="mt-3 grid grid-cols-1 items-center gap-4 sm:grid-cols-[11rem_minmax(0,1fr)] xl:grid-cols-1">
-                <div className="relative mx-auto h-44 w-44 max-w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RePieChart>
-                      <Pie
-                        data={spending.slices}
-                        dataKey="value"
-                        nameKey="name"
-                        innerRadius="62%"
-                        outerRadius="100%"
-                        paddingAngle={2}
-                        stroke="none"
-                        isAnimationActive={false}
-                      >
-                        {spending.slices.map((slice) => (
-                          <Cell key={slice.key} fill={slice.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip content={<ChartTooltip formatValue={(value) => money(value)} />} />
-                    </RePieChart>
-                  </ResponsiveContainer>
-                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                    <span className="text-xs text-text-secondary">{t('finance.expenses')}</span>
-                    <span className="max-w-[6rem] truncate text-sm font-semibold tabular-nums text-text-primary">
-                      {money(spending.total)}
-                    </span>
-                  </div>
-                </div>
+                <SpendingChart
+                  slices={spending.slices}
+                  formatValue={(value) => money(value)}
+                  centerLabel={t('finance.expenses')}
+                  centerValue={money(spending.total)}
+                />
                 <ul className="min-w-0 space-y-2">
                   {spending.slices.map((slice) => (
-                    <li key={slice.key} className="flex items-center gap-2 text-sm">
+                    <li key={slice.key} className="flex min-h-8 items-center gap-2 text-sm">
                       <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: slice.color }} aria-hidden="true" />
                       <span className="min-w-0 flex-1 truncate text-text-primary">{slice.name}</span>
                       <span className="shrink-0 tabular-nums text-text-secondary">
                         {spending.total > 0 ? Math.round((slice.value / spending.total) * 100) : 0}%
                       </span>
-                      <span className="w-24 shrink-0 truncate text-right font-medium tabular-nums text-text-primary">
+                      <span className="max-w-[9rem] shrink-0 truncate text-right font-medium tabular-nums text-text-primary">
                         {money(slice.value)}
                       </span>
                     </li>
@@ -794,6 +902,92 @@ export default function FinancePage() {
           onClose={() => setShowImport(false)}
         />
       ) : null}
+
+      <Dialog
+        open={filtersOpen}
+        title={t('finance.filters')}
+        onClose={() => setFiltersOpen(false)}
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-11"
+              onClick={() => {
+                setTypeFilter('all');
+                setAccountFilter('all');
+                setCategoryFilter('all');
+              }}
+              disabled={activeFilterCount === 0}
+            >
+              {t('finance.clearFilters')}
+            </Button>
+            <Button type="button" className="h-12" onClick={() => setFiltersOpen(false)}>
+              {t('finance.showResults', { count: filtered.length })}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-5">
+          <div>
+            <p id="filter-type-label" className="mb-1.5 text-sm font-medium text-text-secondary">
+              {t('finance.transactionType')}
+            </p>
+            <Segmented
+              fullWidth
+              large
+              label={t('finance.transactionType')}
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={[
+                { value: 'all', label: t('finance.filterAll') },
+                { value: 'income', label: t('finance.income') },
+                { value: 'expense', label: t('finance.expense') },
+              ]}
+            />
+          </div>
+          {categoryOptions.length > 0 ? (
+            <div>
+              <label htmlFor="filter-category" className="mb-1.5 block text-sm font-medium text-text-secondary">
+                {t('finance.fieldCategory')}
+              </label>
+              <select
+                id="filter-category"
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value)}
+                className={sheetSelectClass}
+              >
+                <option value="all">{t('finance.allCategories')}</option>
+                {categoryOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+          {accounts.length > 1 ? (
+            <div>
+              <label htmlFor="filter-account" className="mb-1.5 block text-sm font-medium text-text-secondary">
+                {t('finance.account')}
+              </label>
+              <select
+                id="filter-account"
+                value={accountFilter}
+                onChange={(event) => setAccountFilter(event.target.value)}
+                className={sheetSelectClass}
+              >
+                <option value="all">{t('finance.allAccounts')}</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    {account.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
+        </div>
+      </Dialog>
       {dialog}
     </div>
   );

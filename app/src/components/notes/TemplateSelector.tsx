@@ -109,7 +109,7 @@ export default function TemplateSelector({ workspaceId, onSelect, onClose }: Tem
             key={cat.value}
             type="button"
             onClick={() => setSelectedCategory(cat.value)}
-            className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors ${
+            className={`inline-flex min-h-10 items-center rounded-xl px-3 py-1.5 text-sm font-medium transition-colors active:opacity-80 ${
               selectedCategory === cat.value
                 ? 'bg-primary text-white'
                 : 'border border-border bg-tertiary text-text-secondary hover:bg-surface-hover hover:text-text-primary'

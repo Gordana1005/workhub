@@ -8,6 +8,9 @@ import BudgetRequestsList from './BudgetRequestsList';
 import { useTranslations } from 'next-intl';
 import { useToast } from '@/components/ui/Toast';
 import { IconMenu } from '@/components/ui/IconMenu';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { useLocaleSwitch } from '@/i18n/LocaleProvider';
+import { formatMoney } from './money';
 
 interface ProjectBudgetCardProps {
   projectId: string;
@@ -37,6 +40,7 @@ interface ProjectFinancials {
 export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps) {
   const t = useTranslations('pages.tools');
   const toast = useToast();
+  const { locale } = useLocaleSwitch();
   const [financials, setFinancials] = useState<ProjectFinancials | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
@@ -127,9 +131,9 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
   if (loading) {
     return (
       <div className="min-w-0 rounded-2xl border border-border bg-surface p-4 sm:p-6">
-        <div className="animate-pulse">
-          <div className="h-6 bg-surface-hover rounded w-1/3 mb-4"></div>
-          <div className="h-24 bg-surface-hover rounded"></div>
+        <div className="space-y-4" role="status" aria-busy="true">
+          <Skeleton className="h-6 w-1/3" />
+          <Skeleton className="h-24" />
         </div>
       </div>
     );
@@ -137,6 +141,8 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
 
   if (!financials) return null;
 
+  const money = (value: number | null | undefined) =>
+    formatMoney(Number(value) || 0, financials.budget_currency || 'USD', locale);
   const hasBudget = financials.budget && financials.budget > 0;
   const budgetPercentage = hasBudget ? Math.min(financials.budget_used_percentage, 100) : 0;
   const isOverBudget = hasBudget && financials.budget_used_percentage > 100;
@@ -151,7 +157,7 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
           <button
             type="button"
             onClick={() => setIsEditing(true)}
-            className="self-start rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover"
+            className="inline-flex min-h-11 items-center self-start rounded-lg bg-primary px-4 text-sm font-medium text-white hover:bg-primary-hover active:bg-primary-active sm:min-h-10"
           >
             {t('finance.setBudget')}
           </button>
@@ -189,7 +195,7 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
                 type="button"
                 onClick={handleSaveBudget}
                 aria-label={t('finance.update')}
-                className="rounded-lg bg-primary p-2 text-white hover:bg-primary-hover"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg bg-primary text-white hover:bg-primary-hover active:bg-primary-active sm:h-9 sm:w-9"
               >
                 <Check className="h-4 w-4" />
               </button>
@@ -203,7 +209,7 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
                     hourly_rate: financials.hourly_rate?.toString() || '',
                   });
                 }}
-                className="rounded-lg border border-border bg-surface p-2 text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border-strong bg-surface text-text-secondary hover:bg-surface-hover hover:text-text-primary active:bg-tertiary sm:h-9 sm:w-9"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -224,7 +230,8 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
               value={budgetForm.budget}
               onChange={(e) => setBudgetForm({ ...budgetForm, budget: e.target.value })}
               placeholder="10000.00"
-              className="block w-full min-w-0 px-3 py-2.5 bg-secondary border border-border rounded-lg text-text-primary placeholder:text-text-muted"
+              className="block min-h-11 w-full min-w-0 px-3 py-2.5 bg-secondary border border-border-control rounded-lg text-base text-text-primary placeholder:text-text-muted sm:text-sm"
+              inputMode="decimal"
             />
           </div>
           <div>
@@ -237,7 +244,8 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
               value={budgetForm.hourly_rate}
               onChange={(e) => setBudgetForm({ ...budgetForm, hourly_rate: e.target.value })}
               placeholder="75.00"
-              className="block w-full min-w-0 px-3 py-2.5 bg-secondary border border-border rounded-lg text-text-primary placeholder:text-text-muted"
+              className="block min-h-11 w-full min-w-0 px-3 py-2.5 bg-secondary border border-border-control rounded-lg text-base text-text-primary placeholder:text-text-muted sm:text-sm"
+              inputMode="decimal"
             />
             <p className="mt-1 text-xs text-text-secondary">
               {t('finance.hourlyRateHint')}
@@ -251,7 +259,7 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm text-text-secondary">{t('finance.budgetUsed')}</span>
                 <span className="text-sm font-medium text-text-primary">
-                  ${financials.total_expenses.toLocaleString()} / ${financials.budget?.toLocaleString() || '0'}
+                  {money(financials.total_expenses)} / {money(financials.budget)}
                 </span>
               </div>
               <div className="h-3 bg-surface-hover rounded-full overflow-hidden">
@@ -281,34 +289,34 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
                   <dd className="text-xs text-text-secondary">{t('finance.transactionCount', { count: financials.transaction_count })}</dd>
                 )}
               </div>
-              <dd className={`shrink-0 font-semibold ${financials.remaining_budget < 0 ? 'text-danger' : 'text-text-primary'}`}>${Math.abs(financials.remaining_budget).toLocaleString()}</dd>
+              <dd className={`shrink-0 font-semibold ${financials.remaining_budget < 0 ? 'text-danger' : 'text-text-primary'}`}>{money(Math.abs(financials.remaining_budget))}</dd>
             </div>
             <div className="flex items-center justify-between gap-3 px-3 py-2.5">
               <div className="min-w-0">
                 <dt className="text-text-secondary">{t('finance.income')}</dt>
               </div>
-              <dd className="shrink-0 font-semibold text-text-primary">${financials.total_income.toLocaleString()}</dd>
+              <dd className="shrink-0 font-semibold text-text-primary">{money(financials.total_income)}</dd>
             </div>
             <div className="flex items-center justify-between gap-3 px-3 py-2.5">
               <div className="min-w-0">
                 <dt className="text-text-secondary">{t('finance.pendingRequests')}</dt>
                 <dd className="text-xs text-text-secondary">{t('finance.requestsCount', { count: financials.pending_requests_count || 0 })}</dd>
               </div>
-              <dd className="shrink-0 font-semibold text-warning">${financials.pending_requests_amount?.toLocaleString() || '0'}</dd>
+              <dd className="shrink-0 font-semibold text-warning">{money(financials.pending_requests_amount)}</dd>
             </div>
             <div className="flex items-center justify-between gap-3 px-3 py-2.5">
               <div className="min-w-0">
                 <dt className="text-text-secondary">{t('finance.approved')}</dt>
-                <dd className="text-xs text-text-secondary">{t('finance.paidAmount', { amount: `$${financials.paid_requests_amount?.toLocaleString() || '0'}` })}</dd>
+                <dd className="text-xs text-text-secondary">{t('finance.paidAmount', { amount: money(financials.paid_requests_amount) })}</dd>
               </div>
-              <dd className="shrink-0 font-semibold text-text-primary">${financials.approved_requests_amount?.toLocaleString() || '0'}</dd>
+              <dd className="shrink-0 font-semibold text-text-primary">{money(financials.approved_requests_amount)}</dd>
             </div>
             {financials.hourly_rate && financials.hourly_rate > 0 && (
               <div className="flex items-center justify-between gap-3 px-3 py-2.5">
                 <div className="min-w-0">
                   <dt className="text-text-secondary">{t('finance.billableHours')}</dt>
                   <dd className="text-xs text-text-secondary">
-                    {t('finance.billableValue', { amount: `$${financials.billable_amount.toLocaleString()}`, rate: `$${financials.hourly_rate}` })}
+                    {t('finance.billableValue', { amount: money(financials.billable_amount), rate: money(financials.hourly_rate) })}
                   </dd>
                 </div>
                 <dd className="shrink-0 font-semibold text-text-primary">{financials.total_hours.toFixed(1)}h</dd>
@@ -317,7 +325,7 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
             <div className="flex items-center justify-between gap-3 px-3 py-2.5">
               <dt className="text-text-secondary">{t('finance.profitLoss')}</dt>
               <dd className={`shrink-0 font-semibold ${financials.profit >= 0 ? 'text-success' : 'text-danger'}`}>
-                {financials.profit >= 0 ? '+' : '-'}${Math.abs(financials.profit).toLocaleString()}
+                {financials.profit >= 0 ? '+' : '-'}{money(Math.abs(financials.profit))}
               </dd>
             </div>
           </dl>
@@ -334,14 +342,14 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
                   <button
                     type="button"
                     onClick={() => setShowRequestForm(true)}
-                    className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-lg text-sm transition-colors"
+                    className="inline-flex min-h-11 items-center justify-center px-4 bg-primary hover:bg-primary-hover active:bg-primary-active text-white rounded-lg text-sm transition-colors sm:min-h-10"
                   >
                     {t('finance.requestBudget')}
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowRequestsList(!showRequestsList)}
-                    className="px-4 py-2 bg-surface hover:bg-surface-hover text-text-primary rounded-lg text-sm transition-colors border border-border"
+                    className="inline-flex min-h-11 items-center justify-center px-4 bg-surface hover:bg-surface-hover active:bg-tertiary text-text-primary rounded-lg text-sm transition-colors border border-border-strong sm:min-h-10"
                   >
                     {showRequestsList ? t('finance.hideRequests') : t('finance.viewRequests')}
                   </button>

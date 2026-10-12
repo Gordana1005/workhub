@@ -17,25 +17,36 @@ import {
   subDays,
 } from 'date-fns';
 import { enUS, mk } from 'date-fns/locale';
-import { Download, RotateCcw } from 'lucide-react';
+import { Download, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import { useTranslations } from 'next-intl';
 import { useLocaleSwitch } from '@/i18n/LocaleProvider';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
-import ExportDialog from '@/components/ExportDialog';
 import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { IconMenu } from '@/components/ui/IconMenu';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { Segmented } from '@/components/tools/Segmented';
 import { useSeriesColors } from '@/components/tools/chart';
-import {
-  BreakdownCard,
-  PriorityCard,
-  TimeCard,
-  TrendCard,
-  type BreakdownRow,
-  type TrendPoint,
-} from '@/components/reports/ReportCharts';
+import { BreakdownCard, ChartSkeleton, type BreakdownRow, type TrendPoint } from '@/components/reports/ReportCards';
 import ReportDetails, { type DetailRow } from '@/components/reports/ReportDetails';
+
+// recharts (and the export dialog) are fetched only when they are shown: no charting code in the first load.
+const TrendCard = dynamic(() => import('@/components/reports/ReportCharts').then((m) => m.TrendCard), {
+  ssr: false,
+  loading: () => <ChartSkeleton className="xl:col-span-2" />,
+});
+const PriorityCard = dynamic(() => import('@/components/reports/ReportCharts').then((m) => m.PriorityCard), {
+  ssr: false,
+  loading: () => <ChartSkeleton />,
+});
+const TimeCard = dynamic(() => import('@/components/reports/ReportCharts').then((m) => m.TimeCard), {
+  ssr: false,
+  loading: () => <ChartSkeleton />,
+});
+const ExportDialog = dynamic(() => import('@/components/ExportDialog'), { ssr: false });
 
 type Range = '7d' | '30d' | '90d' | 'year' | 'all';
 
@@ -104,6 +115,8 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [exportLoaded, setExportLoaded] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [entries, setEntries] = useState<TimeRecord[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
@@ -341,6 +354,12 @@ export default function ReportsPage() {
   );
 
   const filtersActive = range !== '30d' || projectFilter !== 'all' || personFilter !== 'all';
+  const activeFilterCount =
+    (range !== '30d' ? 1 : 0) + (projectFilter !== 'all' ? 1 : 0) + (personFilter !== 'all' ? 1 : 0);
+  const openExport = () => {
+    setExportLoaded(true);
+    setShowExport(true);
+  };
   const resetFilters = () => {
     setRange('30d');
     setProjectFilter('all');
@@ -356,7 +375,9 @@ export default function ReportsPage() {
   ];
 
   const selectClass =
-    'h-9 min-w-0 flex-1 rounded-lg border border-border bg-secondary px-2.5 text-sm text-text-primary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:max-w-[13rem] sm:flex-none';
+    'h-9 min-w-0 flex-1 rounded-lg border border-border-control bg-secondary px-2.5 text-sm text-text-primary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:max-w-[13rem] sm:flex-none';
+  const sheetSelectClass =
+    'block h-12 w-full min-w-0 rounded-lg border border-border-control bg-secondary px-3 text-base text-text-primary focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
 
   if (!workspaceId) {
     return (
@@ -368,7 +389,18 @@ export default function ReportsPage() {
   }
 
   if (loading) {
-    return <div className="py-16 text-center text-sm text-text-secondary">{t('reports.loading')}</div>;
+    return (
+      <div className="min-w-0 space-y-4" role="status" aria-busy="true" aria-label={t('reports.loading')}>
+        <Skeleton className="h-8 w-40" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          {[1, 2, 3, 4, 5, 6].map((item) => (
+            <Skeleton key={item} className="h-20 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-64 rounded-2xl" />
+        <Skeleton className="h-64 rounded-2xl" />
+      </div>
+    );
   }
 
   if (failed) {
@@ -377,7 +409,7 @@ export default function ReportsPage() {
         <PageHeader title={t('reports.title')} description={t('reports.subtitle')} />
         <EmptyState
           title={t('reports.loadFailed')}
-          action={<Button onClick={loadReportData}>{t('reports.retry')}</Button>}
+          action={<Button size="lg" onClick={loadReportData}>{t('reports.retry')}</Button>}
         />
       </div>
     );
@@ -406,34 +438,43 @@ export default function ReportsPage() {
         title={t('reports.title')}
         description={t('reports.subtitle')}
         action={
-          <Button onClick={() => setShowExport(true)} className="gap-2" disabled={report.detailTasks.length === 0}>
-            <Download className="h-4 w-4" aria-hidden="true" />
-            <span className="hidden sm:inline">{t('reports.exportData')}</span>
-            <span className="sr-only sm:hidden">{t('reports.exportData')}</span>
-          </Button>
+          <>
+            <Button
+              onClick={openExport}
+              className="hidden gap-2 sm:inline-flex"
+              disabled={report.detailTasks.length === 0}
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              {t('reports.exportData')}
+            </Button>
+            <div className="sm:hidden">
+              <IconMenu
+                label={t('reports.exportData')}
+                buttonClassName="relative inline-flex h-11 w-11 items-center justify-center rounded-lg border border-border-strong text-text-secondary transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary aria-expanded:bg-surface-hover"
+                items={[
+                  {
+                    label: t('reports.exportData'),
+                    onClick: openExport,
+                    icon: <Download className="h-4 w-4" />,
+                    disabled: report.detailTasks.length === 0,
+                  },
+                  ...(filtersActive
+                    ? [{ label: t('reports.resetFilters'), onClick: resetFilters, icon: <RotateCcw className="h-4 w-4" /> }]
+                    : []),
+                ]}
+              />
+            </div>
+          </>
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="hidden flex-wrap items-center gap-2 md:flex">
         <Segmented
-          className="hidden md:inline-flex"
           label={t('reports.range')}
           value={range}
           onChange={setRange}
           options={rangeOptions}
         />
-        <select
-          aria-label={t('reports.range')}
-          value={range}
-          onChange={(event) => setRange(event.target.value as Range)}
-          className={`${selectClass} md:hidden`}
-        >
-          {rangeOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
         <select
           aria-label={t('reports.byProject')}
           value={projectFilter}
@@ -468,18 +509,36 @@ export default function ReportsPage() {
         ) : null}
       </div>
 
+      <button
+        type="button"
+        onClick={() => setFiltersOpen(true)}
+        aria-haspopup="dialog"
+        className="flex h-12 w-full items-center gap-3 rounded-xl border border-border-strong bg-surface px-4 text-left text-sm transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:hidden"
+      >
+        <SlidersHorizontal className="h-4 w-4 shrink-0 text-text-secondary" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate">
+          <span className="font-medium text-text-primary">{t('reports.filters')}</span>
+          <span className="text-text-secondary"> · {rangeOptions.find((option) => option.value === range)?.label}</span>
+        </span>
+        {activeFilterCount > 0 ? (
+          <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-semibold tabular-nums text-white">
+            {activeFilterCount}
+          </span>
+        ) : null}
+      </button>
+
       <dl className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-border bg-border sm:grid-cols-3 xl:grid-cols-6">
         {kpis.map((item) => (
           <div key={item.label} className="min-w-0 bg-surface px-4 py-3">
             <dt className="truncate text-xs font-medium text-text-secondary">{item.label}</dt>
             <dd
-              className={`mt-1 truncate text-xl font-semibold tabular-nums ${
+              className={`mt-1 truncate text-lg font-semibold tabular-nums sm:text-xl ${
                 item.danger ? 'text-danger' : 'text-text-primary'
               }`}
             >
               {item.value}
             </dd>
-            <p className="mt-0.5 h-4 truncate text-xs text-text-muted">{item.hint}</p>
+            <p className="mt-0.5 min-h-4 truncate text-xs text-text-muted">{item.hint}</p>
           </div>
         ))}
       </dl>
@@ -493,13 +552,94 @@ export default function ReportsPage() {
 
       <ReportDetails rows={detailRows} />
 
-      <ExportDialog
-        isOpen={showExport}
-        onClose={() => setShowExport(false)}
-        data={exportRows}
-        dataType="tasks"
-        defaultFilename="trackwork-report"
-      />
+      {exportLoaded ? (
+        <ExportDialog
+          isOpen={showExport}
+          onClose={() => setShowExport(false)}
+          data={exportRows}
+          dataType="tasks"
+          defaultFilename="trackwork-report"
+        />
+      ) : null}
+
+      <Dialog
+        open={filtersOpen}
+        title={t('reports.filters')}
+        onClose={() => setFiltersOpen(false)}
+        footer={
+          <>
+            <Button type="button" variant="secondary" className="h-11" onClick={resetFilters} disabled={!filtersActive}>
+              {t('reports.resetFilters')}
+            </Button>
+            <Button type="button" className="h-12" onClick={() => setFiltersOpen(false)}>
+              {t('reports.done')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-5">
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium text-text-secondary">{t('reports.range')}</legend>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t('reports.range')}>
+              {rangeOptions.map((option) => {
+                const selected = option.value === range;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setRange(option.value)}
+                    className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-medium transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      selected
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-border-strong bg-surface text-text-secondary'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </fieldset>
+          <div>
+            <label htmlFor="report-project" className="mb-1.5 block text-sm font-medium text-text-secondary">
+              {t('reports.byProject')}
+            </label>
+            <select
+              id="report-project"
+              value={projectFilter}
+              onChange={(event) => setProjectFilter(event.target.value)}
+              className={sheetSelectClass}
+            >
+              <option value="all">{t('reports.allProjects')}</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="report-person" className="mb-1.5 block text-sm font-medium text-text-secondary">
+              {t('reports.byPerson')}
+            </label>
+            <select
+              id="report-person"
+              value={personFilter}
+              onChange={(event) => setPersonFilter(event.target.value)}
+              className={sheetSelectClass}
+            >
+              <option value="all">{t('reports.allPeople')}</option>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 }

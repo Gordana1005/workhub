@@ -8,6 +8,8 @@ import { useToast } from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase';
 import { useLocaleSwitch } from '@/i18n/LocaleProvider';
 import { Button } from '@/components/ui/Button';
+import { Skeleton } from '@/components/ui/Skeleton';
+import CollapsibleSection from './CollapsibleSection';
 import { useConfirm } from '@/components/ui/ConfirmDialog';
 import { IconMenu } from '@/components/ui/IconMenu';
 import GoalBuilder from './GoalBuilder';
@@ -35,9 +37,9 @@ function AddAmount({ onAdd, label, placeholder }: { onAdd: (amount: number) => v
         onChange={(event) => setValue(event.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="min-w-0 flex-1 rounded-lg border border-border bg-secondary px-3 py-1.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
+        className="h-11 min-w-0 flex-1 rounded-lg border border-border-control bg-secondary px-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30 sm:h-9 sm:text-sm"
       />
-      <Button type="submit" size="sm" variant="secondary" disabled={!(parseFloat(value) > 0)}>
+      <Button type="submit" size="sm" variant="secondary" className="h-11 sm:h-9" disabled={!(parseFloat(value) > 0)}>
         {label}
       </Button>
     </form>
@@ -141,20 +143,23 @@ export default function GoalsDashboard({ currency = 'USD' }: { currency?: string
   };
 
   return (
-    <section className="min-w-0 rounded-2xl border border-border bg-surface">
-      <header className="flex items-center justify-between gap-3 px-4 pb-2 pt-4">
-        <h2 className="flex items-center gap-2 text-base font-semibold text-text-primary">
-          <Target className="h-4 w-4 text-text-secondary" aria-hidden="true" />
-          {t('finance.financialGoals')}
-        </h2>
-        <Button type="button" variant="ghost" size="sm" onClick={openNew} className="gap-1">
+    <CollapsibleSection
+      title={t('finance.financialGoals')}
+      icon={<Target aria-hidden="true" />}
+      meta={goals.length > 0 ? goals.length : undefined}
+      actions={
+        <Button type="button" variant="ghost" size="sm" onClick={openNew} className="h-10 gap-1 sm:h-8">
           <Plus className="h-4 w-4" aria-hidden="true" />
           {t('finance.newGoal')}
         </Button>
-      </header>
+      }
+    >
 
       {loading ? (
-        <p className="px-4 pb-5 pt-2 text-sm text-text-secondary">{t('finance.loadingGoals')}</p>
+        <div className="space-y-3 px-4 pb-5 pt-2" role="status" aria-label={t('finance.loadingGoals')}>
+          <Skeleton className="h-4 w-1/2" />
+          <Skeleton className="h-2 w-full rounded-full" />
+        </div>
       ) : goals.length === 0 ? (
         <div className="px-4 pb-5 pt-2 text-center">
           <p className="text-sm font-medium text-text-primary">{t('finance.noGoalsTitle')}</p>
@@ -171,7 +176,7 @@ export default function GoalsDashboard({ currency = 'USD' }: { currency?: string
             const isOverdue = daysLeft !== null && daysLeft < 0 && !isComplete;
 
             return (
-              <li key={goal.id} className="px-4 py-3">
+              <li key={goal.id} className="px-4 py-3.5">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <h3 className="break-words text-sm font-semibold text-text-primary">{goal.name}</h3>
@@ -252,6 +257,6 @@ export default function GoalsDashboard({ currency = 'USD' }: { currency?: string
           currency={currency}
         />
       ) : null}
-    </section>
+    </CollapsibleSection>
   );
 }

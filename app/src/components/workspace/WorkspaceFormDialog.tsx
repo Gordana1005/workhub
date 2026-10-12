@@ -32,7 +32,7 @@ const COLOR_PRESETS = [
 ] as const
 
 const fieldClass =
-  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50'
+  'min-h-11 w-full min-w-0 rounded-lg border border-border-control bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50 sm:min-h-10 sm:text-sm'
 
 /** Edit a workspace's name, category, colour and description. (Creating one uses the short CreateWorkspaceDialog.) */
 export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: WorkspaceFormDialogProps) {
@@ -100,14 +100,14 @@ export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: Work
       onClose={requestClose}
       size="lg"
       footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={requestClose} disabled={loading}>
+        <>
+          <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={requestClose} disabled={loading}>
             {t('form.cancel')}
           </Button>
-          <Button type="submit" form="workspace-form" className="w-full sm:w-auto" disabled={loading || !name.trim()}>
+          <Button type="submit" form="workspace-form" className="h-12 sm:h-10" disabled={loading || !name.trim()}>
             {loading ? t('form.saving') : t('form.save')}
           </Button>
-        </div>
+        </>
       }
     >
       <form id="workspace-form" onSubmit={handleSubmit} className="space-y-5">
@@ -127,6 +127,7 @@ export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: Work
             disabled={loading}
             required
             autoFocus
+            enterKeyHint="done"
             className={`${fieldClass} mt-1.5`}
           />
         </label>
@@ -141,7 +142,7 @@ export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: Work
                 aria-pressed={category === value}
                 onClick={() => setCategory(category === value ? '' : value)}
                 disabled={loading}
-                className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${
+                className={`inline-flex min-h-11 items-center rounded-full border px-4 text-sm transition-colors active:bg-tertiary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${
                   category === value
                     ? 'border-primary bg-primary/10 font-medium text-primary'
                     : 'border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -155,7 +156,7 @@ export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: Work
 
         <div>
           <p className="text-sm font-medium text-text-secondary">{t('form.color')}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 flex flex-wrap gap-2.5 sm:gap-2">
             {swatches.map((value) => {
               const preset = COLOR_PRESETS.find((item) => item.value === value)
               return (
@@ -166,7 +167,7 @@ export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: Work
                   disabled={loading}
                   aria-label={preset ? t(`form.colors.${preset.key}`) : value}
                   aria-pressed={color === value}
-                  className={`h-8 w-8 rounded-lg transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 ${
+                  className={`h-11 w-11 rounded-lg transition-shadow active:scale-95 sm:h-8 sm:w-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 ${
                     color === value ? 'ring-2 ring-text-primary ring-offset-2 ring-offset-surface' : ''
                   }`}
                   style={{ backgroundColor: value }}

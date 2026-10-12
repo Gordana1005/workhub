@@ -25,7 +25,7 @@ export const PLAN_COLORS = [
 ];
 
 const fieldClass =
-  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
+  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-h-11 min-w-0 sm:min-h-10 sm:text-sm';
 
 export function PlanFormDialog({
   open,
@@ -92,14 +92,14 @@ export function PlanFormDialog({
       onClose={onClose}
       size="lg"
       footer={
-        <div className="flex gap-3 sm:justify-end">
-          <Button type="button" variant="secondary" className="flex-1 sm:flex-none" onClick={onClose}>
+        <>
+          <Button type="button" variant="secondary" className="h-11 sm:h-10" onClick={onClose}>
             {t('cancel')}
           </Button>
-          <Button type="submit" form="plan-form" className="flex-1 sm:flex-none" disabled={!canSave}>
+          <Button type="submit" form="plan-form" className="h-12 sm:h-10" disabled={!canSave}>
             {saving ? (plan ? t('saving') : t('creating')) : plan ? t('saveChanges') : t('createPlan')}
           </Button>
-        </div>
+        </>
       }
     >
       <form
@@ -118,6 +118,7 @@ export function PlanFormDialog({
             onChange={(event) => setName(event.target.value)}
             className={`${fieldClass} mt-1.5`}
             placeholder={t('planNamePlaceholder')}
+            enterKeyHint="next"
             autoFocus
           />
         </label>
@@ -130,6 +131,7 @@ export function PlanFormDialog({
             onChange={(event) => setGoal(event.target.value)}
             className={`${fieldClass} mt-1.5`}
             placeholder={t('goalPlaceholder')}
+            enterKeyHint="done"
           />
         </label>
 
@@ -189,7 +191,7 @@ export function PlanFormDialog({
 
           <div>
             <p className="text-sm text-text-secondary">{t('color')}</p>
-            <div className="mt-2 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap gap-2.5 sm:gap-2">
               {PLAN_COLORS.map((swatch) => (
                 <button
                   key={swatch}
@@ -197,7 +199,7 @@ export function PlanFormDialog({
                   aria-label={swatch}
                   aria-pressed={color === swatch}
                   onClick={() => setColor(swatch)}
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg text-white transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
+                  className={`flex h-11 w-11 items-center justify-center rounded-lg text-white transition-transform hover:scale-105 active:scale-95 sm:h-8 sm:w-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface ${
                     color === swatch ? 'ring-2 ring-text-primary ring-offset-2 ring-offset-surface' : ''
                   }`}
                   style={{ backgroundColor: swatch }}

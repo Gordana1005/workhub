@@ -3,6 +3,12 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { getRowWorkspaceId, getWorkspaceRole, omitKeys } from '@/lib/api-access'
+import {
+  balanceChanges,
+  isMissingRpcError,
+  isTransactionType,
+  parsePositiveAmount,
+} from '@/lib/finance-balance'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -16,6 +22,111 @@ const supabaseAdmin = createClient(
 async function notifyUsers(entries: Array<{ user_id: string; workspace_id: string; type: string; title: string; message: string; link?: string }>) {
   if (!entries.length) return
   await supabaseAdmin.from('notifications').insert(entries.map(e => ({ ...e, read: false })))
+}
+
+// --- Account balances -------------------------------------------------------
+// Balances are owned by the DB trigger `account_balance_trigger` (migration
+// 011, hardened by 022): it is atomic and also covers the browser inserts done
+// by QuickAdd / Import. The API must only adjust balances itself when that
+// trigger does NOT exist, otherwise every change would be counted twice.
+let dbOwnsBalancesCache: { value: boolean; at: number } | null = null
+const DB_OWNS_TTL_MS = 5 * 60 * 1000
+
+/**
+ * Probes the DB with a throw-away inactive account: inserts a 1.00 income
+ * transaction and checks whether the balance moved by itself.
+ * Returns null when the probe could not run.
+ */
+async function probeBalanceTrigger(workspaceId: string): Promise<boolean | null> {
+  const { data: probe, error } = await supabaseAdmin
+    .from('finance_accounts')
+    .insert({
+      workspace_id: workspaceId,
+      name: '__balance_probe__',
+      type: 'cash',
+      initial_balance: 0,
+      current_balance: 0,
+      is_active: false,
+    })
+    .select('id')
+    .single()
+  if (error || !probe) return null
+
+  try {
+    const { error: txError } = await supabaseAdmin.from('finance_transactions').insert({
+      workspace_id: workspaceId,
+      account_id: probe.id,
+      type: 'income',
+      amount: 1,
+      description: '__balance_probe__',
+      date: new Date().toISOString().slice(0, 10),
+    })
+    if (txError) return null
+    const { data: after } = await supabaseAdmin
+      .from('finance_accounts')
+      .select('current_balance')
+      .eq('id', probe.id)
+      .single()
+    return Number(after?.current_balance) === 1
+  } finally {
+    // Cascades to the probe transaction
+    await supabaseAdmin.from('finance_accounts').delete().eq('id', probe.id)
+  }
+}
+
+/** True when the DB trigger already maintains balances (so the API must not). */
+async function dbOwnsBalances(workspaceId: string): Promise<boolean> {
+  if (dbOwnsBalancesCache && Date.now() - dbOwnsBalancesCache.at < DB_OWNS_TTL_MS) {
+    return dbOwnsBalancesCache.value
+  }
+  const remember = (value: boolean) => {
+    dbOwnsBalancesCache = { value, at: Date.now() }
+    return value
+  }
+
+  const { data, error } = await supabaseAdmin.rpc('finance_balance_trigger_active')
+  if (!error && typeof data === 'boolean') return remember(data)
+
+  if (isMissingRpcError(error)) {
+    // Migration 022 not applied yet: detect the trigger empirically
+    try {
+      const probed = await probeBalanceTrigger(workspaceId)
+      if (probed !== null) return remember(probed)
+    } catch (probeError) {
+      console.error('Balance trigger probe failed:', probeError)
+    }
+  }
+  // Unknown: assume the trigger exists (never risk double counting), retry next time
+  return true
+}
+
+/** Atomic `balance = balance + delta`; falls back to read-modify-write if the RPC is missing. */
+async function applyBalanceDelta(accountId: string, delta: number) {
+  if (!accountId || !Number.isFinite(delta) || delta === 0) return
+  const { error } = await supabaseAdmin.rpc('adjust_account_balance', {
+    p_account_id: accountId,
+    p_delta: delta,
+  })
+  if (!error) return
+  if (!isMissingRpcError(error)) throw error
+
+  const { data: account, error: readError } = await supabaseAdmin
+    .from('finance_accounts')
+    .select('current_balance')
+    .eq('id', accountId)
+    .single()
+  if (readError) throw readError
+  const { error: writeError } = await supabaseAdmin
+    .from('finance_accounts')
+    .update({ current_balance: (Number(account?.current_balance) || 0) + delta })
+    .eq('id', accountId)
+  if (writeError) throw writeError
+}
+
+async function applyBalanceChanges(changes: Record<string, number>) {
+  for (const [accountId, delta] of Object.entries(changes)) {
+    await applyBalanceDelta(accountId, delta)
+  }
 }
 
 const FINANCE_TABLES: Record<string, string> = {
@@ -95,6 +206,7 @@ export async function GET(request: NextRequest) {
           .select('*')
           .eq('workspace_id', workspaceId)
           .eq('is_active', true)
+          .limit(500)
         
         if (error) throw error
         return NextResponse.json({ accounts: data })
@@ -122,6 +234,7 @@ export async function GET(request: NextRequest) {
           .select('*')
           .eq('workspace_id', workspaceId)
           .order('name')
+          .limit(1000)
         
         if (error) throw error
         return NextResponse.json({ categories: data })
@@ -133,6 +246,7 @@ export async function GET(request: NextRequest) {
           .select('*')
           .eq('workspace_id', workspaceId)
           .order('target_date')
+          .limit(500)
         
         if (error) throw error
         return NextResponse.json({ goals: data })
@@ -141,10 +255,10 @@ export async function GET(request: NextRequest) {
       default: {
         // Return all finance data
         const [accounts, transactions, categories, goals] = await Promise.all([
-          supabaseAdmin.from('finance_accounts').select('*').eq('workspace_id', workspaceId).eq('is_active', true),
+          supabaseAdmin.from('finance_accounts').select('*').eq('workspace_id', workspaceId).eq('is_active', true).limit(500),
           supabaseAdmin.from('finance_transactions').select('*, category:finance_categories(*)').eq('workspace_id', workspaceId).order('date', { ascending: false }).limit(50),
-          supabaseAdmin.from('finance_categories').select('*').eq('workspace_id', workspaceId),
-          supabaseAdmin.from('finance_goals').select('*').eq('workspace_id', workspaceId)
+          supabaseAdmin.from('finance_categories').select('*').eq('workspace_id', workspaceId).limit(1000),
+          supabaseAdmin.from('finance_goals').select('*').eq('workspace_id', workspaceId).limit(500)
         ])
 
         return NextResponse.json({
@@ -222,30 +336,30 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        const amount = parsePositiveAmount(data.amount)
+        if (amount === null) {
+          return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 })
+        }
+        if (!isTransactionType(data.type)) {
+          return NextResponse.json({ error: 'type must be income, expense or transfer' }, { status: 400 })
+        }
+
         const { data: transaction, error } = await supabaseAdmin
           .from('finance_transactions')
-          .insert({ ...data, workspace_id, created_by: user.id })
+          .insert({ ...data, amount, workspace_id, created_by: user.id })
           .select('*, category:finance_categories(*)')
           .single()
-        
+
         if (error) throw error
 
-        // Update account balance if account_id provided
-        if (data.account_id && data.amount) {
-          const amount = Number(data.amount)
-          const adjustment = Number.isFinite(amount) ? (data.type === 'income' ? amount : -amount) : 0
-          // Get current balance and update
-          const { data: account } = await supabaseAdmin
-            .from('finance_accounts')
-            .select('current_balance')
-            .eq('id', data.account_id)
-            .single()
-          
-          if (account) {
-            await supabaseAdmin
-              .from('finance_accounts')
-              .update({ current_balance: (Number(account.current_balance) || 0) + adjustment })
-              .eq('id', data.account_id)
+        // Keep the balance in step (only when the DB trigger is not doing it)
+        if (!(await dbOwnsBalances(workspace_id))) {
+          try {
+            await applyBalanceChanges(balanceChanges(null, transaction))
+          } catch (balanceError) {
+            // Don't leave a transaction without its balance effect
+            await supabaseAdmin.from('finance_transactions').delete().eq('id', transaction.id)
+            throw balanceError
           }
         }
 
@@ -320,14 +434,52 @@ export async function PATCH(request: NextRequest) {
       }
 
       case 'transaction': {
+        const { data: before } = await supabaseAdmin
+          .from('finance_transactions')
+          .select('workspace_id, account_id, type, amount')
+          .eq('id', id)
+          .single()
+
+        const txUpdates: Record<string, any> = { ...updates }
+        if ('amount' in txUpdates) {
+          const amount = parsePositiveAmount(txUpdates.amount)
+          if (amount === null) {
+            return NextResponse.json({ error: 'amount must be a positive number' }, { status: 400 })
+          }
+          txUpdates.amount = amount
+        }
+        if ('type' in txUpdates && !isTransactionType(txUpdates.type)) {
+          return NextResponse.json({ error: 'type must be income, expense or transfer' }, { status: 400 })
+        }
+        if (txUpdates.account_id && txUpdates.account_id !== before?.account_id) {
+          const accountWs = await getRowWorkspaceId(supabaseAdmin, 'finance_accounts', txUpdates.account_id)
+          if (accountWs !== before?.workspace_id) {
+            return NextResponse.json({ error: 'account_id does not belong to this workspace' }, { status: 400 })
+          }
+        }
+
         const { data, error } = await supabaseAdmin
           .from('finance_transactions')
-          .update(updates)
+          .update(txUpdates)
           .eq('id', id)
           .select('*, category:finance_categories(*)')
           .single()
-        
+
         if (error) throw error
+
+        // Reverse the old effect and apply the new one (account / type / amount edits)
+        if (before && !(await dbOwnsBalances(before.workspace_id))) {
+          try {
+            await applyBalanceChanges(balanceChanges(before, data))
+          } catch (balanceError) {
+            // Restore the row so row and balance stay consistent
+            await supabaseAdmin
+              .from('finance_transactions')
+              .update({ account_id: before.account_id, type: before.type, amount: before.amount })
+              .eq('id', id)
+            throw balanceError
+          }
+        }
         return NextResponse.json({ transaction: data })
       }
 
@@ -414,12 +566,23 @@ export async function DELETE(request: NextRequest) {
       }
 
       case 'transaction': {
+        const { data: existing } = await supabaseAdmin
+          .from('finance_transactions')
+          .select('workspace_id, account_id, type, amount')
+          .eq('id', id)
+          .single()
+
         const { error } = await supabaseAdmin
           .from('finance_transactions')
           .delete()
           .eq('id', id)
-        
+
         if (error) throw error
+
+        // Reverse the balance effect (only when the DB trigger is not doing it)
+        if (existing && !(await dbOwnsBalances(existing.workspace_id))) {
+          await applyBalanceChanges(balanceChanges(existing, null))
+        }
         return NextResponse.json({ success: true })
       }
 

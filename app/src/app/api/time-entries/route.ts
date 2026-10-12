@@ -74,6 +74,46 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
+    // ?task_id=<id>: everyone's entries for one task (the task detail "Time" section) + the total
+    const taskId = searchParams.get('task_id')
+    if (taskId) {
+      const { data: taskRow } = await supabaseAdmin
+        .from('tasks').select('id').eq('id', taskId).eq('workspace_id', workspaceId).maybeSingle()
+      if (!taskRow) {
+        return NextResponse.json({ error: 'Task not found in this workspace' }, { status: 404 })
+      }
+      const limit = Math.min(200, Math.max(1, Number(searchParams.get('limit')) || 50))
+      const { data: rows, error: rowsError } = await supabaseAdmin
+        .from('time_entries')
+        .select('id, task_id, project_id, user_id, description, duration, date, created_at')
+        .eq('workspace_id', workspaceId)
+        .eq('task_id', taskId)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(1000)
+      if (rowsError) throw rowsError
+
+      const all = rows || []
+      const totalSeconds = all.reduce((sum: number, row: any) => sum + (Number(row.duration) || 0), 0)
+      const recent = all.slice(0, limit)
+      const userIds = Array.from(new Set(recent.map((row: any) => row.user_id).filter(Boolean)))
+      const { data: profiles } = userIds.length
+        ? await supabaseAdmin.from('profiles').select('id, username, avatar_url').in('id', userIds)
+        : { data: [] as any[] }
+      const byId = new Map((profiles || []).map((p: any) => [p.id, p]))
+
+      return NextResponse.json({
+        timeEntries: recent.map((row: any) => ({
+          ...row,
+          user: byId.get(row.user_id)
+            ? { id: row.user_id, username: (byId.get(row.user_id) as any).username ?? '', avatar_url: (byId.get(row.user_id) as any).avatar_url ?? null }
+            : { id: row.user_id, username: '', avatar_url: null },
+        })),
+        totalSeconds,
+        totalCount: all.length,
+      })
+    }
+
     let query = supabaseAdmin
       .from('time_entries')
       .select(`

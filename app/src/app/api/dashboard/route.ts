@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
+import { runTopLevel } from '@/lib/subtasks';
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic';
@@ -71,31 +72,44 @@ export async function GET(request: Request) {
 
     if (projectIds.length > 0) {
       // Get tasks completed in projects of this workspace
-      const { count: completedCount } = await supabaseAdmin
-        .from('tasks')
-        .select('*', { count: 'exact', head: true })
-        .in('project_id', projectIds)
-        .eq('is_completed', true);
+      // (top-level tasks only: subtasks never count as tasks)
+      const { count: completedCount } = await runTopLevel((topLevel) => {
+        let q = supabaseAdmin
+          .from('tasks')
+          .select('*', { count: 'exact', head: true })
+          .in('project_id', projectIds)
+          .eq('is_completed', true);
+        if (topLevel) q = q.is('parent_task_id', null);
+        return q;
+      });
 
       tasksCompleted = completedCount || 0;
 
       // Get active tasks
-      const { count: activeCount } = await supabaseAdmin
-        .from('tasks')
-        .select('*', { count: 'exact', head: true })
-        .in('project_id', projectIds)
-        .eq('is_completed', false);
+      const { count: activeCount } = await runTopLevel((topLevel) => {
+        let q = supabaseAdmin
+          .from('tasks')
+          .select('*', { count: 'exact', head: true })
+          .in('project_id', projectIds)
+          .eq('is_completed', false);
+        if (topLevel) q = q.is('parent_task_id', null);
+        return q;
+      });
 
       activeTasksCount = activeCount || 0;
 
       // Get upcoming tasks
-      const { data: upcoming } = await supabaseAdmin
-        .from('tasks')
-        .select('*, projects(name, workspace_id)')
-        .in('project_id', projectIds)
-        .eq('is_completed', false)
-        .order('due_date', { ascending: true, nullsFirst: false })
-        .limit(10);
+      const { data: upcoming } = await runTopLevel((topLevel) => {
+        let q = supabaseAdmin
+          .from('tasks')
+          .select('*, projects(name, workspace_id)')
+          .in('project_id', projectIds)
+          .eq('is_completed', false)
+          .order('due_date', { ascending: true, nullsFirst: false })
+          .limit(10);
+        if (topLevel) q = q.is('parent_task_id', null);
+        return q;
+      });
 
       upcomingTasks = upcoming || [];
     }
