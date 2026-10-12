@@ -19,11 +19,17 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 
 /** Resolves with the active service worker registration, or null if there is none soon. */
 async function getRegistration(): Promise<ServiceWorkerRegistration | null> {
-  try {
-    return await Promise.race([
+  const waitReady = () =>
+    Promise.race([
       navigator.serviceWorker.ready,
       new Promise<null>((resolve) => setTimeout(() => resolve(null), READY_TIMEOUT_MS)),
     ])
+  try {
+    const existing = await waitReady()
+    if (existing) return existing
+    // No active worker yet (registration is normally automatic): register it ourselves, then wait again
+    await navigator.serviceWorker.register('/sw.js')
+    return await waitReady()
   } catch {
     return null
   }
@@ -68,6 +74,7 @@ export default function PushToggle() {
   const [state, setState] = useState<PushState>('loading')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(false)
+  const [reason, setReason] = useState('')
   const [showIosNote, setShowIosNote] = useState(false)
 
   const refresh = useCallback(async () => {
@@ -86,12 +93,14 @@ export default function PushToggle() {
       const res = await fetch('/api/push/subscribe', { cache: 'no-store' })
       const status = res.ok ? await res.json() : null
       if (!status?.configured) {
+        setReason(res.ok ? String(status?.reason || 'server') : `status_${res.status}`)
         setState('unavailable')
         return
       }
 
       const registration = await getRegistration()
       if (!registration) {
+        setReason('worker')
         setState('unavailable')
         return
       }
@@ -104,6 +113,7 @@ export default function PushToggle() {
         setState('off')
       }
     } catch {
+      setReason('exception')
       setState('unavailable')
     }
   }, [])
@@ -200,6 +210,9 @@ export default function PushToggle() {
         <p className="mt-2 text-sm font-medium text-text-primary" aria-live="polite">
           {statusText[state]}
         </p>
+        {state === 'unavailable' && reason ? (
+          <p className="mt-1 text-xs text-text-muted">({reason})</p>
+        ) : null}
         {showIosNote && state !== 'on' ? (
           <p className="mt-2 text-sm text-text-secondary">{t('settings.push.iosNote')}</p>
         ) : null}

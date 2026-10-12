@@ -58,7 +58,8 @@ export async function GET(request: Request) {
     available = false
   }
 
-  return json({ configured: configured && available, subscribed, publicKey: configured ? publicKey : null })
+  const reason = !configured ? 'server_env' : !available ? 'schema' : null
+  return json({ configured: configured && available, reason, subscribed, publicKey: configured ? publicKey : null })
 }
 
 // POST /api/push/subscribe  body: PushSubscription JSON ({ endpoint, keys: { p256dh, auth } })

@@ -5,3 +5,7 @@ node_modules/
 .vercel/
 WORK/
 *.tsbuildinfo
+app/public/sw.js
+app/public/workbox-*.js
+app/public/worker-*.js
+app/public/fallback-*.js
