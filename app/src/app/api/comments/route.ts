@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { getRowWorkspaceId, getWorkspaceRole } from '@/lib/api-access'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -39,6 +40,12 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Caller must belong to the workspace that owns the task
+    const taskWorkspaceId = await getRowWorkspaceId(supabaseAdmin, 'tasks', taskId)
+    if (!taskWorkspaceId || !(await getWorkspaceRole(supabaseAdmin, taskWorkspaceId, user.id))) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
     const { data: comments, error } = await supabaseAdmin
       .from('task_notes')
       .select(`
@@ -85,6 +92,16 @@ export async function POST(request: Request) {
   try {
     const body = await request.json()
     const { task_id, content } = body
+
+    if (!task_id || typeof content !== 'string' || !content.trim()) {
+      return NextResponse.json({ error: 'task_id and content are required' }, { status: 400 })
+    }
+
+    // Caller must belong to the workspace that owns the task
+    const taskWorkspaceId = await getRowWorkspaceId(supabaseAdmin, 'tasks', task_id)
+    if (!taskWorkspaceId || !(await getWorkspaceRole(supabaseAdmin, taskWorkspaceId, user.id))) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
 
     const { data: comment, error } = await supabaseAdmin
       .from('task_notes')

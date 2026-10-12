@@ -1,9 +1,12 @@
 'use client';
 
-import { Calendar, dateFnsLocalizer, View } from 'react-big-calendar';
+import { useState } from 'react';
+import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS, mk } from 'date-fns/locale';
 import { useTranslations, useLocale } from 'next-intl';
+import { dayKey, isDone, parseDayKey, priorityLabel, statusLabel } from './taskUtils';
+import type { Task } from './types';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import './CalendarView.css';
 
@@ -15,19 +18,11 @@ const locales = {
 const localizer = dateFnsLocalizer({
   format,
   parse,
-  startOfWeek,
+  // Weeks start on Monday for both supported languages
+  startOfWeek: (date: Date) => startOfWeek(date, { weekStartsOn: 1 }),
   getDay,
   locales,
 });
-
-interface Task {
-  id: string;
-  title: string;
-  description?: string | null;
-  due_date?: string | null;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  status: string;
-}
 
 interface CalendarViewProps {
   tasks: Task[];
@@ -35,71 +30,24 @@ interface CalendarViewProps {
   onDateSelect?: (start: Date, end: Date) => void;
 }
 
-function priorityLabel(priority: string, t: (key: string) => string) {
-  if (priority === 'low') return t('priorityLow');
-  if (priority === 'medium') return t('priorityMedium');
-  if (priority === 'high') return t('priorityHigh');
-  if (priority === 'urgent') return t('priorityUrgent');
-  return priority;
-}
-
-function statusLabel(status: string, t: (key: string) => string) {
-  if (status === 'To Do') return t('statusToDo');
-  if (status === 'In Progress') return t('statusInProgress');
-  if (status === 'Review') return t('statusReview');
-  if (status === 'Done') return t('statusDone');
-  return status;
-}
-
+/** Month calendar of tasks by due date. Fills the height of its parent from lg up. */
 export default function CalendarView({ tasks, onTaskClick, onDateSelect }: CalendarViewProps) {
   const t = useTranslations('pages.tasks');
   const locale = useLocale();
-  // Convert tasks to calendar events
-  const events = tasks
-    .filter(task => task.due_date)
-    .map(task => ({
-      id: task.id,
-      title: task.title,
-      start: new Date(task.due_date!),
-      end: new Date(task.due_date!),
-      resource: task,
-    }));
+  const [date, setDate] = useState(() => new Date());
 
-  const eventStyleGetter = (event: any) => {
-    const task = event.resource as Task;
-    
-    const priorityColors = {
-      urgent: { bg: '#ef4444', border: '#dc2626' },
-      high: { bg: '#f97316', border: '#ea580c' },
-      medium: { bg: '#eab308', border: '#ca8a04' },
-      low: { bg: '#22c55e', border: '#16a34a' },
-    };
+  const events = tasks.flatMap((task) => {
+    const key = dayKey(task.due_date);
+    if (!key) return [];
+    const day = parseDayKey(key);
+    return [{ id: task.id, title: task.title, start: day, end: day, allDay: true, resource: task }];
+  });
 
-    const color = priorityColors[task.priority];
-
+  const eventPropGetter = (event: { resource: Task }) => {
+    const task = event.resource;
     return {
-      style: {
-        backgroundColor: color.bg,
-        borderLeft: `4px solid ${color.border}`,
-        borderRadius: '4px',
-        opacity: task.status === 'Done' ? 0.6 : 1,
-        color: task.priority === 'medium' ? '#1f2937' : 'white',
-        border: 'none',
-        padding: '2px 5px',
-      },
+      className: `tw-ev-${task.priority || 'medium'}${isDone(task) ? ' tw-ev-done' : ''}`,
     };
-  };
-
-  const handleSelectEvent = (event: any) => {
-    if (onTaskClick) {
-      onTaskClick(event.resource);
-    }
-  };
-
-  const handleSelectSlot = ({ start, end }: { start: Date; end: Date }) => {
-    if (onDateSelect) {
-      onDateSelect(start, end);
-    }
   };
 
   return (
@@ -110,35 +58,28 @@ export default function CalendarView({ tasks, onTaskClick, onDateSelect }: Calen
         events={events}
         startAccessor="start"
         endAccessor="end"
-        style={{ height: 560, width: '100%' }}
-        eventPropGetter={eventStyleGetter}
-        onSelectEvent={handleSelectEvent}
-        onSelectSlot={handleSelectSlot}
+        allDayAccessor="allDay"
+        date={date}
+        onNavigate={setDate}
+        view="month"
+        onView={() => {}}
+        views={['month']}
+        eventPropGetter={eventPropGetter}
+        onSelectEvent={(event) => onTaskClick?.(event.resource)}
+        onSelectSlot={({ start, end }) => onDateSelect?.(start, end)}
         selectable
-        views={['month', 'week', 'day', 'agenda']}
-        defaultView="month"
         popup
         messages={{
-          date: t('calendarDate'),
-          time: t('calendarTime'),
-          event: t('calendarEvent'),
-          allDay: t('calendarAllDay'),
-          week: t('calendarWeek'),
-          work_week: t('calendarWorkWeek'),
-          day: t('calendarDay'),
           month: t('calendarMonth'),
           previous: t('calendarPrevious'),
           next: t('calendarNext'),
-          yesterday: t('calendarYesterday'),
-          tomorrow: t('calendarTomorrow'),
           today: t('calendarToday'),
-          agenda: t('calendarAgenda'),
           noEventsInRange: t('calendarNoEvents'),
           showMore: (count: number) => t('calendarShowMore', { count }),
         }}
-        tooltipAccessor={(event: any) => {
-          const task = event.resource as Task;
-          return `${task.title}\n${t('tooltipPriority', { value: priorityLabel(task.priority, t) })}\n${t('tooltipStatus', { value: statusLabel(task.status, t) })}`;
+        tooltipAccessor={(event) => {
+          const task = event.resource;
+          return `${task.title}\n${t('tooltipPriority', { value: priorityLabel(t, task.priority) })}\n${t('tooltipStatus', { value: statusLabel(t, task.status) })}`;
         }}
       />
     </div>

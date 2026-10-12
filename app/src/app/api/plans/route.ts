@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { getRowWorkspaceId, getWorkspaceRole, omitKeys } from '@/lib/api-access'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -54,9 +55,18 @@ export async function GET(request: NextRequest) {
           milestones:plan_milestones(*)
         `)
         .eq('id', planId)
-        .single()
+        .maybeSingle()
 
       if (error) throw error
+      if (!plan) {
+        return NextResponse.json({ error: 'Plan not found' }, { status: 404 })
+      }
+
+      // Caller must belong to the plan's workspace
+      const planRole = await getWorkspaceRole(supabaseAdmin, plan.workspace_id, user.id)
+      if (!planRole) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
       return NextResponse.json({ plan })
     }
 
@@ -80,6 +90,7 @@ export async function GET(request: NextRequest) {
       `)
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false })
+      .limit(500)
 
     if (error) throw error
 
@@ -116,6 +127,9 @@ export async function POST(request: NextRequest) {
     if (!workspace_id || !name) {
       return NextResponse.json({ error: 'workspace_id and name are required' }, { status: 400 })
     }
+    if (!start_date || !end_date) {
+      return NextResponse.json({ error: 'start_date and end_date are required' }, { status: 400 })
+    }
 
     // Verify workspace access
     const { data: membership } = await supabaseAdmin
@@ -138,7 +152,7 @@ export async function POST(request: NextRequest) {
         start_date,
         end_date,
         color,
-        creator_id: user.id
+        owner_id: user.id // plans table column is owner_id (there is no creator_id)
       })
       .select()
       .single()
@@ -163,11 +177,22 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { id, ...updates } = body
+    const { id, ...rawUpdates } = body
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
+
+    const planWorkspaceId = await getRowWorkspaceId(supabaseAdmin, 'plans', id)
+    if (!planWorkspaceId) {
+      return NextResponse.json({ error: 'Plan not found' }, { status: 404 })
+    }
+    if (!(await getWorkspaceRole(supabaseAdmin, planWorkspaceId, user.id))) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    // Plans can't be moved between workspaces
+    const updates = omitKeys(rawUpdates, ['workspace_id', 'owner_id', 'created_at'])
 
     const { data: plan, error } = await supabaseAdmin
       .from('plans')
@@ -200,6 +225,14 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    }
+
+    const planWorkspaceId = await getRowWorkspaceId(supabaseAdmin, 'plans', id)
+    if (!planWorkspaceId) {
+      return NextResponse.json({ error: 'Plan not found' }, { status: 404 })
+    }
+    if (!(await getWorkspaceRole(supabaseAdmin, planWorkspaceId, user.id))) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Delete milestones first

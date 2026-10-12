@@ -27,6 +27,21 @@ async function createAuthClient() {
   )
 }
 
+// A task / project referenced by a time entry must belong to the same workspace
+async function validateLinks(workspaceId: string, taskId?: string | null, projectId?: string | null) {
+  if (taskId) {
+    const { data } = await supabaseAdmin
+      .from('tasks').select('id').eq('id', taskId).eq('workspace_id', workspaceId).maybeSingle()
+    if (!data) return 'task_id does not belong to this workspace'
+  }
+  if (projectId) {
+    const { data } = await supabaseAdmin
+      .from('projects').select('id').eq('id', projectId).eq('workspace_id', workspaceId).maybeSingle()
+    if (!data) return 'project_id does not belong to this workspace'
+  }
+  return null
+}
+
 // GET /api/time-entries
 export async function GET(request: NextRequest) {
   try {
@@ -68,6 +83,7 @@ export async function GET(request: NextRequest) {
       .eq('workspace_id', workspaceId)
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
+      .limit(5000)
 
     if (date) {
       query = query.eq('date', date)
@@ -121,6 +137,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
+    if (typeof duration !== 'number' || !Number.isFinite(duration) || duration < 0) {
+      return NextResponse.json({ error: 'duration must be a non-negative number of seconds' }, { status: 400 })
+    }
+
+    const linkError = await validateLinks(workspace_id, task_id, project_id)
+    if (linkError) {
+      return NextResponse.json({ error: linkError }, { status: 400 })
+    }
+
     const { data: timeEntry, error } = await supabaseAdmin
       .from('time_entries')
       .insert({
@@ -158,10 +183,39 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { id, ...updates } = body
+    const { id } = body
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    }
+
+    // Whitelist editable fields (never user_id / workspace_id)
+    const updates: Record<string, any> = {}
+    for (const key of ['task_id', 'project_id', 'description', 'duration', 'date']) {
+      if (body[key] !== undefined) updates[key] = body[key]
+    }
+    if (updates.duration !== undefined &&
+        (typeof updates.duration !== 'number' || !Number.isFinite(updates.duration) || updates.duration < 0)) {
+      return NextResponse.json({ error: 'duration must be a non-negative number of seconds' }, { status: 400 })
+    }
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+    }
+
+    if (updates.task_id || updates.project_id) {
+      const { data: existing } = await supabaseAdmin
+        .from('time_entries')
+        .select('workspace_id')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .maybeSingle()
+      if (!existing) {
+        return NextResponse.json({ error: 'Time entry not found' }, { status: 404 })
+      }
+      const linkError = await validateLinks(existing.workspace_id, updates.task_id, updates.project_id)
+      if (linkError) {
+        return NextResponse.json({ error: linkError }, { status: 400 })
+      }
     }
 
     const { data: timeEntry, error } = await supabaseAdmin

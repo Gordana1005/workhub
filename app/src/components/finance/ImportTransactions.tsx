@@ -4,8 +4,11 @@ import { useState } from 'react';
 import { Upload, CheckCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import { supabase } from '@/lib/supabase';
+import { localDateString } from '@/lib/date';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useTranslations } from 'next-intl';
+import { useToast } from '@/components/ui/Toast';
+import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 
 interface CSVRow {
@@ -29,6 +32,7 @@ const selectClass = 'block w-full min-w-0 rounded-lg border border-border bg-sec
 
 export default function ImportTransactions({ accountId, onImport, onClose }: ImportTransactionsProps) {
   const t = useTranslations('pages.tools');
+  const toast = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<CSVRow[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
@@ -71,7 +75,7 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
       },
       error: (error) => {
         console.error('CSV parsing error:', error);
-        alert(t('finance.parseCsvFailed'));
+        toast.error(t('finance.parseCsvFailed'));
       },
     });
   };
@@ -107,11 +111,13 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
             const isNegative = row[mapping.amount].includes('-') || row[mapping.amount].includes('(');
             const type = isNegative ? 'expense' : 'income';
 
-            let date = new Date();
+            let dateString = localDateString();
             if (mapping.date && row[mapping.date]) {
-              const parsedDate = new Date(row[mapping.date]);
+              const rawDate = String(row[mapping.date]).trim();
+              const parsedDate = new Date(rawDate);
               if (!isNaN(parsedDate.getTime())) {
-                date = parsedDate;
+                // ISO date-only strings parse as UTC midnight; keep their calendar day as written.
+                dateString = /^\d{4}-\d{2}-\d{2}/.test(rawDate) ? rawDate.slice(0, 10) : localDateString(parsedDate);
               }
             }
 
@@ -132,7 +138,7 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
                 type: type,
                 amount: amount,
                 description: row[mapping.description],
-                date: date.toISOString().split('T')[0],
+                date: dateString,
               });
 
             if (error) {
@@ -182,22 +188,13 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
       onClose={onClose}
       size="lg"
       footer={file && !importResults ? (
-        <div className="flex flex-col-reverse gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-surface-hover"
-          >
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" onClick={onClose}>
             {t('finance.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={handleImport}
-            disabled={isImporting || !mapping.description || !mapping.amount}
-            className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          </Button>
+          <Button type="button" onClick={handleImport} disabled={isImporting || !mapping.description || !mapping.amount}>
             {isImporting ? t('finance.importing') : t('finance.importTransactions')}
-          </button>
+          </Button>
         </div>
       ) : undefined}
     >
@@ -213,7 +210,7 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
           />
           <label
             htmlFor="csv-upload"
-            className="inline-flex cursor-pointer rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-surface-hover"
+            className="inline-flex cursor-pointer rounded-lg border border-border bg-surface px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-surface-hover focus-within:ring-2"
           >
             {t('finance.chooseCsv')}
           </label>
@@ -235,7 +232,7 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
                 setPreview([]);
                 setHeaders([]);
               }}
-              className="shrink-0 text-sm text-red-600 hover:text-red-500"
+              className="shrink-0 text-sm text-danger hover:underline"
             >
               {t('finance.remove')}
             </button>
@@ -316,8 +313,8 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
 
       {importResults && (
         <div className="py-6 text-center">
-          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-green-500/10">
-            <CheckCircle className="h-7 w-7 text-green-600" />
+          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-success/10">
+            <CheckCircle className="h-7 w-7 text-success" />
           </div>
           <h3 className="text-lg font-semibold text-text-primary">{t('finance.importComplete')}</h3>
           <p className="mb-5 mt-2 text-sm text-text-secondary">
@@ -325,13 +322,9 @@ export default function ImportTransactions({ accountId, onImport, onClose }: Imp
               ? t('finance.importSummaryFailed', { success: importResults.success, failed: importResults.failed })
               : t('finance.importSummary', { success: importResults.success })}
           </p>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg bg-primary px-5 py-2 text-sm font-medium text-white hover:bg-primary-hover"
-          >
+          <Button type="button" onClick={onClose}>
             {t('finance.close')}
-          </button>
+          </Button>
         </div>
       )}
     </Dialog>

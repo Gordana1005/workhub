@@ -1,29 +1,29 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
-import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
-import TaskList from '@tiptap/extension-task-list';
-import TaskItem from '@tiptap/extension-task-item';
-import { common, createLowlight } from 'lowlight';
+import { useEditor, useEditorState, EditorContent, type Editor } from '@tiptap/react';
 import {
-  Bold, Italic, Code, List, ListOrdered,
+  Bold, Italic, Code, List, ListOrdered, ListChecks,
   Heading1, Heading2, Heading3, Quote, CodeSquare,
   Undo, Redo, Link as LinkIcon, Image as ImageIcon,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
+import { createNoteExtensions, noteEditingClass, noteProseClass } from './noteDoc';
 
 interface RichTextEditorProps {
   content: string;
   onChange: (content: string) => void;
   placeholder?: string;
   editable?: boolean;
+  /**
+   * 'box' (default): self-contained bordered editor that grows with its content.
+   * 'fill': fills its parent; the toolbar stays pinned and the document scrolls.
+   */
+  layout?: 'box' | 'fill';
+  /** Rendered above the document (inside the scrolling area in 'fill' layout). */
+  header?: ReactNode;
 }
 
 type EditorPrompt = {
@@ -37,75 +37,22 @@ type EditorPrompt = {
 const fieldClass =
   'mt-1.5 w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
 
-const editorClass = [
-  'max-w-none min-h-[12rem] bg-surface px-3 py-3 text-text-primary focus:outline-none sm:px-4',
-  '[&_h1]:mb-2 [&_h1]:text-2xl [&_h1]:font-semibold [&_h1]:text-text-primary',
-  '[&_h2]:mb-2 [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:text-text-primary',
-  '[&_h3]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:text-text-primary',
-  '[&_p]:my-2 [&_p]:break-words [&_p]:text-text-primary',
-  '[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5',
-  '[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5',
-  '[&_li]:my-0.5',
-  '[&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-text-secondary',
-  '[&_code]:rounded [&_code]:bg-surface-hover [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-text-primary',
-  '[&_pre]:my-3 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-surface-hover [&_pre]:p-3 [&_pre]:text-text-primary',
-  '[&_a]:text-primary [&_a]:underline',
-  '[&_img]:my-3 [&_img]:h-auto [&_img]:max-w-full [&_img]:rounded-lg',
-  '[&_ul[data-type=taskList]]:list-none [&_ul[data-type=taskList]]:pl-0',
-  '[&_input[type=checkbox]]:mt-1 [&_input[type=checkbox]]:accent-primary',
-  '[&_p.is-editor-empty:first-child]:before:pointer-events-none [&_p.is-editor-empty:first-child]:before:float-left [&_p.is-editor-empty:first-child]:before:h-0 [&_p.is-editor-empty:first-child]:before:text-text-muted [&_p.is-editor-empty:first-child]:before:content-[attr(data-placeholder)]',
-].join(' ');
-
 export default function RichTextEditor({
   content,
   onChange,
   placeholder,
   editable = true,
+  layout = 'box',
+  header,
 }: RichTextEditorProps) {
   const t = useTranslations('pages.notes');
   const resolvedPlaceholder = placeholder ?? t('startWriting');
-  const lowlight = useMemo(() => createLowlight(common), []);
+  const extensions = useMemo(() => createNoteExtensions({ placeholder: resolvedPlaceholder }), []); // eslint-disable-line react-hooks/exhaustive-deps
   const [prompt, setPrompt] = useState<EditorPrompt | null>(null);
+  const fill = layout === 'fill';
 
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: {
-          levels: [1, 2, 3],
-        },
-      }),
-      Placeholder.configure({
-        placeholder: resolvedPlaceholder,
-      }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          class: 'text-primary underline cursor-pointer',
-        },
-      }),
-      Image.configure({
-        HTMLAttributes: {
-          class: 'max-w-full h-auto rounded-lg my-4',
-        },
-      }),
-      CodeBlockLowlight.configure({
-        lowlight,
-        HTMLAttributes: {
-          class: 'bg-surface-hover text-text-primary rounded-lg p-4 my-4 overflow-x-auto max-w-full',
-        },
-      }),
-      TaskList.configure({
-        HTMLAttributes: {
-          class: 'list-none p-0',
-        },
-      }),
-      TaskItem.configure({
-        nested: true,
-        HTMLAttributes: {
-          class: 'flex items-start gap-2 my-1',
-        },
-      }),
-    ],
+    extensions,
     content,
     editable,
     onUpdate: ({ editor: current }) => {
@@ -113,11 +60,11 @@ export default function RichTextEditor({
     },
     editorProps: {
       attributes: {
-        class: editorClass,
+        class: `${noteProseClass} ${noteEditingClass} ${fill ? '' : 'px-3 py-3 sm:px-4'}`,
       },
     },
     immediatelyRender: false,
-  }, [editable, lowlight]);
+  }, [editable, extensions]);
 
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {
@@ -133,16 +80,15 @@ export default function RichTextEditor({
     editor.view.dispatch(editor.state.tr);
   }, [editor, resolvedPlaceholder]);
 
-  if (!editor) return null;
-
   const openPrompt = (kind: EditorPrompt['kind']) => {
+    if (!editor) return;
     const { from, to } = editor.state.selection;
     const href = kind === 'link' ? editor.getAttributes('link').href || '' : '';
     setPrompt({ kind, value: href, hadLink: Boolean(href), from, to });
   };
 
   const applyPrompt = (remove = false) => {
-    if (!prompt) return;
+    if (!editor || !prompt) return;
     const range = { from: prompt.from, to: prompt.to };
     const value = prompt.value.trim();
 
@@ -159,159 +105,247 @@ export default function RichTextEditor({
     setPrompt(null);
   };
 
-  return (
-    <div className="max-w-full overflow-hidden rounded-2xl border border-border bg-surface text-text-primary">
-      {editable && (
-        <div className="sticky top-0 z-10 flex max-w-full flex-wrap items-center gap-1 border-b border-border bg-surface px-2 py-2">
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            active={editor.isActive('bold')}
-            icon={<Bold className="h-4 w-4" />}
-            tooltip={t('toolbar.bold')}
+  const dialog = (
+    <Dialog
+      open={prompt !== null}
+      title={prompt?.kind === 'image' ? t('imageUrl') : t('toolbar.addLink')}
+      onClose={() => setPrompt(null)}
+      footer={
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {prompt?.kind === 'link' && prompt.hadLink ? (
+            <Button type="button" variant="ghost" onClick={() => applyPrompt(true)}>
+              {t('removeLink')}
+            </Button>
+          ) : null}
+          <Button type="button" variant="secondary" onClick={() => setPrompt(null)}>
+            {t('cancel')}
+          </Button>
+          <Button type="submit" form="notes-url-form">
+            {prompt?.kind === 'image' ? t('toolbar.addImage') : t('toolbar.addLink')}
+          </Button>
+        </div>
+      }
+    >
+      <form
+        id="notes-url-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          applyPrompt(false);
+        }}
+      >
+        <label className="block text-sm text-text-secondary">
+          {prompt?.kind === 'image' ? t('imageUrl') : t('url')}
+          <input
+            value={prompt?.value ?? ''}
+            onChange={(event) => setPrompt((current) => current ? { ...current, value: event.target.value } : current)}
+            className={fieldClass}
+            placeholder="https://"
+            inputMode="url"
+            autoCapitalize="off"
+            autoCorrect="off"
+            autoFocus
           />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            active={editor.isActive('italic')}
-            icon={<Italic className="h-4 w-4" />}
-            tooltip={t('toolbar.italic')}
-          />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleCode().run()}
-            active={editor.isActive('code')}
-            icon={<Code className="h-4 w-4" />}
-            tooltip={t('toolbar.inlineCode')}
-          />
+        </label>
+      </form>
+    </Dialog>
+  );
 
-          <div className="mx-1 h-6 w-px bg-border" />
+  if (fill) {
+    // Same element structure before and after the editor instance exists, so the
+    // header (title input etc.) is never remounted.
+    return (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-surface text-text-primary">
+        {editable ? (
+          editor ? (
+            <Toolbar editor={editor} onPrompt={openPrompt} className="shrink-0 border-b border-border" />
+          ) : (
+            <div className="h-[2.9rem] shrink-0 border-b border-border" aria-hidden="true" />
+          )
+        ) : null}
 
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-            active={editor.isActive('heading', { level: 1 })}
-            icon={<Heading1 className="h-4 w-4" />}
-            tooltip={t('toolbar.heading1')}
-          />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-            active={editor.isActive('heading', { level: 2 })}
-            icon={<Heading2 className="h-4 w-4" />}
-            tooltip={t('toolbar.heading2')}
-          />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-            active={editor.isActive('heading', { level: 3 })}
-            icon={<Heading3 className="h-4 w-4" />}
-            tooltip={t('toolbar.heading3')}
-          />
-
-          <div className="mx-1 h-6 w-px bg-border" />
-
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            active={editor.isActive('bulletList')}
-            icon={<List className="h-4 w-4" />}
-            tooltip={t('toolbar.bulletList')}
-          />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-            active={editor.isActive('orderedList')}
-            icon={<ListOrdered className="h-4 w-4" />}
-            tooltip={t('toolbar.numberedList')}
-          />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleTaskList().run()}
-            active={editor.isActive('taskList')}
-            icon={<span className="text-xs font-bold">☑</span>}
-            tooltip={t('toolbar.taskList')}
-          />
-
-          <div className="mx-1 h-6 w-px bg-border" />
-
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleBlockquote().run()}
-            active={editor.isActive('blockquote')}
-            icon={<Quote className="h-4 w-4" />}
-            tooltip={t('toolbar.quote')}
-          />
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-            active={editor.isActive('codeBlock')}
-            icon={<CodeSquare className="h-4 w-4" />}
-            tooltip={t('toolbar.codeBlock')}
-          />
-
-          <div className="mx-1 h-6 w-px bg-border" />
-
-          <ToolbarButton
-            onClick={() => openPrompt('link')}
-            active={editor.isActive('link')}
-            icon={<LinkIcon className="h-4 w-4" />}
-            tooltip={t('toolbar.addLink')}
-          />
-          <ToolbarButton
-            onClick={() => openPrompt('image')}
-            icon={<ImageIcon className="h-4 w-4" />}
-            tooltip={t('toolbar.addImage')}
-          />
-
-          <div className="ml-auto flex flex-wrap items-center gap-1">
-            <ToolbarButton
-              onClick={() => editor.chain().focus().undo().run()}
-              disabled={!editor.can().undo()}
-              icon={<Undo className="h-4 w-4" />}
-              tooltip={t('toolbar.undo')}
-            />
-            <ToolbarButton
-              onClick={() => editor.chain().focus().redo().run()}
-              disabled={!editor.can().redo()}
-              icon={<Redo className="h-4 w-4" />}
-              tooltip={t('toolbar.redo')}
-            />
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain" data-note-scroll>
+          <div
+            className="mx-auto min-h-full w-full max-w-[44rem] px-5 pb-40 pt-5 sm:px-8 md:pt-8"
+            onMouseDown={(event) => {
+              // Clicking the empty area around the document puts the caret at the end.
+              if (event.target === event.currentTarget && editable && editor) {
+                event.preventDefault();
+                editor.chain().focus('end').run();
+              }
+            }}
+          >
+            {header}
+            {editor ? <EditorContent editor={editor} /> : null}
           </div>
         </div>
-      )}
 
+        {dialog}
+      </div>
+    );
+  }
+
+  if (!editor) return null;
+
+  return (
+    <div className="max-w-full overflow-hidden rounded-2xl border border-border bg-surface text-text-primary">
+      {editable ? <Toolbar editor={editor} onPrompt={openPrompt} className="sticky top-0 z-10 border-b border-border" /> : null}
+      {header}
       <EditorContent editor={editor} className="max-w-full bg-surface text-text-primary" />
-
-      <Dialog
-        open={prompt !== null}
-        title={prompt?.kind === 'image' ? t('imageUrl') : t('toolbar.addLink')}
-        onClose={() => setPrompt(null)}
-        footer={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {prompt?.kind === 'link' && prompt.hadLink ? (
-              <Button type="button" variant="ghost" onClick={() => applyPrompt(true)}>
-                {t('removeLink')}
-              </Button>
-            ) : null}
-            <Button type="button" variant="secondary" onClick={() => setPrompt(null)}>
-              {t('cancel')}
-            </Button>
-            <Button type="submit" form="notes-url-form">
-              {prompt?.kind === 'image' ? t('toolbar.addImage') : t('toolbar.addLink')}
-            </Button>
-          </div>
-        }
-      >
-        <form
-          id="notes-url-form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            applyPrompt(false);
-          }}
-        >
-          <label className="block text-sm text-text-secondary">
-            {prompt?.kind === 'image' ? t('imageUrl') : t('url')}
-            <input
-              value={prompt?.value ?? ''}
-              onChange={(event) => setPrompt((current) => current ? { ...current, value: event.target.value } : current)}
-              className={fieldClass}
-              autoFocus
-            />
-          </label>
-        </form>
-      </Dialog>
+      {dialog}
     </div>
   );
+}
+
+function Toolbar({
+  editor,
+  onPrompt,
+  className = '',
+}: {
+  editor: Editor;
+  onPrompt: (kind: EditorPrompt['kind']) => void;
+  className?: string;
+}) {
+  const t = useTranslations('pages.notes');
+
+  const state = useEditorState({
+    editor,
+    selector: ({ editor: current }) => ({
+      bold: current.isActive('bold'),
+      italic: current.isActive('italic'),
+      code: current.isActive('code'),
+      h1: current.isActive('heading', { level: 1 }),
+      h2: current.isActive('heading', { level: 2 }),
+      h3: current.isActive('heading', { level: 3 }),
+      bulletList: current.isActive('bulletList'),
+      orderedList: current.isActive('orderedList'),
+      taskList: current.isActive('taskList'),
+      blockquote: current.isActive('blockquote'),
+      codeBlock: current.isActive('codeBlock'),
+      link: current.isActive('link'),
+      canUndo: current.can().undo(),
+      canRedo: current.can().redo(),
+    }),
+  });
+
+  const run = (fn: () => void) => () => fn();
+  const icon = 'h-4 w-4';
+
+  return (
+    <div
+      role="toolbar"
+      aria-label={t('content')}
+      className={`flex max-w-full items-center gap-0.5 overflow-x-auto bg-surface px-2 py-1.5 [scrollbar-width:none] sm:px-3 [&::-webkit-scrollbar]:hidden ${className}`}
+    >
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleBold().run())}
+        active={state.bold}
+        icon={<Bold className={icon} />}
+        tooltip={t('toolbar.bold')}
+      />
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleItalic().run())}
+        active={state.italic}
+        icon={<Italic className={icon} />}
+        tooltip={t('toolbar.italic')}
+      />
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleCode().run())}
+        active={state.code}
+        icon={<Code className={icon} />}
+        tooltip={t('toolbar.inlineCode')}
+      />
+
+      <Divider />
+
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleHeading({ level: 1 }).run())}
+        active={state.h1}
+        icon={<Heading1 className={icon} />}
+        tooltip={t('toolbar.heading1')}
+      />
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleHeading({ level: 2 }).run())}
+        active={state.h2}
+        icon={<Heading2 className={icon} />}
+        tooltip={t('toolbar.heading2')}
+      />
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleHeading({ level: 3 }).run())}
+        active={state.h3}
+        icon={<Heading3 className={icon} />}
+        tooltip={t('toolbar.heading3')}
+      />
+
+      <Divider />
+
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleBulletList().run())}
+        active={state.bulletList}
+        icon={<List className={icon} />}
+        tooltip={t('toolbar.bulletList')}
+      />
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleOrderedList().run())}
+        active={state.orderedList}
+        icon={<ListOrdered className={icon} />}
+        tooltip={t('toolbar.numberedList')}
+      />
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleTaskList().run())}
+        active={state.taskList}
+        icon={<ListChecks className={icon} />}
+        tooltip={t('toolbar.taskList')}
+      />
+
+      <Divider />
+
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleBlockquote().run())}
+        active={state.blockquote}
+        icon={<Quote className={icon} />}
+        tooltip={t('toolbar.quote')}
+      />
+      <ToolbarButton
+        onClick={run(() => editor.chain().focus().toggleCodeBlock().run())}
+        active={state.codeBlock}
+        icon={<CodeSquare className={icon} />}
+        tooltip={t('toolbar.codeBlock')}
+      />
+
+      <Divider />
+
+      <ToolbarButton
+        onClick={() => onPrompt('link')}
+        active={state.link}
+        icon={<LinkIcon className={icon} />}
+        tooltip={t('toolbar.addLink')}
+      />
+      <ToolbarButton
+        onClick={() => onPrompt('image')}
+        icon={<ImageIcon className={icon} />}
+        tooltip={t('toolbar.addImage')}
+      />
+
+      <div className="ml-auto flex shrink-0 items-center gap-0.5 pl-2">
+        <ToolbarButton
+          onClick={run(() => editor.chain().focus().undo().run())}
+          disabled={!state.canUndo}
+          icon={<Undo className={icon} />}
+          tooltip={t('toolbar.undo')}
+        />
+        <ToolbarButton
+          onClick={run(() => editor.chain().focus().redo().run())}
+          disabled={!state.canRedo}
+          icon={<Redo className={icon} />}
+          tooltip={t('toolbar.redo')}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Divider() {
+  return <div className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />;
 }
 
 function ToolbarButton({
@@ -335,11 +369,12 @@ function ToolbarButton({
       disabled={disabled}
       title={tooltip}
       aria-label={tooltip}
-      className={`rounded-lg p-2 transition-colors ${
+      aria-pressed={active}
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
         active
-          ? 'bg-primary text-white'
-          : 'text-text-primary hover:bg-surface-hover'
-      } disabled:cursor-not-allowed disabled:opacity-30`}
+          ? 'bg-primary/15 text-primary'
+          : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+      } disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent`}
     >
       {icon}
     </button>

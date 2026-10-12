@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Download, FileText, FileJson, FileSpreadsheet } from 'lucide-react';
 import { exportTasks, exportTimeEntries, exportProjects, exportNotes, ExportFormat } from '@/lib/export';
 import { useTranslations } from 'next-intl';
+import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 
 interface ExportDialogProps {
@@ -65,32 +66,29 @@ export default function ExportDialog({
       title={t('export.title')}
       onClose={onClose}
       footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row">
-          <button type="button" onClick={onClose} className="btn-secondary flex-1">
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" onClick={onClose}>
             {t('export.cancel')}
-          </button>
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={!filename.trim()}
-            className="btn-primary inline-flex flex-1 items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" />
+          </Button>
+          <Button type="button" onClick={handleExport} disabled={!filename.trim()} className="gap-2">
+            <Download className="h-4 w-4" aria-hidden="true" />
             {t('export.export')}
-          </button>
+          </Button>
         </div>
       }
     >
       <div className="space-y-5">
         <div>
           <p className="mb-2 text-sm font-medium text-text-primary">{t('export.format')}</p>
-          <div className="space-y-2">
+          <div className="space-y-2" role="radiogroup" aria-label={t('export.format')}>
             {formats.map((item) => (
               <button
                 key={item.value}
                 type="button"
+                role="radio"
+                aria-checked={format === item.value}
                 onClick={() => setFormat(item.value)}
-                className={`w-full rounded-xl border p-3 text-left ${
+                className={`w-full rounded-xl border p-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                   format === item.value
                     ? 'border-primary bg-primary/10'
                     : 'border-border hover:bg-surface-hover'
@@ -117,7 +115,7 @@ export default function ExportDialog({
             type="text"
             value={filename}
             onChange={(e) => setFilename(e.target.value)}
-            className="block w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none"
+            className="block w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30"
             placeholder={t('export.filenamePlaceholder')}
           />
           <p className="mt-1.5 text-xs text-text-secondary">{t('export.extensionHint')}</p>

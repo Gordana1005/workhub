@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { safeNextPath } from '@/lib/safeNext'
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url)
@@ -29,6 +30,6 @@ export async function GET(request: Request) {
     await supabase.auth.exchangeCodeForSession(code)
   }
 
-  // Redirect to dashboard after successful OAuth
-  return NextResponse.redirect(new URL('/dashboard', request.url))
+  // Redirect to the validated `next` target (default: dashboard) after a successful sign-in
+  return NextResponse.redirect(new URL(safeNextPath(requestUrl.searchParams.get('next')), request.url))
 }

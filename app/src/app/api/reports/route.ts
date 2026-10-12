@@ -12,6 +12,9 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// Upper bound for rows pulled into memory per report query
+const MAX_ROWS = 5000
+
 // Create auth client
 async function createAuthClient() {
   const cookieStore = await cookies()
@@ -63,6 +66,7 @@ export async function GET(request: NextRequest) {
           .from('tasks')
           .select('*')
           .eq('workspace_id', workspaceId)
+          .limit(MAX_ROWS)
 
         if (error) throw error
 
@@ -96,6 +100,7 @@ export async function GET(request: NextRequest) {
           `)
           .eq('workspace_id', workspaceId)
           .order('date', { ascending: false })
+          .limit(MAX_ROWS)
 
         if (error) throw error
 
@@ -116,12 +121,14 @@ export async function GET(request: NextRequest) {
           .from('tasks')
           .select('*')
           .eq('workspace_id', workspaceId)
+          .limit(MAX_ROWS)
 
         // Get time entries
         const { data: timeEntries } = await supabaseAdmin
           .from('time_entries')
           .select('*')
           .eq('workspace_id', workspaceId)
+          .limit(MAX_ROWS)
 
         // Calculate weekly stats
         const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -142,7 +149,7 @@ export async function GET(request: NextRequest) {
           ).reduce((sum, e) => sum + (e.duration || 0), 0) || 0
 
           return {
-            date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }),
             completed,
             created,
             timeLogged: Math.round(timeLogged / 3600 * 10) / 10
@@ -155,9 +162,9 @@ export async function GET(request: NextRequest) {
       default: {
         // Return overview of all data
         const [tasks, timeEntries, projects] = await Promise.all([
-          supabaseAdmin.from('tasks').select('*').eq('workspace_id', workspaceId),
-          supabaseAdmin.from('time_entries').select('*').eq('workspace_id', workspaceId),
-          supabaseAdmin.from('projects').select('*').eq('workspace_id', workspaceId)
+          supabaseAdmin.from('tasks').select('*').eq('workspace_id', workspaceId).limit(MAX_ROWS),
+          supabaseAdmin.from('time_entries').select('*').eq('workspace_id', workspaceId).limit(MAX_ROWS),
+          supabaseAdmin.from('projects').select('*').eq('workspace_id', workspaceId).limit(MAX_ROWS)
         ])
 
         const totalDuration = timeEntries.data?.reduce((sum, e) => sum + (e.duration || 0), 0) || 0

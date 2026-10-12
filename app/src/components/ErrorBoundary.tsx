@@ -3,25 +3,33 @@
 import React from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { Button } from '@/components/ui/Button';
 
-function ErrorFallback({ message }: { message?: string }) {
+function ErrorFallback({ message, onRetry }: { message?: string; onRetry: () => void }) {
   const t = useTranslations('pages.tools');
+  const tc = useTranslations('common');
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="max-w-md w-full bg-surface border border-border rounded-2xl p-8 text-center text-text-primary">
-        <AlertTriangle className="w-16 h-16 text-danger mx-auto mb-4" />
-        <h2 className="text-2xl font-bold text-text-primary mb-2">{t('error.title')}</h2>
-        <p className="text-text-secondary mb-6">
-          {message || t('error.fallback')}
-        </p>
-        <button
-          onClick={() => window.location.reload()}
-          className="flex items-center gap-2 mx-auto px-6 py-3 bg-primary hover:bg-primary-hover text-white rounded-xl transition-colors"
-        >
-          <RefreshCw className="w-5 h-5" />
-          {t('error.reload')}
-        </button>
+    <div role="alert" className="flex min-h-[60dvh] items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 text-center text-text-primary shadow-md sm:p-8">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-danger/10 text-danger">
+          <AlertTriangle className="h-7 w-7" aria-hidden />
+        </div>
+        <h2 className="mb-1.5 text-xl font-semibold tracking-tight text-text-primary">{t('error.title')}</h2>
+        <p className="text-sm leading-6 text-text-secondary">{t('error.fallback')}</p>
+        {message ? (
+          <p className="mt-4 max-h-28 overflow-auto rounded-lg border border-border bg-tertiary px-3 py-2 text-left font-mono text-xs leading-5 text-text-muted">
+            {message}
+          </p>
+        ) : null}
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-center">
+          <Button type="button" variant="secondary" onClick={onRetry}>
+            {tc('retry')}
+          </Button>
+          <Button type="button" leftIcon={<RefreshCw />} onClick={() => window.location.reload()}>
+            {t('error.reload')}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -50,7 +58,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     // Log to console in development, will integrate with Sentry in production
     console.error('ErrorBoundary caught:', error, errorInfo);
-    
+
     // If Sentry is available, send error
     if (typeof window !== 'undefined' && (window as any).Sentry) {
       (window as any).Sentry.captureException(error, {
@@ -59,13 +67,15 @@ export class ErrorBoundary extends React.Component<Props, State> {
     }
   }
 
+  private reset = () => this.setState({ hasError: false, error: null });
+
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;
       }
 
-      return <ErrorFallback message={this.state.error?.message} />;
+      return <ErrorFallback message={this.state.error?.message} onRetry={this.reset} />;
     }
 
     return this.props.children;

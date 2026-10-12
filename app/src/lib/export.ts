@@ -1,5 +1,12 @@
 import Papa from 'papaparse';
-import { format } from 'date-fns';
+import { format as formatDate } from 'date-fns';
+
+// Tolerant date formatter: a missing/invalid date must not abort the whole export
+function format(value: any, pattern: string): string {
+  if (!value) return '';
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? '' : formatDate(d, pattern);
+}
 
 export type ExportFormat = 'csv' | 'json' | 'markdown';
 
@@ -18,9 +25,9 @@ export function exportTasks(tasks: any[], options: ExportOptions) {
     Status: task.status,
     Priority: task.priority,
     Category: task.category || '',
-    'Due Date': task.due_date ? format(new Date(task.due_date), 'yyyy-MM-dd') : '',
-    'Created At': format(new Date(task.created_at), 'yyyy-MM-dd HH:mm'),
-    'Completed At': task.completed_at ? format(new Date(task.completed_at), 'yyyy-MM-dd HH:mm') : '',
+    'Due Date': task.due_date ? format(task.due_date, 'yyyy-MM-dd') : '',
+    'Created At': format(task.created_at, 'yyyy-MM-dd HH:mm'),
+    'Completed At': task.completed_at ? format(task.completed_at, 'yyyy-MM-dd HH:mm') : '',
     Project: task.projects?.name || '',
     'Assigned To': task.assigned_to_user?.username || '',
   }));
@@ -47,9 +54,9 @@ export function exportTimeEntries(entries: any[], options: ExportOptions) {
     Project: entry.projects?.name || '',
     Duration: formatDuration(entry.duration),
     'Duration (hours)': (entry.duration / 3600).toFixed(2),
-    Date: format(new Date(entry.start_time), 'yyyy-MM-dd'),
-    'Start Time': format(new Date(entry.start_time), 'HH:mm'),
-    'End Time': entry.end_time ? format(new Date(entry.end_time), 'HH:mm') : 'In Progress',
+    Date: format(entry.date || entry.start_time || entry.created_at, 'yyyy-MM-dd'),
+    'Start Time': entry.start_time ? format(entry.start_time, 'HH:mm') : '',
+    'End Time': entry.end_time ? format(entry.end_time, 'HH:mm') : '',
     Description: entry.description || '',
   }));
 
@@ -76,7 +83,7 @@ export function exportProjects(projects: any[], options: ExportOptions) {
     Status: project.status,
     'Task Count': project.task_count || 0,
     'Completed Tasks': project.completed_tasks || 0,
-    'Created At': format(new Date(project.created_at), 'yyyy-MM-dd'),
+    'Created At': format(project.created_at, 'yyyy-MM-dd'),
   }));
 
   switch (options.format) {
@@ -100,8 +107,8 @@ export function exportNotes(notes: any[], options: ExportOptions) {
     Title: note.title,
     Content: note.content,
     Project: note.projects?.name || 'No Project',
-    'Created At': format(new Date(note.created_at), 'yyyy-MM-dd HH:mm'),
-    'Updated At': format(new Date(note.updated_at), 'yyyy-MM-dd HH:mm'),
+    'Created At': format(note.created_at, 'yyyy-MM-dd HH:mm'),
+    'Updated At': format(note.updated_at, 'yyyy-MM-dd HH:mm'),
   }));
 
   switch (options.format) {
@@ -120,7 +127,7 @@ export function exportNotes(notes: any[], options: ExportOptions) {
 // Helper functions
 
 function exportAsCSV(data: any[], filename: string) {
-  const csv = Papa.unparse(data);
+  const csv = Papa.unparse(data, { escapeFormulae: true }); // neutralise =,+,-,@ prefixes (CSV injection)
   downloadFile(csv, `${filename}.csv`, 'text/csv');
 }
 
@@ -145,7 +152,7 @@ function exportAsMarkdown(data: any[], filename: string) {
   
   // Table rows
   data.forEach(row => {
-    markdown += `| ${headers.map(h => row[h] || '').join(' | ')} |\n`;
+    markdown += `| ${headers.map(h => String(row[h] ?? '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ')).join(' | ')} |\n`;
   });
 
   downloadFile(markdown, `${filename}.md`, 'text/markdown');

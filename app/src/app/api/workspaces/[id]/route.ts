@@ -127,7 +127,7 @@ export async function PUT(
 
     // Build update object with only provided fields
     const updates: any = {}
-    if (name !== undefined && name.trim()) updates.name = name.trim()
+    if (typeof name === 'string' && name.trim()) updates.name = name.trim()
     if (category !== undefined) updates.category = category
     if (color !== undefined) updates.color = color
     if (description !== undefined) updates.description = description

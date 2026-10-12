@@ -19,7 +19,7 @@ generate-recurring-tasks
 ```sql
 SELECT net.http_post(
   url := 'https://miqwspnfqdqrwkdqviif.supabase.co/functions/v1/generate-recurring-tasks',
-  headers := '{"Content-Type": "application/json", "Authorization": "Bearer sb_publishable_89F45YGw-j1jO-zogTR8PQ_-zb8VD5w"}'::jsonb,
+  headers := '{"Content-Type": "application/json", "Authorization": "Bearer <SUPABASE_ANON_KEY>"}'::jsonb,
   body := '{}'::jsonb
 );
 ```
@@ -39,7 +39,7 @@ After creating the job, you can manually trigger it by running this in SQL Edito
 ```sql
 SELECT net.http_post(
   url := 'https://miqwspnfqdqrwkdqviif.supabase.co/functions/v1/generate-recurring-tasks',
-  headers := '{"Content-Type": "application/json", "Authorization": "Bearer sb_publishable_89F45YGw-j1jO-zogTR8PQ_-zb8VD5w"}'::jsonb,
+  headers := '{"Content-Type": "application/json", "Authorization": "Bearer <SUPABASE_ANON_KEY>"}'::jsonb,
   body := '{}'::jsonb
 );
 ```

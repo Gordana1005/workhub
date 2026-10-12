@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/ui/Toast'
+import { motion } from 'framer-motion'
 import { X, FileText, Plus } from 'lucide-react'
 import { IconMenu } from '../ui/IconMenu'
 import TemplateEditor from './TemplateEditor'
@@ -36,6 +38,8 @@ export default function TemplateSelector({
   onSelectTemplate
 }: TemplateSelectorProps) {
   const t = useTranslations('pages.tasks')
+  const toast = useToast()
+  const { confirm, dialog } = useConfirm()
   const [templates, setTemplates] = useState<TaskTemplate[]>([])
 
   const priorityLabel = (priority: string) => {
@@ -74,7 +78,7 @@ export default function TemplateSelector({
   }
 
   const handleDeleteTemplate = async (templateId: string) => {
-    if (!confirm(t('confirmDeleteTemplate'))) return
+    if (!(await confirm({ title: t('confirmDeleteTemplate'), confirmLabel: t('deleteTemplateTitle') }))) return
 
     try {
       const response = await fetch(`/api/templates?id=${templateId}`, {
@@ -86,7 +90,7 @@ export default function TemplateSelector({
       await loadTemplates()
     } catch (error) {
       console.error('Error deleting template:', error)
-      alert(t('deleteTemplateFailed'))
+      toast.error(t('deleteTemplateFailed'))
     }
   }
 
@@ -96,10 +100,10 @@ export default function TemplateSelector({
     : templates.filter(t => t.category === selectedCategory)
 
   const priorityColors = {
-    low: 'bg-green-500',
-    medium: 'bg-yellow-500',
-    high: 'bg-orange-500',
-    urgent: 'bg-red-500'
+    low: 'bg-text-muted',
+    medium: 'bg-primary',
+    high: 'bg-warning',
+    urgent: 'bg-danger'
   }
 
   if (showEditor) {
@@ -178,7 +182,7 @@ export default function TemplateSelector({
                 className={`px-4 py-2 rounded-lg whitespace-nowrap transition-colors ${
                   selectedCategory === category
                     ? 'bg-primary text-white'
-                    : 'bg-secondary text-text-secondary hover:bg-surface-hover border border-border'
+                    : 'bg-tertiary text-text-secondary hover:bg-surface-hover border border-border'
                 }`}
               >
                 {category === 'all' ? t('allTemplates') : category}
@@ -208,15 +212,24 @@ export default function TemplateSelector({
               {filteredTemplates.map((template) => (
                 <div
                   key={template.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => handleSelectTemplate(template)}
-                  className="p-4 bg-secondary hover:bg-surface-hover rounded-lg cursor-pointer transition-all border border-border hover:border-primary"
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      handleSelectTemplate(template)
+                    }
+                  }}
+                  className="p-4 bg-surface hover:bg-surface-hover rounded-lg cursor-pointer transition-all border border-border hover:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2 mb-1">
                         <h3 className="font-semibold text-text-primary">{template.name}</h3>
                         {template.category && (
-                          <span className="px-2 py-0.5 bg-surface rounded text-xs text-text-secondary">
+                          <span className="px-2 py-0.5 bg-tertiary rounded text-xs text-text-secondary">
                             {template.category}
                           </span>
                         )}
@@ -298,6 +311,7 @@ export default function TemplateSelector({
           )}
         </div>
       </motion.div>
+      {dialog}
     </motion.div>
   )
 }

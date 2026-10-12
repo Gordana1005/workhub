@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
+import { useToast } from '@/components/ui/Toast'
 import { motion } from 'framer-motion'
 import { X, Plus, Trash2 } from 'lucide-react'
 
@@ -35,6 +36,7 @@ export default function TemplateEditor({
   onSave
 }: TemplateEditorProps) {
   const t = useTranslations('pages.tasks')
+  const toast = useToast()
   const [formData, setFormData] = useState<TaskTemplate>({
     name: template?.name || '',
     description: template?.description || '',
@@ -122,7 +124,7 @@ export default function TemplateEditor({
       onClose()
     } catch (error) {
       console.error('Error saving template:', error)
-      alert(t('saveTemplateFailed'))
+      toast.error(t('saveTemplateFailed'))
     } finally {
       setSaving(false)
     }
@@ -376,7 +378,7 @@ export default function TemplateEditor({
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 bg-secondary text-text-primary hover:bg-surface-hover rounded-lg transition-colors border border-border"
+              className="px-6 py-2 bg-surface text-text-primary hover:bg-surface-hover rounded-lg transition-colors border border-border"
             >
               {t('cancel')}
             </button>

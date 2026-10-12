@@ -2,27 +2,82 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * TrackWork design tokens
+ * -----------------------
+ * Source of truth = space-separated RGB channels (--rgb-*) so Tailwind can apply
+ * alpha (`bg-primary/10`, `ring-primary/25`). Full-colour aliases (--surface,
+ * --border, ...) are kept for legacy `var(--x)` usages and plain CSS files.
+ * Only the .dark block overrides channels; aliases follow automatically.
+ *
+ * Contrast (checked with a script, WCAG 2.x):
+ *   light  text-primary 18:1 · text-secondary 8.4:1 · text-muted 5.9:1 on surface
+ *   dark   text-primary 15:1 · text-secondary 8.9:1 · text-muted 6.1:1 on surface
+ *   control border (--rgb-control) >= 3:1 on surface in both themes
+ *   *-ink (text-primary / text-success / text-warning / text-danger) >= 4.5:1 on
+ *   their own 12-15% tint and on surface / surface-hover in both themes.
+ */
 :root {
   color-scheme: light;
 
-  --bg-primary: #F6F7F9;
-  --bg-secondary: #FFFFFF;
-  --bg-tertiary: #EEF1F6;
+  /* Surfaces */
+  --rgb-bg: 246 247 249;            /* page background */
+  --rgb-surface: 255 255 255;       /* cards, panels */
+  --rgb-surface-hover: 241 243 247; /* hover / selected rows */
+  --rgb-surface-raised: 255 255 255;/* menus, popovers, dialogs */
+  --rgb-inset: 255 255 255;         /* inputs / wells (bg-secondary) */
+  --rgb-tertiary: 238 241 246;      /* chips, tracks, neutral badges */
 
-  --surface: #FFFFFF;
-  --surface-hover: #F3F5F8;
+  /* Lines */
+  --rgb-border: 227 230 237;        /* hairlines, card borders */
+  --rgb-border-strong: 203 209 219; /* button outlines, dividers that must read */
+  --rgb-control: 131 140 156;       /* input / checkbox boundary (>= 3:1) */
 
-  --border: #E2E6EE;
-  --border-light: #E2E6EE;
+  /* Text */
+  --rgb-text: 20 23 28;
+  --rgb-text-2: 69 78 92;
+  --rgb-text-3: 91 101 116;
 
-  --text-primary: #16181D;
-  --text-secondary: #5C6570;
-  --text-muted: #8B939E;
+  /* Brand + status fills (backgrounds, borders, rings) */
+  --rgb-primary: 39 80 230;
+  --rgb-primary-hover: 31 64 189;
+  --rgb-primary-active: 26 54 159;
+  --rgb-success: 14 159 110;
+  --rgb-warning: 217 138 6;
+  --rgb-danger: 225 29 72;
+  --rgb-danger-hover: 190 18 60;
 
-  --brand-blue: #2C5AF6;
-  --brand-green: #02B075;
-  --brand-orange: #F59F0B;
-  --brand-red: #E11D48;
+  /* "Ink" = the same hues tuned for TEXT on surfaces/tints */
+  --rgb-primary-ink: 35 71 208;
+  --rgb-success-ink: 8 108 74;
+  --rgb-warning-ink: 127 80 0;
+  --rgb-danger-ink: 184 17 58;
+
+  /* Misc */
+  --rgb-scroll: 197 203 214;
+  --rgb-skeleton: 230 233 239;
+  --rgb-skeleton-hi: 241 243 247;
+  --rgb-overlay: 15 18 25;
+
+  /* Full-colour aliases (legacy + plain CSS) */
+  --bg-primary: rgb(var(--rgb-bg));
+  --bg-secondary: rgb(var(--rgb-inset));
+  --bg-tertiary: rgb(var(--rgb-tertiary));
+  --surface: rgb(var(--rgb-surface));
+  --surface-hover: rgb(var(--rgb-surface-hover));
+  --surface-raised: rgb(var(--rgb-surface-raised));
+  --border: rgb(var(--rgb-border));
+  --border-light: rgb(var(--rgb-border));
+  --border-strong: rgb(var(--rgb-border-strong));
+  --border-control: rgb(var(--rgb-control));
+  --text-primary: rgb(var(--rgb-text));
+  --text-secondary: rgb(var(--rgb-text-2));
+  --text-muted: rgb(var(--rgb-text-3));
+
+  --brand-blue: rgb(var(--rgb-primary));
+  --brand-green: rgb(var(--rgb-success));
+  --brand-orange: rgb(var(--rgb-warning));
+  --brand-red: rgb(var(--rgb-danger));
 
   --accent-purple: var(--brand-blue);
   --accent-blue: var(--brand-blue);
@@ -33,123 +88,307 @@
   --gradient-primary: var(--brand-blue);
   --gradient-blue-purple: var(--brand-blue);
 
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.08);
-  --shadow-lg: 0 16px 40px rgba(16, 24, 40, 0.1);
-  --shadow-xl: 0 24px 48px rgba(16, 24, 40, 0.12);
+  /* Soft tints for chips (solid-ish, theme aware) */
+  --primary-soft: rgb(var(--rgb-primary) / 0.1);
+  --success-soft: rgb(var(--rgb-success) / 0.12);
+  --warning-soft: rgb(var(--rgb-warning) / 0.14);
+  --danger-soft: rgb(var(--rgb-danger) / 0.1);
 
+  /* Focus */
+  --ring: rgb(var(--rgb-primary));
+  --ring-soft: rgb(var(--rgb-primary) / 0.28);
+
+  /* Elevation */
+  --shadow-xs: 0 1px 2px rgb(16 24 40 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.06), 0 1px 3px rgb(16 24 40 / 0.05);
+  --shadow-md: 0 4px 12px -2px rgb(16 24 40 / 0.08), 0 2px 4px -2px rgb(16 24 40 / 0.05);
+  --shadow-lg: 0 12px 28px -6px rgb(16 24 40 / 0.14), 0 4px 8px -4px rgb(16 24 40 / 0.06);
+  --shadow-xl: 0 24px 56px -12px rgb(16 24 40 / 0.26), 0 8px 16px -8px rgb(16 24 40 / 0.1);
+  --shadow-pop: 0 0 0 1px rgb(16 24 40 / 0.04), 0 12px 28px -6px rgb(16 24 40 / 0.18), 0 4px 8px -4px rgb(16 24 40 / 0.08);
+  --shadow-btn: 0 1px 2px rgb(16 24 40 / 0.06);
+  --shadow-btn-primary: inset 0 1px 0 rgb(255 255 255 / 0.16), 0 1px 2px rgb(16 24 40 / 0.24);
+
+  /* Radii: controls = lg (0.5rem), cards/dialogs = 2xl (1rem) */
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
 
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .dark {
   color-scheme: dark;
 
-  --bg-primary: #12141A;
-  --bg-secondary: #0E1014;
-  --bg-tertiary: #1C1F27;
+  --rgb-bg: 14 16 20;
+  --rgb-surface: 22 25 31;
+  --rgb-surface-hover: 29 33 41;
+  --rgb-surface-raised: 32 36 46;
+  --rgb-inset: 11 13 16;
+  --rgb-tertiary: 38 43 53;
 
-  --surface: #1A1D25;
-  --surface-hover: #242833;
+  --rgb-border: 42 47 58;
+  --rgb-border-strong: 58 64 80;
+  --rgb-control: 107 115 132;
 
-  --border: #2C3140;
-  --border-light: #2C3140;
+  --rgb-text: 236 238 243;
+  --rgb-text-2: 177 185 198;
+  --rgb-text-3: 143 152 168;
 
-  --text-primary: #F4F6FB;
-  --text-secondary: #B4BCC8;
-  --text-muted: #8B939E;
+  --rgb-primary: 69 101 245;
+  --rgb-primary-hover: 58 87 224;
+  --rgb-primary-active: 49 76 200;
+  --rgb-success: 16 185 129;
+  --rgb-warning: 245 158 11;
+  --rgb-danger: 217 45 82;
+  --rgb-danger-hover: 190 34 69;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.28);
-  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.35);
-  --shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.4);
+  --rgb-primary-ink: 147 170 255;
+  --rgb-success-ink: 74 222 159;
+  --rgb-warning-ink: 251 191 74;
+  --rgb-danger-ink: 255 128 149;
+
+  --rgb-scroll: 58 65 80;
+  --rgb-skeleton: 35 39 49;
+  --rgb-skeleton-hi: 46 51 63;
+  --rgb-overlay: 0 0 0;
+
+  --primary-soft: rgb(var(--rgb-primary) / 0.16);
+  --success-soft: rgb(var(--rgb-success) / 0.15);
+  --warning-soft: rgb(var(--rgb-warning) / 0.15);
+  --danger-soft: rgb(var(--rgb-danger) / 0.16);
+
+  --ring-soft: rgb(var(--rgb-primary) / 0.4);
+
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.45), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 12px 28px -6px rgb(0 0 0 / 0.55), 0 4px 8px -4px rgb(0 0 0 / 0.35);
+  --shadow-xl: 0 24px 56px -12px rgb(0 0 0 / 0.7), 0 8px 16px -8px rgb(0 0 0 / 0.4);
+  --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.04), 0 12px 28px -6px rgb(0 0 0 / 0.6), 0 4px 8px -4px rgb(0 0 0 / 0.4);
+  --shadow-btn: 0 1px 2px rgb(0 0 0 / 0.35);
+  --shadow-btn-primary: inset 0 1px 0 rgb(255 255 255 / 0.14), 0 1px 2px rgb(0 0 0 / 0.4);
 }
 
-html {
-  background-color: var(--bg-primary);
-  height: 100%;
+@layer base {
+  html {
+    background-color: var(--bg-primary);
+    height: 100%;
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    accent-color: rgb(var(--rgb-primary));
+    scroll-padding-top: 4rem;
+  }
+
+  body {
+    background-color: var(--bg-primary);
+    min-height: 100vh;
+    color: var(--text-primary);
+    /* --font-inter is injected by next/font in layout.tsx */
+    font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: 0.9375rem; /* 15px: calm, dense enough for work tools */
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
+    overflow-wrap: break-word;
+  }
+
+  @supports (min-height: 100dvh) {
+    body {
+      min-height: 100dvh;
+    }
+  }
+
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+
+  ::selection {
+    background: rgb(var(--rgb-primary) / 0.28);
+    color: inherit;
+  }
+
+  /* One consistent, visible keyboard focus ring for anything interactive.
+     Utilities that set `outline-none` (+ their own ring) still win. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
+  button, [role='button'], a, summary {
+    touch-action: manipulation;
+  }
+
+  ::placeholder {
+    color: var(--text-muted);
+    opacity: 1;
+  }
+
+  /* Native selects (when not using <Select>) */
+  select,
+  select option {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+  }
+
+  select {
+    border: 1px solid var(--border-control);
+    border-radius: 0.5rem;
+  }
+
+  /* Dark-mode autofill should not flash yellow/white */
+  input:-webkit-autofill,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-text-fill-color: var(--text-primary);
+    caret-color: var(--text-primary);
+    box-shadow: 0 0 0 1000px var(--bg-secondary) inset;
+    transition: background-color 9999s ease-out;
+  }
+
+  hr {
+    border-color: var(--border);
+  }
 }
 
-body {
-  background-color: var(--bg-primary);
-  min-height: 100vh;
-  color: var(--text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* ------------------------------------------------------------------ */
+/* Keyframes (referenced from tailwind.config.js `animation`)          */
+/* ------------------------------------------------------------------ */
+@keyframes tw-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes tw-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes tw-dialog-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tw-dialog-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(8px) scale(0.99); }
+}
+@keyframes tw-sheet-in { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes tw-pop-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tw-toast-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tw-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -50% 0; }
 }
 
-/* Dark selects (global) */
-select,
-select option {
-  background-color: var(--bg-secondary);
-  color: var(--text-primary);
+/* Reduced motion: no movement, no looping, instant transitions. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-select {
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-}
-
-/* Custom Utility Classes - Remapped for Deel Style */
+/* ------------------------------------------------------------------ */
+/* Components (legacy class API kept; restyled to the new system)      */
+/* ------------------------------------------------------------------ */
 @layer components {
-  /* Cards: Flat, Subtle Border, No Glow */
+  /* Cards: flat, hairline border, barely-there shadow */
   .card {
-    @apply bg-[var(--surface)] rounded-xl border border-[var(--border)] transition-all duration-200;
+    @apply rounded-2xl border border-border bg-surface shadow-xs transition-[border-color,box-shadow,background-color] duration-200;
   }
-  
+
   .card-hover {
-    @apply hover:border-[var(--brand-blue)] hover:shadow-md;
+    @apply hover:border-border-strong hover:shadow-md;
   }
-  
-  /* Buttons: Clean, No Neumorphism */
+
+  /* Buttons (prefer <Button> / buttonClasses(); these mirror them) */
   .btn-primary {
-    @apply bg-[var(--brand-blue)] text-white px-4 py-2 rounded-lg font-medium;
-    @apply hover:bg-blue-600 transition-all duration-150;
-    @apply shadow-sm;
+    @apply inline-flex min-h-10 select-none items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white shadow-btn-primary;
+    @apply transition-[background-color,box-shadow,transform] duration-150 hover:bg-primary-hover active:scale-[0.98] active:bg-primary-active;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
+    @apply disabled:pointer-events-none disabled:opacity-50;
   }
-  
+
   .btn-secondary {
-    @apply bg-transparent text-[var(--text-primary)] px-4 py-2 rounded-lg font-medium border border-[var(--border)];
-    @apply hover:bg-[var(--surface-hover)] transition-all duration-150;
+    @apply inline-flex min-h-10 select-none items-center justify-center gap-2 rounded-lg border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-text-primary shadow-btn;
+    @apply transition-[background-color,border-color,transform] duration-150 hover:bg-surface-hover active:scale-[0.98];
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
+    @apply disabled:pointer-events-none disabled:opacity-50;
   }
 
   .btn-ghost {
-    @apply bg-transparent text-[var(--text-secondary)] px-4 py-2 rounded-lg font-medium;
-    @apply hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] transition-all duration-150;
+    @apply inline-flex min-h-10 select-none items-center justify-center gap-2 rounded-lg bg-transparent px-4 py-2 text-sm font-medium text-text-secondary;
+    @apply transition-[background-color,color,transform] duration-150 hover:bg-surface-hover hover:text-text-primary active:scale-[0.98];
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
+    @apply disabled:pointer-events-none disabled:opacity-50;
   }
-  
+
+  /* Text fields (prefer <Input>/<Textarea>/<Select>; same look) */
   .input-field {
-    @apply bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg px-4 py-2.5 text-[var(--text-primary)];
-    @apply focus:border-[var(--brand-blue)] focus:ring-1 focus:ring-[var(--brand-blue)] outline-none;
-    @apply transition-all duration-200 placeholder:text-[var(--text-muted)];
+    @apply rounded-lg border border-border-control bg-secondary px-3 py-2.5 text-base text-text-primary shadow-xs outline-none sm:text-sm;
+    @apply transition-[border-color,box-shadow] duration-150 placeholder:text-text-muted;
+    @apply focus:border-primary focus:ring-2 focus:ring-primary/25;
+    @apply disabled:cursor-not-allowed disabled:opacity-60;
   }
-  
+
   .stat-card {
-    @apply card p-5 relative overflow-hidden flex flex-col justify-between;
+    @apply card relative flex flex-col justify-between overflow-hidden p-5;
   }
 
-  /* Badge Styles */
+  /* Badges */
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
-  }
-  
-  .badge-success {
-    @apply bg-[var(--brand-green)]/10 text-[var(--brand-green)];
-  }
-  
-  .badge-warning {
-    @apply bg-[var(--brand-orange)]/10 text-[var(--brand-orange)];
-  }
-  
-  .badge-blue {
-    @apply bg-[var(--brand-blue)]/10 text-[var(--brand-blue)];
+    @apply inline-flex items-center gap-1 rounded-full bg-tertiary px-2.5 py-0.5 text-xs font-medium text-text-secondary;
   }
 
+  .badge-success {
+    @apply bg-success/[0.12] text-success;
+  }
+
+  .badge-warning {
+    @apply bg-warning/[0.14] text-warning;
+  }
+
+  .badge-danger {
+    @apply bg-danger/10 text-danger;
+  }
+
+  .badge-blue {
+    @apply bg-primary/10 text-primary;
+  }
+
+  /* Skeleton shimmer (see ui/Skeleton) */
+  .skeleton {
+    border-radius: 0.5rem;
+    background-color: rgb(var(--rgb-skeleton));
+    background-image: linear-gradient(
+      100deg,
+      transparent 20%,
+      rgb(var(--rgb-skeleton-hi)) 50%,
+      transparent 80%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: tw-shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* Avatar tint without photo: set style="--av-h: <0-359>" */
+  .avatar-tint {
+    background-color: hsl(var(--av-h, 220) 70% 92%);
+    color: hsl(var(--av-h, 220) 60% 28%);
+  }
+  .dark .avatar-tint {
+    background-color: hsl(var(--av-h, 220) 38% 24%);
+    color: hsl(var(--av-h, 220) 85% 84%);
+  }
+}
+
+@layer utilities {
   /* Scrollbar hide utility */
   .scrollbar-hide {
     -ms-overflow-style: none;
@@ -157,5 +396,37 @@ select {
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Slim scrollbars that work in both themes */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--rgb-scroll)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--rgb-scroll));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(var(--rgb-control));
+    background-clip: content-box;
+  }
+
+  /* Safe-area helpers */
+  .pt-safe { padding-top: env(safe-area-inset-top); }
+  .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+  /* Numbers: use Tailwind's `tabular-nums`; `.num` adds slashed zero + tabular */
+  .num {
+    font-variant-numeric: tabular-nums slashed-zero;
   }
 }

@@ -126,20 +126,20 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
   );
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       {/* Selected Tags */}
-      <div className="flex flex-wrap items-center gap-2 mb-2">
+      <div className="flex flex-wrap items-center gap-1.5">
         {selectedTags.map(tag => (
           <span
             key={tag.id}
-            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium text-white"
+            className="inline-flex h-8 max-w-full items-center gap-1 rounded-full pl-3 pr-1.5 text-xs font-medium text-white"
             style={{ backgroundColor: tag.color }}
           >
-            {tag.name}
+            <span className="truncate">{tag.name}</span>
             <button
               type="button"
               onClick={() => removeTag(tag.id)}
-              className="rounded p-0.5 transition-colors hover:bg-white/20"
+              className="rounded-full p-1 transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
               aria-label={t('removeTag')}
             >
               <X className="w-3 h-3" />
@@ -153,7 +153,7 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
             setIsOpen(!isOpen);
           }}
           type="button"
-          className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-dashed border-border px-3 text-xs font-medium text-text-secondary transition-colors hover:border-primary/50 hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <TagIcon className="w-3 h-3" />
           {t('addTag')}
@@ -173,7 +173,7 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
             />
             <div
               className={`fixed z-[80] max-w-full overflow-y-auto border-border bg-surface text-text-primary shadow-lg ${
-                menuBox.full ? 'h-[100dvh]' : 'rounded-xl border'
+                menuBox.full ? 'h-[100dvh]' : 'rounded-xl border shadow-xl'
               }`}
               style={{ top: menuBox.top, left: menuBox.left, width: menuBox.width, maxHeight: menuBox.maxHeight }}
             >
@@ -289,7 +289,7 @@ export default function TagSelector({ workspaceId, selectedTags, onChange }: Tag
                       setNewTagName('');
                     }}
                     type="button"
-                    className="rounded-lg border border-border bg-secondary px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover"
+                    className="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover"
                   >
                     {t('cancel')}
                   </button>

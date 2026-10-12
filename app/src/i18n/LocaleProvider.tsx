@@ -24,6 +24,7 @@ import toolsMk from '@/messages/parts/tools.mk.json'
 export type AppLocale = 'en' | 'mk'
 
 const STORAGE_KEY = 'trackwork-locale'
+const COOKIE_MAX_AGE = 60 * 60 * 24 * 365
 
 const catalogs: Record<AppLocale, AbstractIntlMessages> = {
   en: { ...en, pages: { auth: authEn, home: homeEn, projects: projectsEn, tasks: tasksEn, notes: notesEn, plans: plansEn, people: peopleEn, tools: toolsEn } },
@@ -40,30 +41,66 @@ const LocaleContext = createContext<LocaleContextValue>({
   setLocale: () => {},
 })
 
-function initialLocale(): AppLocale {
-  if (typeof window === 'undefined') return 'en'
-  const saved = window.localStorage.getItem(STORAGE_KEY)
-  if (saved === 'en' || saved === 'mk') return saved
-  return window.navigator.language.toLowerCase().startsWith('mk') ? 'mk' : 'en'
+function isLocale(value: unknown): value is AppLocale {
+  return value === 'en' || value === 'mk'
+}
+
+function readCookie(): AppLocale | null {
+  try {
+    const match = document.cookie.match(new RegExp(`(?:^|; )${STORAGE_KEY}=([^;]*)`))
+    const value = match ? decodeURIComponent(match[1]) : null
+    return isLocale(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
+function readStorage(): AppLocale | null {
+  try {
+    const value = window.localStorage.getItem(STORAGE_KEY)
+    return isLocale(value) ? value : null
+  } catch {
+    return null
+  }
+}
+
+// The cookie is what the server layout reads, so SSR and the first client render agree
+function persistLocale(locale: AppLocale) {
+  try {
+    const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+    document.cookie = `${STORAGE_KEY}=${locale}; Max-Age=${COOKIE_MAX_AGE}; Path=/; SameSite=Lax${secure}`
+  } catch {}
+  try {
+    window.localStorage.setItem(STORAGE_KEY, locale)
+  } catch {}
+  document.documentElement.lang = locale
 }
 
 export function useLocaleSwitch() {
   return useContext(LocaleContext)
 }
 
-export function LocaleProvider({ children }: { children: React.ReactNode }) {
-  const [locale, setLocaleState] = useState<AppLocale>('en')
+export function LocaleProvider({
+  children,
+  initialLocale = 'en',
+}: {
+  children: React.ReactNode
+  initialLocale?: AppLocale
+}) {
+  const [locale, setLocaleState] = useState<AppLocale>(initialLocale)
 
+  // Migrate legacy localStorage-only users to the cookie and keep both stores in sync.
+  // The server already rendered `initialLocale` from the cookie, so there is no flash for them.
   useEffect(() => {
-    const next = initialLocale()
-    setLocaleState(next)
-    document.documentElement.lang = next
+    const resolved = readCookie() ?? readStorage() ?? initialLocale
+    if (resolved !== initialLocale) setLocaleState(resolved)
+    persistLocale(resolved)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const setLocale = (next: AppLocale) => {
     setLocaleState(next)
-    window.localStorage.setItem(STORAGE_KEY, next)
-    document.documentElement.lang = next
+    persistLocale(next)
   }
 
   return (

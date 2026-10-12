@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
+import { safeNextPath } from '@/lib/safeNext'
 import { Eye, EyeOff } from 'lucide-react'
 
 function LoginForm() {
@@ -15,6 +16,9 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<{ email?: string; password?: string; general?: string }>({})
   const router = useRouter()
+  const nextParam = useSearchParams().get('next')
+  const next = safeNextPath(nextParam)
+  const signupHref = nextParam && next === nextParam ? `/auth/signup?next=${encodeURIComponent(next)}` : '/auth/signup'
   const t = useTranslations('pages.auth')
 
   const validateForm = () => {
@@ -52,7 +56,7 @@ function LoginForm() {
       if (error) {
         setErrors({ general: error.message })
       } else {
-        router.push('/dashboard')
+        router.push(next)
         router.refresh()
       }
     } catch (err) {
@@ -89,7 +93,7 @@ function LoginForm() {
               setEmail(e.target.value)
               if (errors.email) setErrors({ ...errors, email: undefined })
             }}
-            className={`block w-full min-w-0 rounded-xl border ${errors.email ? 'border-danger' : 'border-border'} bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40`}
+            className={`block w-full min-w-0 rounded-xl border ${errors.email ? 'border-danger' : 'border-border-control'} bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40`}
             placeholder={t('emailPlaceholder')}
           />
           {errors.email && <p className="mt-1.5 text-sm text-danger">{errors.email}</p>}
@@ -109,13 +113,13 @@ function LoginForm() {
                 setPassword(e.target.value)
                 if (errors.password) setErrors({ ...errors, password: undefined })
               }}
-              className={`block w-full min-w-0 rounded-xl border ${errors.password ? 'border-danger' : 'border-border'} bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40 pr-12`}
+              className={`block w-full min-w-0 rounded-xl border ${errors.password ? 'border-danger' : 'border-border-control'} bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40 pr-12`}
               placeholder="••••••••"
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-text-secondary hover:text-text-primary"
+              className="absolute right-0.5 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-xl text-text-secondary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
             >
               {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -129,9 +133,9 @@ function LoginForm() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-text-secondary">
+      <p className="mt-4 text-center text-sm text-text-secondary">
         {t('login.noAccount')}{' '}
-        <Link href="/auth/signup" className="font-medium text-primary hover:underline">
+        <Link href={signupHref} className="inline-block py-2.5 font-medium text-primary hover:underline">
           {t('login.signUp')}
         </Link>
       </p>

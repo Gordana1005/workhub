@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { getWorkspaceRole, omitKeys } from '@/lib/api-access'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -67,6 +68,7 @@ export async function GET(request: Request) {
       `)
       .eq('workspace_id', workspaceId)
       .order('created_at', { ascending: false })
+      .limit(2000)
 
     if (projectId) {
       query = query.eq('project_id', projectId)
@@ -104,7 +106,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { workspace_id, title, description, priority, due_date, project_id, assignee_id, category } = body
+    const { workspace_id, title, description, priority, due_date, project_id, assignee_id, category, estimated_hours, tags } = body
 
     if (!project_id) {
       return NextResponse.json({ error: 'project_id is required' }, { status: 400 })
@@ -122,6 +124,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
+    if (typeof title !== 'string' || !title.trim()) {
+      return NextResponse.json({ error: 'title is required' }, { status: 400 })
+    }
+
+    // The project must belong to the same workspace (prevents cross-workspace writes)
+    const { data: project } = await supabaseAdmin
+      .from('projects')
+      .select('id')
+      .eq('id', project_id)
+      .eq('workspace_id', workspace_id)
+      .maybeSingle()
+
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found in this workspace' }, { status: 400 })
+    }
+
+    // Assignee (if different from the caller) must be a workspace member
+    if (assignee_id && assignee_id !== user.id) {
+      const assigneeRole = await getWorkspaceRole(supabaseAdmin, workspace_id, assignee_id)
+      if (!assigneeRole) {
+        return NextResponse.json({ error: 'Assignee is not a member of this workspace' }, { status: 400 })
+      }
+    }
+
     const { data: task, error } = await supabaseAdmin
       .from('tasks')
       .insert({
@@ -134,6 +160,8 @@ export async function POST(request: Request) {
         assignee_id: assignee_id || user.id,
         creator_id: user.id,
         category,
+        ...(typeof estimated_hours === 'number' && estimated_hours > 0 ? { estimated_hours } : {}),
+        ...(Array.isArray(tags) && tags.length > 0 ? { tags } : {}),
         status: 'To Do'
       })
       .select(`
@@ -172,18 +200,60 @@ export async function PATCH(request: Request) {
 
   try {
     const body = await request.json()
-    const { id, ...updates } = body
+    const { id, ...rawUpdates } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    }
 
     // Fetch current task for comparison
     const { data: current } = await supabaseAdmin
       .from('tasks')
       .select('*')
       .eq('id', id)
-      .single()
+      .maybeSingle()
+
+    if (!current) {
+      return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+    }
+
+    // Caller must belong to the task's workspace
+    const role = await getWorkspaceRole(supabaseAdmin, current.workspace_id, user.id)
+    if (!role) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    // Never allow moving a task between workspaces / rewriting ownership
+    const updates = omitKeys(rawUpdates, ['workspace_id', 'creator_id', 'created_at'])
+
+    // Moving to another project is only allowed within the same workspace
+    if (updates.project_id && updates.project_id !== current.project_id) {
+      const { data: project } = await supabaseAdmin
+        .from('projects')
+        .select('id')
+        .eq('id', updates.project_id)
+        .eq('workspace_id', current.workspace_id)
+        .maybeSingle()
+      if (!project) {
+        return NextResponse.json({ error: 'Project not found in this workspace' }, { status: 400 })
+      }
+    }
+
+    // Keep is_completed / status / completed_at consistent: 'Done' <=> completed.
+    const patch: Record<string, any> = { ...updates }
+    if (typeof patch.status === 'string') {
+      patch.is_completed = patch.status === 'Done'
+    } else if (typeof patch.is_completed === 'boolean') {
+      if (patch.is_completed) patch.status = 'Done'
+      else if (!current?.status || current.status === 'Done') patch.status = 'To Do'
+    }
+    if (typeof patch.is_completed === 'boolean') {
+      patch.completed_at = patch.is_completed ? (patch.completed_at || current?.completed_at || new Date().toISOString()) : null
+    }
 
     const { data: task, error } = await supabaseAdmin
       .from('tasks')
-      .update(updates)
+      .update(patch)
       .eq('id', id)
       .select(`
         *,
@@ -260,17 +330,50 @@ export async function DELETE(request: Request) {
   try {
     if (bulkIds) {
       // Bulk delete
-      const ids = bulkIds.split(',')
+      const ids = bulkIds.split(',').map(s => s.trim()).filter(Boolean).slice(0, 500)
+
+      // Only delete tasks that live in workspaces the caller belongs to
+      const { data: found } = await supabaseAdmin
+        .from('tasks')
+        .select('id, workspace_id')
+        .in('id', ids)
+
+      const workspaceIds = Array.from(new Set((found || []).map((t: any) => t.workspace_id)))
+      const allowedWorkspaces = new Set<string>()
+      for (const wsId of workspaceIds) {
+        if (await getWorkspaceRole(supabaseAdmin, wsId, user.id)) allowedWorkspaces.add(wsId)
+      }
+      const allowedIds = (found || [])
+        .filter((t: any) => allowedWorkspaces.has(t.workspace_id))
+        .map((t: any) => t.id)
+
+      if (allowedIds.length === 0) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+
       const { error } = await supabaseAdmin
         .from('tasks')
         .delete()
-        .in('id', ids)
+        .in('id', allowedIds)
 
       if (error) throw error
 
-      return NextResponse.json({ message: `Deleted ${ids.length} tasks` })
+      return NextResponse.json({ message: `Deleted ${allowedIds.length} tasks` })
     } else if (taskId) {
-      // Single delete
+      // Single delete - caller must belong to the task's workspace
+      const { data: existing } = await supabaseAdmin
+        .from('tasks')
+        .select('workspace_id')
+        .eq('id', taskId)
+        .maybeSingle()
+
+      if (!existing) {
+        return NextResponse.json({ error: 'Task not found' }, { status: 404 })
+      }
+      if (!(await getWorkspaceRole(supabaseAdmin, existing.workspace_id, user.id))) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
+
       const { error } = await supabaseAdmin
         .from('tasks')
         .delete()

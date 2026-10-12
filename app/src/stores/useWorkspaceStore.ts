@@ -1,5 +1,4 @@
 import { create } from 'zustand'
-import { supabase } from '@/lib/supabase'
 
 interface Workspace {
   id: string
@@ -24,6 +23,7 @@ interface WorkspaceState {
   error: string | null
 
   // Actions
+  hydrateWorkspace: () => void
   fetchWorkspaces: () => Promise<void>
   createWorkspace: (name: string, category?: string, color?: string, description?: string) => Promise<Workspace | null>
   setCurrentWorkspace: (workspace: Workspace | null) => void
@@ -32,11 +32,28 @@ interface WorkspaceState {
   clearError: () => void
 }
 
-export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
+// localStorage can throw (private mode / blocked storage) or hold corrupt JSON - never let that crash the app
+function readSavedWorkspace(): Workspace | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return JSON.parse(localStorage.getItem('currentWorkspace') || 'null')
+  } catch {
+    return null
+  }
+}
+
+export const useWorkspaceStore = create<WorkspaceState>((set) => ({
   workspaces: [],
-  currentWorkspace: typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('currentWorkspace') || 'null') : null,
+  // Start empty so server HTML and the first client render agree (no hydration mismatch);
+  // hydrateWorkspace() restores the saved selection right after mount.
+  currentWorkspace: null,
   loading: false,
   error: null,
+
+  hydrateWorkspace: () => {
+    const saved = readSavedWorkspace()
+    if (saved) set((state) => (state.currentWorkspace ? state : { currentWorkspace: saved }))
+  },
 
   fetchWorkspaces: async () => {
     set({ loading: true, error: null })
@@ -49,18 +66,22 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       }
 
       const fetched = data.workspaces || []
-      const savedWorkspace = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('currentWorkspace') || 'null') : null
-      const savedStillValid = savedWorkspace && fetched.find((w: Workspace) => w.id === savedWorkspace.id)
+      const savedWorkspace = readSavedWorkspace()
+      // Use the fresh server copy (up-to-date name/role/memberCount) instead of the cached one
+      const savedStillValid = savedWorkspace ? fetched.find((w: Workspace) => w.id === savedWorkspace.id) : null
 
       set({
         workspaces: fetched,
-        currentWorkspace: savedStillValid ? savedWorkspace : null,
+        currentWorkspace: savedStillValid || null,
         loading: false
       })
 
       // Drop stale workspace selection from a previous account
-      if (!savedStillValid && typeof window !== 'undefined') {
-        localStorage.removeItem('currentWorkspace')
+      if (typeof window !== 'undefined') {
+        try {
+          if (savedStillValid) localStorage.setItem('currentWorkspace', JSON.stringify(savedStillValid))
+          else localStorage.removeItem('currentWorkspace')
+        } catch {}
       }
     } catch (error) {
       set({
@@ -105,7 +126,9 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   setCurrentWorkspace: (workspace) => {
     set({ currentWorkspace: workspace })
     if (typeof window !== 'undefined') {
-      localStorage.setItem('currentWorkspace', JSON.stringify(workspace))
+      try {
+        localStorage.setItem('currentWorkspace', JSON.stringify(workspace))
+      } catch {}
     }
   },
 
@@ -124,12 +147,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         throw new Error(data.error || 'Failed to update workspace')
       }
 
+      // The PUT response is the raw row (no userRole / memberCount) - merge so those aren't lost
       set(state => ({
         workspaces: state.workspaces.map(w =>
-          w.id === id ? data.workspace : w
+          w.id === id ? { ...w, ...data.workspace } : w
         ),
         currentWorkspace: state.currentWorkspace?.id === id
-          ? data.workspace
+          ? { ...state.currentWorkspace, ...data.workspace }
           : state.currentWorkspace,
         loading: false
       }))
@@ -152,7 +176,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       })
 
       if (!response.ok) {
-        const data = await response.json()
+        const data = await response.json().catch(() => ({}))
         throw new Error(data.error || 'Failed to delete workspace')
       }
 

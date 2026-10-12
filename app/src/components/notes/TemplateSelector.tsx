@@ -112,7 +112,7 @@ export default function TemplateSelector({ workspaceId, onSelect, onClose }: Tem
             className={`rounded-xl px-3 py-1.5 text-sm font-medium transition-colors ${
               selectedCategory === cat.value
                 ? 'bg-primary text-white'
-                : 'border border-border bg-secondary text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                : 'border border-border bg-tertiary text-text-secondary hover:bg-surface-hover hover:text-text-primary'
             }`}
           >
             {t(`filters.${cat.value}`)}
@@ -137,7 +137,7 @@ export default function TemplateSelector({ workspaceId, onSelect, onClose }: Tem
               key={template.id}
               type="button"
               onClick={() => handleSelectTemplate(template)}
-              className="min-w-0 rounded-xl border border-border bg-secondary p-4 text-left hover:border-primary hover:bg-surface-hover"
+              className="min-w-0 rounded-xl border border-border bg-surface p-4 text-left hover:border-primary hover:bg-surface-hover"
             >
               <div className="flex min-w-0 items-start gap-3">
                 <span className="text-2xl">{template.icon}</span>

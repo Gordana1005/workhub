@@ -41,7 +41,7 @@ export default function ThemeSwitch() {
     <div className="relative" ref={ref}>
       <button
         type="button"
-        className="inline-flex h-9 w-9 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-xl text-text-secondary hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label={t(current.id)}
@@ -62,8 +62,10 @@ export default function ThemeSwitch() {
                 type="button"
                 role="menuitemradio"
                 aria-checked={selected}
-                className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm ${
-                  selected ? 'bg-primary/10 text-primary' : 'text-text-secondary hover:bg-surface-hover'
+                className={`flex min-h-10 w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm ${
+                  selected
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-text-secondary hover:bg-surface-hover'
                 }`}
                 onClick={() => {
                   setTheme(id)

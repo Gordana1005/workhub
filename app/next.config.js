@@ -3,6 +3,7 @@ const withPWA = require('next-pwa')({
   dest: 'public',
   register: true,
   skipWaiting: true,
+  clientsClaim: true,
   disable: process.env.NODE_ENV === 'development',
   runtimeCaching: [
     {
@@ -51,14 +52,15 @@ const withPWA = require('next-pwa')({
       }
     },
     {
-      urlPattern: /^\/api\/.*/,
+      // Page navigations: always try the network first so a new deploy is never
+      // shadowed by stale HTML; the cache is only an offline fallback.
+      urlPattern: ({ request }) => request.mode === 'navigate',
       handler: 'NetworkFirst',
       options: {
-        cacheName: 'api-cache',
-        networkTimeoutSeconds: 10,
+        cacheName: 'pages',
         expiration: {
-          maxEntries: 100,
-          maxAgeSeconds: 5 * 60 // 5 minutes
+          maxEntries: 20,
+          maxAgeSeconds: 24 * 60 * 60 // 1 day
         }
       }
     }

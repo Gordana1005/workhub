@@ -1,18 +1,21 @@
 {
   "nav": {
     "home": "Home",
-    "work": "Work",
+    "projects": "Projects",
+    "tasks": "Tasks",
     "plan": "Plan",
     "notes": "Notes",
     "people": "People",
     "more": "More",
+    "groupTools": "Tools",
+    "groupManage": "Manage",
     "time": "Time",
     "focus": "Focus",
-    "money": "Money",
+    "finance": "Finance",
     "reports": "Reports",
     "webhooks": "Webhooks",
-    "settings": "Settings",
-    "workspaces": "Workspaces"
+    "workspaces": "Workspaces",
+    "settings": "Settings"
   },
   "shell": {
     "new": "New",
@@ -22,7 +25,13 @@
     "theme": "Theme",
     "logout": "Log out",
     "account": "Account",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "mainNav": "Main navigation",
+    "skipToContent": "Skip to content",
+    "collapseSidebar": "Collapse sidebar",
+    "expandSidebar": "Expand sidebar",
+    "stopTimer": "Stop timer",
+    "workspace": "Workspace"
   },
   "theme": {
     "light": "Light",
@@ -61,25 +70,33 @@
     "when": "When",
     "me": "Me",
     "unassigned": "Unassigned",
-    "invite": "Invite",
     "save": "Save",
     "cancel": "Cancel",
     "create": "Create",
     "needWorkspace": "Create a workspace first."
   },
   "home": {
-    "hello": "Hello",
     "today": "Today",
     "emptyTitle": "Nothing here yet",
     "emptyBody": "Create a project, and the day will start to fill in.",
-    "firstProject": "Create your first project",
     "overdue": "Overdue",
-    "dueToday": "Due today",
     "noTasks": "Nothing due today."
   },
   "common": {
     "loading": "Loading",
     "error": "Something went wrong",
-    "close": "Close"
+    "close": "Close",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "save": "Save",
+    "done": "Done",
+    "back": "Back",
+    "dismiss": "Dismiss",
+    "retry": "Try again",
+    "optional": "Optional",
+    "breadcrumb": "Breadcrumb",
+    "more": "More actions",
+    "noResults": "No results"
   }
 }

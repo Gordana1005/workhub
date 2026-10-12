@@ -2,125 +2,132 @@
 
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Calendar, AlertCircle, User } from 'lucide-react';
-import { format } from 'date-fns';
-import { enUS, mk } from 'date-fns/locale';
-import { useLocale, useTranslations } from 'next-intl';
+import { GripVertical, Calendar } from 'lucide-react';
+import { useFormatter, useTranslations } from 'next-intl';
+import { Avatar } from '@/components/ui/Avatar';
+import { PRIORITY_TONE, dayKey, isDone, isOverdue, parseDayKey, priorityLabel } from './taskUtils';
 import { Task } from './types';
 
 interface KanbanCardProps {
   task: Task;
-  isDragging?: boolean;
+  selected?: boolean;
   onClick?: () => void;
 }
 
-export default function KanbanCard({ task, isDragging = false, onClick }: KanbanCardProps) {
+/** Visual card, shared by the sortable card and the drag overlay. */
+export function KanbanCardView({
+  task,
+  selected = false,
+  overlay = false,
+  handle,
+  onClick,
+}: {
+  task: Task;
+  selected?: boolean;
+  overlay?: boolean;
+  handle?: React.ReactNode;
+  onClick?: () => void;
+}) {
   const t = useTranslations('pages.tasks');
-  const locale = useLocale();
-  const dateLocale = locale === 'mk' ? mk : enUS;
+  const format = useFormatter();
+  const done = isDone(task);
+  const overdue = isOverdue(task);
+  const due = dayKey(task.due_date);
+  const tone = PRIORITY_TONE[task.priority] || PRIORITY_TONE.medium;
 
-  const priorityLabel = (priority: string) => {
-    if (priority === 'low') return t('priorityLow');
-    if (priority === 'medium') return t('priorityMedium');
-    if (priority === 'high') return t('priorityHigh');
-    if (priority === 'urgent') return t('priorityUrgent');
-    return priority;
-  };
+  return (
+    <div
+      className={`group flex gap-1 rounded-lg border bg-surface p-2.5 shadow-sm transition-colors ${
+        selected ? 'border-primary ring-1 ring-primary' : 'border-border hover:border-text-muted/60'
+      } ${overlay ? 'rotate-1 shadow-lg' : ''}`}
+    >
+      {handle}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onClick}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onClick?.();
+          }
+        }}
+        className="min-w-0 flex-1 cursor-pointer rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <p
+          className={`line-clamp-2 break-words text-sm font-medium leading-snug ${
+            done ? 'text-text-muted line-through' : 'text-text-primary'
+          }`}
+        >
+          {task.title}
+        </p>
 
+        <div className="mt-2 flex items-center gap-2 text-xs text-text-secondary">
+          <span
+            className={`inline-flex items-center gap-1 ${tone.text}`}
+            title={priorityLabel(t, task.priority)}
+          >
+            <span className={`h-2 w-2 rounded-full ${tone.dot}`} aria-hidden />
+            <span className="sr-only">{priorityLabel(t, task.priority)}</span>
+          </span>
+          {task.project?.name ? (
+            <span className="flex min-w-0 items-center gap-1">
+              <span
+                className="h-2 w-2 shrink-0 rounded-full bg-text-muted"
+                style={task.project.color ? { backgroundColor: task.project.color } : undefined}
+                aria-hidden
+              />
+              <span className="truncate">{task.project.name}</span>
+            </span>
+          ) : null}
+          <span className="flex-1" />
+          {due ? (
+            <span className={`inline-flex shrink-0 items-center gap-1 ${overdue ? 'font-medium text-danger' : ''}`}>
+              <Calendar className="h-3 w-3" aria-hidden />
+              {format.dateTime(parseDayKey(due), { month: 'short', day: 'numeric' })}
+            </span>
+          ) : null}
+          {task.assignee?.username ? (
+            <Avatar alt={task.assignee.username} size="sm" className="h-5 w-5 text-[9px]" />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function KanbanCard({ task, selected, onClick }: KanbanCardProps) {
+  const t = useTranslations('pages.tasks');
   const {
     attributes,
     listeners,
     setNodeRef,
     transform,
     transition,
-    isDragging: isSortableDragging,
+    isDragging,
   } = useSortable({ id: task.id });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isSortableDragging ? 0.5 : 1,
-  };
-
-  const priorityColors = {
-    urgent: 'bg-red-500',
-    high: 'bg-orange-500',
-    medium: 'bg-yellow-500',
-    low: 'bg-green-500',
-  };
-
-  const projectColor = task.project?.color || '#94a3b8';
 
   return (
     <div
       ref={setNodeRef}
-      style={{ ...style, borderLeft: `4px solid ${projectColor}` }}
-      className={`card p-4 cursor-pointer hover:border-primary/50 transition-all ${
-        isDragging ? 'rotate-3 opacity-50' : ''
-      }`}
-      onClick={onClick}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }}
     >
-      <div className="flex items-start gap-3">
-        {/* Drag Handle */}
-        <div
-          {...attributes}
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing text-text-secondary hover:text-text-primary mt-1 touch-none"
-        >
-          <GripVertical className="w-4 h-4" />
-        </div>
-
-        {/* Card Content */}
-        <div className="flex-1 min-w-0">
-          {/* Title */}
-          <h4 className="font-medium text-text-primary mb-2 line-clamp-2 break-words">{task.title}</h4>
-
-          {/* Description */}
-          {task.description && (
-            <p className="text-sm text-text-secondary mb-3 line-clamp-2">
-              {task.description}
-            </p>
-          )}
-
-          {/* Metadata */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {/* Project */}
-            <div className="flex items-center gap-1 text-text-secondary">
-              <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: projectColor }}></span>
-              <span className="truncate max-w-[120px]">{task.project?.name || t('noProject')}</span>
-            </div>
-
-            {/* Priority Badge */}
-            <div className="flex items-center gap-1.5">
-              <div className={`w-2 h-2 rounded-full ${priorityColors[task.priority]}`} />
-              <span className="text-text-secondary capitalize">{priorityLabel(task.priority)}</span>
-            </div>
-
-            {/* Due Date */}
-            {task.due_date && (
-              <div className="flex items-center gap-1 text-text-secondary">
-                <Calendar className="w-3 h-3" />
-                <span>{format(new Date(task.due_date), 'MMM dd', { locale: dateLocale })}</span>
-              </div>
-            )}
-
-            {/* Category */}
-            {task.category && (
-              <span className="px-2 py-0.5 bg-primary/10 text-primary rounded-full">
-                {task.category}
-              </span>
-            )}
-          </div>
-
-          {/* Assignee */}
-          {task.assignee && (
-            <div className="flex items-center gap-1.5 mt-2 text-xs text-text-secondary">
-              <User className="w-3 h-3" />
-              <span>{task.assignee.username}</span>
-            </div>
-          )}
-        </div>
-      </div>
+      <KanbanCardView
+        task={task}
+        selected={selected}
+        onClick={onClick}
+        handle={
+          <button
+            type="button"
+            aria-label={t('dragTask')}
+            {...attributes}
+            {...listeners}
+            className="-ml-1 mt-0.5 flex h-6 w-5 shrink-0 cursor-grab touch-none items-start justify-center rounded text-text-muted opacity-60 transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary active:cursor-grabbing group-hover:opacity-100"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        }
+      />
     </div>
   );
 }

@@ -57,10 +57,14 @@ export default async function WorkspacePage({
 
   return (
     <WorkspaceOverview
+      id={workspaceId}
       name={workspace.name}
       role={membership.role}
       members={workspace.workspace_members?.[0]?.count || 0}
       owner={workspace.profiles?.username || ''}
+      color={workspace.color ?? null}
+      category={workspace.category ?? null}
+      description={workspace.description ?? null}
     />
   )
 }

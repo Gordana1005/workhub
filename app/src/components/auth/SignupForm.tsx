@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
+import { safeNextPath } from '@/lib/safeNext'
 
 export default function SignupForm() {
   const [email, setEmail] = useState('')
@@ -14,6 +15,9 @@ export default function SignupForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
+  const nextParam = useSearchParams().get('next')
+  const next = safeNextPath(nextParam, '')
+  const nextQuery = next ? `?next=${encodeURIComponent(next)}` : ''
   const t = useTranslations('pages.auth')
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -32,14 +36,14 @@ export default function SignupForm() {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
+          emailRedirectTo: `${window.location.origin}/auth/callback${nextQuery}`,
         }
       })
 
       if (error) {
         setError(error.message)
       } else if (data.session) {
-        router.push('/auth/onboarding')
+        router.push(`/auth/onboarding${nextQuery}`)
       } else {
         setError(t('signup.checkEmail'))
       }
@@ -74,7 +78,7 @@ export default function SignupForm() {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="block w-full min-w-0 rounded-xl border border-border bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="block w-full min-w-0 rounded-xl border border-border-control bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
             placeholder={t('emailPlaceholder')}
             required
           />
@@ -89,7 +93,7 @@ export default function SignupForm() {
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="block w-full min-w-0 rounded-xl border border-border bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="block w-full min-w-0 rounded-xl border border-border-control bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
             placeholder={t('signup.passwordPlaceholder')}
             required
           />
@@ -104,7 +108,7 @@ export default function SignupForm() {
             autoComplete="new-password"
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
-            className="block w-full min-w-0 rounded-xl border border-border bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="block w-full min-w-0 rounded-xl border border-border-control bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
             placeholder={t('signup.confirmPasswordPlaceholder')}
             required
           />
@@ -115,9 +119,9 @@ export default function SignupForm() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-text-secondary">
+      <p className="mt-4 text-center text-sm text-text-secondary">
         {t('alreadyHaveAccount')}{' '}
-        <Link href="/auth/login" className="font-medium text-primary hover:underline">
+        <Link href={`/auth/login${nextQuery}`} className="inline-block py-2.5 font-medium text-primary hover:underline">
           {t('signIn')}
         </Link>
       </p>

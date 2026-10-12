@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
-import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/Button'
-import { starterTasks, type StarterId } from '@/lib/project-starters'
+import { Dialog } from '@/components/ui/Dialog'
+import { colorForName, starterTaskKeys, type StarterId } from '@/lib/project-starters'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 
 interface CreateProjectDialogProps {
@@ -32,7 +32,7 @@ const STARTER_HELP: Record<StarterId, 'starterBlankHelp' | 'starterClientHelp' |
 }
 
 const fieldClass =
-  'w-full rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50'
+  'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50'
 
 function apiError(data: unknown, fallback: string) {
   if (data && typeof data === 'object' && 'error' in data && typeof (data as { error: unknown }).error === 'string') {
@@ -44,9 +44,9 @@ function apiError(data: unknown, fallback: string) {
 
 export default function CreateProjectDialog({ open, onClose }: CreateProjectDialogProps) {
   const t = useTranslations('create')
+  const tp = useTranslations('pages.projects')
   const common = useTranslations('common')
   const router = useRouter()
-  const headingId = useId()
   const helpId = useId()
   const currentWorkspace = useWorkspaceStore((state) => state.currentWorkspace)
   const [name, setName] = useState('')
@@ -68,24 +68,6 @@ export default function CreateProjectDialog({ open, onClose }: CreateProjectDial
     starterAtCreate.current = 'blank'
   }, [open])
 
-  useEffect(() => {
-    if (!open) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open, onClose])
-
-  useEffect(() => {
-    if (!open) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previous
-    }
-  }, [open])
-
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
     const workspace = currentWorkspace
@@ -105,7 +87,7 @@ export default function CreateProjectDialog({ open, onClose }: CreateProjectDial
             workspace_id: workspace.id,
             name: trimmed,
             status: 'active',
-            color: '#667eea',
+            color: colorForName(trimmed),
           }),
         })
         const data = await res.json().catch(() => null)
@@ -117,15 +99,16 @@ export default function CreateProjectDialog({ open, onClose }: CreateProjectDial
         taskCursor.current = 0
       }
 
-      const tasks = starterTasks(starterAtCreate.current)
-      for (let i = taskCursor.current; i < tasks.length; i++) {
+      // Created last-to-first: the task list shows newest first, so the starter reads in its natural order.
+      const keys = starterTaskKeys(starterAtCreate.current).reverse()
+      for (let i = taskCursor.current; i < keys.length; i++) {
         const res = await fetch('/api/tasks', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             workspace_id: workspace.id,
             project_id: projectId,
-            title: tasks[i].title,
+            title: tp(`starters.${keys[i]}`),
           }),
         })
         const data = await res.json().catch(() => null)
@@ -143,117 +126,97 @@ export default function CreateProjectDialog({ open, onClose }: CreateProjectDial
     }
   }
 
-  if (!open || typeof document === 'undefined') return null
-
   const locked = saving || Boolean(createdProjectId)
+  const close = () => {
+    if (!saving) onClose()
+  }
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[80] flex items-end justify-center bg-black/50 sm:items-center sm:p-6"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={headingId}
-        className="flex h-[100dvh] w-full flex-col bg-surface text-text-primary sm:h-auto sm:max-h-[85vh] sm:max-w-md sm:rounded-2xl sm:border sm:border-border"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="border-b border-border px-4 py-3">
-          <h2 id={headingId} className="text-base font-semibold">
-            {t('projectTitle')}
-          </h2>
-        </div>
-
-        {!currentWorkspace ? (
-          <>
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-              <p className="text-sm text-text-secondary">{t('needWorkspace')}</p>
-            </div>
-            <div className="border-t border-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-              <Button type="button" variant="secondary" className="w-full" onClick={onClose}>
-                {t('cancel')}
-              </Button>
-            </div>
-          </>
-        ) : (
-          <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit} noValidate>
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
-              <p className="text-sm text-text-secondary">{t('projectHelp')}</p>
-              <div>
-                <label htmlFor="create-project-name" className="mb-1.5 block text-xs font-medium text-text-secondary">
-                  {t('projectName')}
-                </label>
-                <input
-                  id="create-project-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder={t('projectNamePlaceholder')}
-                  className={fieldClass}
-                  autoFocus
-                  autoComplete="off"
-                  disabled={locked}
-                  required
+  return (
+    <Dialog
+      open={open}
+      title={t('projectTitle')}
+      onClose={close}
+      footer={
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={close} disabled={saving}>
+            {t('cancel')}
+          </Button>
+          {currentWorkspace ? (
+            <Button
+              type="submit"
+              form="create-project-form"
+              className="w-full gap-2 sm:w-auto"
+              disabled={saving || !name.trim()}
+              aria-busy={saving}
+            >
+              {saving ? (
+                <span
+                  className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+                  aria-hidden
                 />
-              </div>
+              ) : null}
+              {saving ? common('loading') : t('create')}
+            </Button>
+          ) : null}
+        </div>
+      }
+    >
+      {!currentWorkspace ? (
+        <p className="text-sm text-text-secondary">{t('needWorkspace')}</p>
+      ) : (
+        <form id="create-project-form" className="space-y-5" onSubmit={handleSubmit} noValidate>
+          <div>
+            <label htmlFor="create-project-name" className="mb-1.5 block text-sm font-medium text-text-secondary">
+              {t('projectName')}
+            </label>
+            <input
+              id="create-project-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder={t('projectNamePlaceholder')}
+              className={fieldClass}
+              autoFocus
+              autoComplete="off"
+              disabled={locked}
+              required
+            />
+          </div>
 
-              <div>
-                <div className="flex flex-wrap gap-2" role="group" aria-describedby={helpId}>
-                  {STARTERS.map((id) => {
-                    const selected = starter === id
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        aria-pressed={selected}
-                        onClick={() => setStarter(id)}
-                        disabled={locked}
-                        className={`rounded-full border px-3 py-1 text-sm disabled:opacity-50 ${
-                          selected
-                            ? 'border-primary bg-primary/10 text-primary'
-                            : 'border-border text-text-secondary hover:bg-surface-hover'
-                        }`}
-                      >
-                        {t(STARTER_LABEL[id])}
-                      </button>
-                    )
-                  })}
-                </div>
-                <p id={helpId} className="mt-2 text-sm text-text-secondary">
-                  {t(STARTER_HELP[starter])}
-                </p>
-              </div>
-
-              {error && (
-                <p className="text-sm text-danger" role="alert">
-                  {error}
-                </p>
-              )}
+          <div>
+            <p className="mb-2 text-sm font-medium text-text-secondary">{t('projectHelp')}</p>
+            <div className="flex flex-wrap gap-2" role="group" aria-describedby={helpId}>
+              {STARTERS.map((id) => {
+                const selected = starter === id
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setStarter(id)}
+                    disabled={locked}
+                    className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${
+                      selected
+                        ? 'border-primary bg-primary/10 font-medium text-primary'
+                        : 'border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+                    }`}
+                  >
+                    {t(STARTER_LABEL[id])}
+                  </button>
+                )
+              })}
             </div>
+            <p id={helpId} className="mt-2 text-sm text-text-muted">
+              {t(STARTER_HELP[starter])}
+            </p>
+          </div>
 
-            <div className="flex gap-3 border-t border-border px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-              <Button type="button" variant="secondary" className="flex-1" onClick={onClose} disabled={saving}>
-                {t('cancel')}
-              </Button>
-              <Button
-                type="submit"
-                className="flex-1 gap-2"
-                disabled={saving || !name.trim()}
-                aria-busy={saving}
-              >
-                {saving && (
-                  <span
-                    className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-                    aria-hidden
-                  />
-                )}
-                {saving ? common('loading') : t('create')}
-              </Button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>,
-    document.body
+          {error ? (
+            <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </form>
+      )}
+    </Dialog>
   )
 }

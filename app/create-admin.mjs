@@ -24,8 +24,15 @@ const supabase = createClient(supabaseUrl, supabaseKey, {
 
 console.log('🔐 Creating admin account...\n')
 
-const email = 'admin@admin.com'
-const password = 'admin123'
+// Credentials come from the environment - never hard-code them.
+//   ADMIN_EMAIL=you@example.com ADMIN_PASSWORD='a-long-random-password' node create-admin.mjs
+const email = process.env.ADMIN_EMAIL
+const password = process.env.ADMIN_PASSWORD
+
+if (!email || !password || password.length < 12) {
+  console.log('Set ADMIN_EMAIL and ADMIN_PASSWORD (min 12 chars) in the environment.')
+  process.exit(1)
+}
 
 // Check if user exists first
 const { data: { users }, error: listError } = await supabase.auth.admin.listUsers()
@@ -72,7 +79,7 @@ if (existingUser) {
 console.log('✅ User created/updated successfully!')
 console.log('\n📧 Login credentials:')
 console.log(`   Email: ${email}`)
-console.log(`   Password: ${password}`)
+console.log("   Password: [set from ADMIN_PASSWORD]")
 console.log(`   User ID: ${userId}`)
 
 // Create profile entry

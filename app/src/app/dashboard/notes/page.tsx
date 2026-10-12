@@ -1,60 +1,118 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
+import { supabase } from '@/lib/supabase'
 import NotesList from '@/components/notes/NotesList'
-import NoteEditor from '@/components/notes/NoteEditor'
+import NotePane from '@/components/notes/NotePane'
 import TemplateSelector from '@/components/notes/TemplateSelector'
-import { Plus, Search } from 'lucide-react'
+import { stripHtml, type NoteProject, type NoteRecord, type NoteTag } from '@/components/notes/noteUtils'
+import { BookOpen, Plus, Search, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/Button'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/ui/Toast'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconMenu } from '@/components/ui/IconMenu'
 import { PageHeader } from '@/components/ui/PageHeader'
 
-interface Tag {
-  id: string
-  name: string
-  color: string
+const selectClass =
+  'h-9 w-full min-w-0 rounded-lg border border-border bg-secondary px-2.5 text-[13px] text-text-primary transition-colors hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(false)
+
+  useEffect(() => {
+    const media = window.matchMedia(query)
+    const update = () => setMatches(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [query])
+
+  return matches
 }
 
-interface Note {
-  id: string
-  title: string
-  content: string
-  created_at: string
-  project_id?: string
-  tags?: Tag[]
+function syncUrl(noteId: string | null) {
+  try {
+    const url = new URL(window.location.href)
+    if (noteId) url.searchParams.set('note', noteId)
+    else url.searchParams.delete('note')
+    window.history.replaceState(window.history.state, '', url.toString())
+  } catch {
+    // The address bar is a nicety; never let it break the page.
+  }
 }
-
-interface Project {
-  id: string
-  name: string
-}
-
-const fieldClass =
-  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
 
 export default function NotesPage() {
   const t = useTranslations('pages.notes')
+  const toast = useToast()
+  const { confirm, dialog } = useConfirm()
   const { currentWorkspace, workspaces } = useWorkspaceStore()
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>('')
-  const [notes, setNotes] = useState<Note[]>([])
-  const [projects, setProjects] = useState<Project[]>([])
+  const [notes, setNotes] = useState<NoteRecord[]>([])
+  const [projects, setProjects] = useState<NoteProject[]>([])
+  const [projectsLoaded, setProjectsLoaded] = useState(false)
   const [selectedProjectId, setSelectedProjectId] = useState<string>('')
   const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(true)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [editingNote, setEditingNote] = useState<Note | null>(null)
+  const [createKey, setCreateKey] = useState(0)
   const [templateContent, setTemplateContent] = useState('')
-  const [editorKey, setEditorKey] = useState(0)
   const [showTemplates, setShowTemplates] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
+
+  const rootRef = useRef<HTMLDivElement>(null)
+  const loadSeq = useRef(0)
+  const isMd = useMediaQuery('(min-width: 768px)')
 
   useEffect(() => {
     if (currentWorkspace && !activeWorkspaceId) {
       setActiveWorkspaceId(currentWorkspace.id)
     }
   }, [currentWorkspace, activeWorkspaceId])
+
+  useEffect(() => {
+    let active = true
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (active) setUserId(data.user?.id ?? null)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  // Deep link: /dashboard/notes?note=<id>
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('note')
+    if (id) setSelectedId(id)
+  }, [])
+
+  // On tablet/desktop the workspace fills the viewport below the shell header and the
+  // panes scroll on their own, so measure where we start and size to what is left.
+  useEffect(() => {
+    const measure = () => {
+      const el = rootRef.current
+      if (!el) return
+      const top = el.getBoundingClientRect().top + window.scrollY
+      const parent = el.closest('main') ?? el.parentElement
+      const paddingBottom = parent ? parseFloat(getComputedStyle(parent).paddingBottom) || 0 : 0
+      el.style.setProperty('--notes-h', `${Math.max(480, Math.floor(window.innerHeight - top - paddingBottom))}px`)
+    }
+
+    measure()
+    window.addEventListener('resize', measure)
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null
+    observer?.observe(document.documentElement)
+    return () => {
+      window.removeEventListener('resize', measure)
+      observer?.disconnect()
+    }
+  }, [])
 
   const loadProjects = useCallback(async () => {
     const wsId = activeWorkspaceId || currentWorkspace?.id
@@ -69,34 +127,41 @@ export default function NotesPage() {
       }
     } catch (error) {
       console.error('Error loading projects:', error)
+    } finally {
+      setProjectsLoaded(true)
     }
   }, [activeWorkspaceId, currentWorkspace?.id])
 
-  const loadNotes = useCallback(async () => {
-    const wsId = activeWorkspaceId || currentWorkspace?.id
-    if (!wsId) return
+  const loadNotes = useCallback(
+    async (silent = false) => {
+      const wsId = activeWorkspaceId || currentWorkspace?.id
+      if (!wsId) return
 
-    try {
-      setLoading(true)
+      const seq = ++loadSeq.current
+      try {
+        if (!silent) setLoading(true)
 
-      const url = selectedProjectId
-        ? `/api/notes?projectId=${selectedProjectId}`
-        : `/api/notes?workspaceId=${wsId}`
+        const url = selectedProjectId
+          ? `/api/notes?projectId=${selectedProjectId}`
+          : `/api/notes?workspaceId=${wsId}`
 
-      const response = await fetch(url)
-      const data = await response.json()
+        const response = await fetch(url)
+        const data = await response.json()
+        if (seq !== loadSeq.current) return
 
-      if (response.ok) {
-        setNotes(data || [])
-      } else {
-        console.error('Error loading notes:', data.error)
+        if (response.ok) {
+          setNotes(Array.isArray(data) ? data : [])
+        } else {
+          console.error('Error loading notes:', data.error)
+        }
+      } catch (error) {
+        console.error('Error loading notes:', error)
+      } finally {
+        if (seq === loadSeq.current) setLoading(false)
       }
-    } catch (error) {
-      console.error('Error loading notes:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [activeWorkspaceId, currentWorkspace?.id, selectedProjectId])
+    },
+    [activeWorkspaceId, currentWorkspace?.id, selectedProjectId]
+  )
 
   useEffect(() => {
     if (activeWorkspaceId) {
@@ -106,218 +171,305 @@ export default function NotesPage() {
   }, [activeWorkspaceId, loadNotes, loadProjects])
 
   const workspaceId = activeWorkspaceId || currentWorkspace?.id || ''
-  const editorOpen = creating || editingNote !== null
 
-  const filteredNotes = notes.filter((note) => {
-    const query = searchQuery.toLowerCase()
-    const content = note.content || ''
-    return note.title.toLowerCase().includes(query) || content.toLowerCase().includes(query)
-  })
+  const sortedNotes = useMemo(
+    () =>
+      [...notes].sort(
+        (a, b) =>
+          new Date(b.updated_at || b.created_at).getTime() - new Date(a.updated_at || a.created_at).getTime()
+      ),
+    [notes]
+  )
 
-  const closeEditor = () => {
-    setCreating(false)
-    setEditingNote(null)
-    setTemplateContent('')
-  }
+  const filteredNotes = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) return sortedNotes
+    return sortedNotes.filter(
+      (note) =>
+        (note.title || '').toLowerCase().includes(query) ||
+        stripHtml(note.content).toLowerCase().includes(query) ||
+        (note.project?.name || '').toLowerCase().includes(query) ||
+        (note.tags ?? []).some((tag) => tag.name.toLowerCase().includes(query))
+    )
+  }, [sortedNotes, searchQuery])
+
+  const selectedNote = useMemo(() => notes.find((note) => note.id === selectedId) ?? null, [notes, selectedId])
+  const paneOpen = creating || selectedNote !== null
+
+  const selectNote = useCallback((id: string | null) => {
+    setSelectedId(id)
+    syncUrl(id)
+  }, [])
+
+  // With room for two panes, never leave the reader empty: show the most recent note.
+  useEffect(() => {
+    if (loading || !isMd || creating || selectedNote) return
+    if (filteredNotes[0]) selectNote(filteredNotes[0].id)
+  }, [loading, isMd, creating, selectedNote, filteredNotes, selectNote])
 
   const openCreate = () => {
     if (projects.length === 0) return
-    setEditingNote(null)
     setTemplateContent('')
-    setEditorKey((key) => key + 1)
+    setCreateKey((key) => key + 1)
     setCreating(true)
   }
 
-  const openNote = (note: Note) => {
+  const openNote = (note: NoteRecord) => {
     setCreating(false)
     setTemplateContent('')
-    setEditingNote(note)
+    selectNote(note.id)
   }
 
-  const handleCreate = async (title: string, content: string, tags: Tag[], targetProjectId: string) => {
+  const closePane = () => {
+    if (creating) {
+      setCreating(false)
+      setTemplateContent('')
+      return
+    }
+    selectNote(null)
+  }
+
+  const handleCreate = async (title: string, content: string, tags: NoteTag[], targetProjectId: string) => {
     const finalProjectId = targetProjectId || selectedProjectId
-    if (!finalProjectId) return
+    if (!finalProjectId) throw new Error('Project is required')
 
-    try {
-      const res = await fetch('/api/notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: finalProjectId, title, content, tags }),
-      })
+    const res = await fetch('/api/notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: finalProjectId, title, content, tags }),
+    })
+    if (!res.ok) throw new Error(`Create failed (${res.status})`)
 
-      if (res.ok) {
-        closeEditor()
-        loadNotes()
-      }
-    } catch (error) {
-      console.error('Failed to create note:', error)
-    }
+    const created = (await res.json()) as NoteRecord
+    const project = projects.find((item) => item.id === finalProjectId)
+    setNotes((current) => [{ ...created, tags, project: project ? { name: project.name } : null }, ...current])
+    setCreating(false)
+    setTemplateContent('')
+    selectNote(created.id)
+    loadNotes(true)
   }
 
-  const handleUpdate = async (title: string, content: string, tags: Tag[]) => {
-    if (!editingNote) return
+  const handleUpdate = async (title: string, content: string, tags: NoteTag[]) => {
+    if (!selectedNote) return
+    const id = selectedNote.id
 
-    try {
-      const res = await fetch('/api/notes', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: editingNote.id, title, content, tags }),
-      })
+    const res = await fetch('/api/notes', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, title, content, tags }),
+    })
+    if (!res.ok) throw new Error(`Update failed (${res.status})`)
 
-      if (res.ok) {
-        closeEditor()
-        loadNotes()
-      }
-    } catch (error) {
-      console.error('Failed to update note:', error)
-    }
+    const updated = (await res.json().catch(() => null)) as NoteRecord | null
+    setNotes((current) =>
+      current.map((note) =>
+        note.id === id
+          ? { ...note, title, content, tags, updated_at: updated?.updated_at ?? new Date().toISOString() }
+          : note
+      )
+    )
+    loadNotes(true)
   }
 
   const handleDelete = async (id: string) => {
-    if (!confirm(t('deleteConfirm'))) return
+    if (!(await confirm({ title: t('deleteConfirm'), confirmLabel: t('deleteNote') }))) return
 
     try {
       const res = await fetch(`/api/notes?id=${id}`, { method: 'DELETE' })
 
       if (res.ok) {
-        if (editingNote?.id === id) closeEditor()
-        loadNotes()
+        setNotes((current) => current.filter((note) => note.id !== id))
+        if (selectedId === id) selectNote(null)
+        loadNotes(true)
+      } else {
+        toast.error(t('deleteFailed'))
       }
     } catch (error) {
       console.error('Failed to delete note:', error)
+      toast.error(t('deleteFailed'))
     }
   }
 
-  const showSplit = !loading && projects.length > 0 && (filteredNotes.length > 0 || editorOpen)
+  const hasFilters = Boolean(selectedProjectId)
+  const noProjects = projectsLoaded && projects.length === 0
+  const noNotesAtAll = projectsLoaded && !loading && notes.length === 0 && !hasFilters && !creating
+
+  const listBody = loading ? (
+    <div className="space-y-px" aria-busy="true" aria-label={t('loading')}>
+      {[0, 1, 2, 3, 4].map((index) => (
+        <div key={index} className="animate-pulse border-b border-border px-4 py-3 last:border-b-0">
+          <div className="h-3.5 w-2/3 rounded bg-surface-hover" />
+          <div className="mt-2.5 h-3 w-full rounded bg-surface-hover" />
+          <div className="mt-1.5 h-3 w-4/5 rounded bg-surface-hover" />
+        </div>
+      ))}
+    </div>
+  ) : filteredNotes.length === 0 ? (
+    <p className="px-4 py-12 text-center text-sm text-text-secondary">
+      {searchQuery.trim() ? t('noResults') : t('noNotesHere')}
+    </p>
+  ) : (
+    <NotesList
+      notes={filteredNotes}
+      selectedId={selectedNote?.id}
+      showUpdated
+      showMenu={false}
+      onOpen={openNote}
+      onDelete={handleDelete}
+    />
+  )
 
   return (
-    <div className="min-w-0 space-y-6">
-      <div className={editorOpen ? 'max-lg:hidden' : ''}>
-      <PageHeader
-        title={t('title')}
-        description={t('subtitle')}
-        action={
-          <div className="flex items-center gap-1">
-            {projects.length > 0 ? (
-              <IconMenu
-                label={t('fromTemplateTitle')}
-                items={[{ label: t('fromTemplate'), onClick: () => setShowTemplates(true) }]}
-              />
-            ) : null}
-            <Button
-              type="button"
-              onClick={openCreate}
-              disabled={projects.length === 0}
-              title={projects.length === 0 ? t('needProjectTitle') : t('newNoteTitle')}
-              aria-label={t('newNote')}
-              className="gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">{t('newNote')}</span>
-            </Button>
-          </div>
-        }
-      />
-      </div>
-
-      <div className={`grid min-w-0 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,12rem)_minmax(0,12rem)] ${editorOpen ? 'max-lg:hidden' : ''}`}>
-        <div className="relative min-w-0 sm:col-span-2 lg:col-span-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-          <input
-            type="search"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            placeholder={t('searchPlaceholder')}
-            aria-label={t('searchPlaceholder')}
-            className={`${fieldClass} pl-9`}
-          />
-        </div>
-
-        <label className="block min-w-0 text-xs font-medium text-text-secondary">
-          {t('workspaceContext')}
-          <select
-            value={activeWorkspaceId}
-            onChange={(event) => {
-              setActiveWorkspaceId(event.target.value)
-              setSelectedProjectId('')
-              closeEditor()
-            }}
-            className={`${fieldClass} mt-1`}
-          >
-            {workspaces.map((ws) => (
-              <option key={ws.id} value={ws.id}>
-                {ws.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block min-w-0 text-xs font-medium text-text-secondary">
-          {t('categories.project')}
-          <select
-            value={selectedProjectId}
-            onChange={(event) => setSelectedProjectId(event.target.value)}
-            className={`${fieldClass} mt-1`}
-          >
-            <option value="">{t('allProjects')}</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      <div className="flex min-w-0 flex-col lg:flex-row lg:items-start lg:gap-4">
-        <section className={`min-w-0 ${editorOpen ? 'max-lg:hidden' : ''} ${showSplit ? 'lg:w-80 lg:shrink-0' : 'w-full'}`}>
-          {loading ? (
-            <p className="rounded-2xl border border-border bg-surface px-4 py-12 text-center text-sm text-text-secondary">
-              {t('loading')}
-            </p>
-          ) : projects.length === 0 ? (
-            <EmptyState title={t('noProjectsTitle')} body={t('noProjectsBody')} />
-          ) : notes.length === 0 ? (
-            <EmptyState title={t('emptyTitle')} body={t('emptyBody')} />
-          ) : filteredNotes.length === 0 ? (
-            <p className="rounded-2xl border border-border bg-surface px-4 py-12 text-center text-sm text-text-secondary">
-              {t('noResults')}
-            </p>
-          ) : (
-            <div className="max-w-full rounded-2xl border border-border bg-surface">
-              <NotesList
-                notes={filteredNotes}
-                selectedId={editingNote?.id}
-                onOpen={openNote}
-                onDelete={handleDelete}
-              />
+    <div className="min-w-0">
+      <div
+        ref={rootRef}
+        className="flex min-w-0 flex-col gap-4 md:h-[var(--notes-h,calc(100dvh_-_9rem))] md:min-h-[30rem]"
+      >
+        <PageHeader
+          title={t('title')}
+          action={
+            <div className="flex items-center gap-1">
+              {projects.length > 0 ? (
+                <IconMenu
+                  label={t('fromTemplateTitle')}
+                  items={[{ label: t('fromTemplate'), onClick: () => setShowTemplates(true) }]}
+                />
+              ) : null}
+              <Button
+                type="button"
+                onClick={openCreate}
+                disabled={projects.length === 0}
+                title={projects.length === 0 ? t('needProjectTitle') : t('newNoteTitle')}
+                aria-label={t('newNote')}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                <span className="hidden sm:inline">{t('newNote')}</span>
+              </Button>
             </div>
-          )}
-        </section>
+          }
+        />
 
-        {showSplit ? (
-          <section className={`min-w-0 lg:flex-1 ${editorOpen ? '' : 'max-lg:hidden'}`}>
-            {editorOpen && workspaceId ? (
-              <NoteEditor
-                key={editingNote?.id ?? `create-${editorKey}`}
+        {noProjects ? (
+          <EmptyState title={t('noProjectsTitle')} body={t('noProjectsBody')} />
+        ) : noNotesAtAll ? (
+          <EmptyState
+            title={t('emptyTitle')}
+            body={t('emptyBody')}
+            action={
+              <Button type="button" onClick={openCreate} className="gap-2">
+                <Plus className="h-4 w-4" />
+                {t('createNote')}
+              </Button>
+            }
+          />
+        ) : (
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 md:flex-row">
+            <aside className="flex min-w-0 flex-col rounded-2xl border border-border bg-surface md:min-h-0 md:w-[20rem] md:shrink-0 lg:w-[22rem] xl:w-[24rem]">
+              <div className="space-y-2 border-b border-border p-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder={t('searchPlaceholder')}
+                    aria-label={t('searchPlaceholder')}
+                    className="h-10 w-full min-w-0 rounded-lg border border-border bg-secondary pl-9 pr-9 text-sm text-text-primary transition-colors placeholder:text-text-muted hover:border-primary/50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary [&::-webkit-search-cancel-button]:hidden"
+                  />
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      aria-label={t('clearSearch')}
+                      className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-text-primary"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="flex gap-2">
+                  {workspaces.length > 1 ? (
+                    <select
+                      value={activeWorkspaceId}
+                      aria-label={t('workspaceContext')}
+                      title={t('workspaceContext')}
+                      onChange={(event) => {
+                        setActiveWorkspaceId(event.target.value)
+                        setSelectedProjectId('')
+                        setNotes([])
+                        setProjects([])
+                        setProjectsLoaded(false)
+                        setCreating(false)
+                        selectNote(null)
+                      }}
+                      className={selectClass}
+                    >
+                      {workspaces.map((ws) => (
+                        <option key={ws.id} value={ws.id}>
+                          {ws.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+                  <select
+                    value={selectedProjectId}
+                    aria-label={t('categories.project')}
+                    title={t('categories.project')}
+                    onChange={(event) => setSelectedProjectId(event.target.value)}
+                    className={selectClass}
+                  >
+                    <option value="">{t('allProjects')}</option>
+                    {projects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {!loading ? (
+                  <p className="px-0.5 text-xs text-text-muted">{t('notesCount', { count: filteredNotes.length })}</p>
+                ) : null}
+              </div>
+
+              <div className="overflow-hidden rounded-b-2xl md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain">
+                {listBody}
+              </div>
+            </aside>
+
+            {paneOpen && workspaceId ? (
+              <NotePane
+                key={creating ? `create-${createKey}` : selectedNote?.id}
+                note={creating ? null : selectedNote}
                 workspaceId={workspaceId}
-                noteId={editingNote?.id}
-                initialTitle={editingNote?.title ?? ''}
-                initialContent={editingNote?.content ?? templateContent}
-                initialTags={editingNote?.tags ?? []}
-                initialProjectId={editingNote?.project_id ?? selectedProjectId}
                 projects={projects}
-                onSave={editingNote ? handleUpdate : handleCreate}
-                onCancel={closeEditor}
-                isEdit={Boolean(editingNote)}
+                defaultProjectId={selectedProjectId || (projects.length === 1 ? projects[0].id : '')}
+                initialContent={templateContent}
+                currentUserId={userId}
+                shareUrl={
+                  !creating && selectedNote
+                    ? `${typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/notes?note=${selectedNote.id}`
+                    : undefined
+                }
+                onSave={creating ? handleCreate : handleUpdate}
+                onDelete={handleDelete}
+                onClose={closePane}
               />
             ) : (
-              <div className="flex min-h-64 items-center justify-center rounded-2xl border border-border bg-surface p-6 text-center">
-                <p className="text-sm text-text-secondary">{t('openNoteHint')}</p>
+              <div className="hidden min-w-0 flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-surface p-8 text-center md:flex">
+                <BookOpen className="h-8 w-8 text-text-muted" />
+                <h2 className="mt-3 text-base font-semibold text-text-primary">{t('selectNoteTitle')}</h2>
+                <p className="mt-1 max-w-xs text-sm text-text-secondary">{t('openNoteHint')}</p>
+                <Button type="button" variant="secondary" onClick={openCreate} className="mt-5 gap-2">
+                  <Plus className="h-4 w-4" />
+                  {t('newNote')}
+                </Button>
               </div>
             )}
-          </section>
-        ) : null}
+          </div>
+        )}
       </div>
 
       {showTemplates && workspaceId ? (
@@ -325,13 +477,13 @@ export default function NotesPage() {
           workspaceId={workspaceId}
           onSelect={(template) => {
             setTemplateContent(template.content)
-            setEditingNote(null)
-            setEditorKey((key) => key + 1)
+            setCreateKey((key) => key + 1)
             setCreating(true)
           }}
           onClose={() => setShowTemplates(false)}
         />
       ) : null}
+      {dialog}
     </div>
   )
 }

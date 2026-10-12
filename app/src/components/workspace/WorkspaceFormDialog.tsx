@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useTranslations } from 'next-intl'
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
 import { Button } from '@/components/ui/Button'
@@ -9,7 +9,7 @@ import { Dialog } from '@/components/ui/Dialog'
 interface WorkspaceFormDialogProps {
   isOpen: boolean
   onClose: () => void
-  workspace?: {
+  workspace: {
     id: string
     name: string
     category?: string
@@ -18,15 +18,7 @@ interface WorkspaceFormDialogProps {
   } | null
 }
 
-const WORKSPACE_CATEGORIES = [
-  { value: 'personal', icon: '👤' },
-  { value: 'work', icon: '💼' },
-  { value: 'client', icon: '🤝' },
-  { value: 'team', icon: '👥' },
-  { value: 'freelance', icon: '🚀' },
-  { value: 'education', icon: '🎓' },
-  { value: 'other', icon: '📦' },
-] as const
+const WORKSPACE_CATEGORIES = ['personal', 'work', 'client', 'team', 'freelance', 'education', 'other'] as const
 
 const COLOR_PRESETS = [
   { key: 'indigo', value: '#667eea' },
@@ -40,11 +32,12 @@ const COLOR_PRESETS = [
 ] as const
 
 const fieldClass =
-  'w-full max-w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary'
+  'w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50'
 
+/** Edit a workspace's name, category, colour and description. (Creating one uses the short CreateWorkspaceDialog.) */
 export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: WorkspaceFormDialogProps) {
   const t = useTranslations('pages.people')
-  const { createWorkspace, updateWorkspace } = useWorkspaceStore()
+  const updateWorkspace = useWorkspaceStore((state) => state.updateWorkspace)
 
   const [name, setName] = useState('')
   const [category, setCategory] = useState('')
@@ -54,22 +47,18 @@ export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: Work
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (workspace) {
-      setName(workspace.name)
-      setCategory(workspace.category || '')
-      setColor(workspace.color || '#667eea')
-      setDescription(workspace.description || '')
-    } else {
-      setName('')
-      setCategory('')
-      setColor('#667eea')
-      setDescription('')
-    }
+    if (!isOpen || !workspace) return
+    setName(workspace.name)
+    setCategory(workspace.category || '')
+    setColor(workspace.color || '#667eea')
+    setDescription(workspace.description || '')
     setError(null)
+    setLoading(false)
   }, [workspace, isOpen])
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
+    if (!workspace || loading) return
     setError(null)
 
     if (!name.trim()) {
@@ -78,32 +67,17 @@ export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: Work
     }
 
     setLoading(true)
-
     try {
-      if (workspace) {
-        const ok = await updateWorkspace(workspace.id, {
-          name: name.trim(),
-          category: category || undefined,
-          color,
-          description: description.trim() || undefined,
-        })
-        if (!ok) {
-          setError(useWorkspaceStore.getState().error || t('form.saveFailed'))
-          return
-        }
-      } else {
-        const created = await createWorkspace(
-          name.trim(),
-          category || undefined,
-          color,
-          description.trim() || undefined
-        )
-        if (!created) {
-          setError(useWorkspaceStore.getState().error || t('form.saveFailed'))
-          return
-        }
+      const ok = await updateWorkspace(workspace.id, {
+        name: name.trim(),
+        category: category || undefined,
+        color,
+        description: description.trim() || undefined,
+      })
+      if (!ok) {
+        setError(useWorkspaceStore.getState().error || t('form.saveFailed'))
+        return
       }
-
       onClose()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : t('form.saveFailed'))
@@ -116,30 +90,34 @@ export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: Work
     if (!loading) onClose()
   }
 
+  const swatches: string[] = COLOR_PRESETS.map((preset) => preset.value)
+  if (!swatches.includes(color)) swatches.unshift(color)
+
   return (
     <Dialog
-      open={isOpen}
-      title={workspace ? t('form.editTitle') : t('form.createTitle')}
+      open={isOpen && Boolean(workspace)}
+      title={t('form.editTitle')}
       onClose={requestClose}
       size="lg"
       footer={
-        <div className="flex gap-2">
-          <Button type="button" variant="secondary" className="flex-1" onClick={requestClose} disabled={loading}>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={requestClose} disabled={loading}>
             {t('form.cancel')}
           </Button>
-          <Button type="submit" form="workspace-form" className="flex-1" disabled={loading || !name.trim()}>
-            {loading ? t('form.saving') : workspace ? t('form.update') : t('form.create')}
+          <Button type="submit" form="workspace-form" className="w-full sm:w-auto" disabled={loading || !name.trim()}>
+            {loading ? t('form.saving') : t('form.save')}
           </Button>
         </div>
       }
     >
-      <form id="workspace-form" onSubmit={handleSubmit} className="space-y-4">
-        <p className="text-sm text-text-secondary">{workspace ? t('form.editSubtitle') : t('form.createSubtitle')}</p>
+      <form id="workspace-form" onSubmit={handleSubmit} className="space-y-5">
         {error ? (
-          <p className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary">{error}</p>
+          <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
+            {error}
+          </p>
         ) : null}
 
-        <label className="block text-sm text-text-secondary">
+        <label className="block text-sm font-medium text-text-secondary">
           {t('form.name')}
           <input
             type="text"
@@ -148,70 +126,57 @@ export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: Work
             placeholder={t('form.namePlaceholder')}
             disabled={loading}
             required
-            className={`${fieldClass} mt-1.5 disabled:opacity-50`}
+            autoFocus
+            className={`${fieldClass} mt-1.5`}
           />
         </label>
 
         <div>
-          <p className="text-sm text-text-secondary">{t('form.category')}</p>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            {WORKSPACE_CATEGORIES.map((cat) => (
+          <p className="text-sm font-medium text-text-secondary">{t('form.category')}</p>
+          <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={t('form.category')}>
+            {WORKSPACE_CATEGORIES.map((value) => (
               <button
-                key={cat.value}
+                key={value}
                 type="button"
-                onClick={() => setCategory(category === cat.value ? '' : cat.value)}
+                aria-pressed={category === value}
+                onClick={() => setCategory(category === value ? '' : value)}
                 disabled={loading}
-                className={`min-w-0 break-words rounded-xl border px-3 py-2 text-left text-sm font-medium disabled:opacity-50 ${
-                  category === cat.value
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border bg-secondary text-text-secondary'
+                className={`rounded-full border px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 ${
+                  category === value
+                    ? 'border-primary bg-primary/10 font-medium text-primary'
+                    : 'border-border text-text-secondary hover:bg-surface-hover hover:text-text-primary'
                 }`}
               >
-                <span className="mr-1">{cat.icon}</span>
-                {t(`form.categories.${cat.value}`)}
+                {t(`form.categories.${value}`)}
               </button>
             ))}
           </div>
         </div>
 
         <div>
-          <p className="text-sm text-text-secondary">{t('form.color')}</p>
-          <div className="mt-2 grid grid-cols-4 gap-2">
-            {COLOR_PRESETS.map((preset) => (
-              <button
-                key={preset.value}
-                type="button"
-                onClick={() => setColor(preset.value)}
-                disabled={loading}
-                aria-label={t(`form.colors.${preset.key}`)}
-                className={`h-10 rounded-lg disabled:opacity-50 ${
-                  color === preset.value ? 'outline outline-2 outline-offset-2 outline-primary' : ''
-                }`}
-                style={{ backgroundColor: preset.value }}
-              />
-            ))}
-          </div>
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input
-              type="color"
-              value={color}
-              onChange={(event) => setColor(event.target.value)}
-              disabled={loading}
-              aria-label={t('form.color')}
-              className="h-10 w-full cursor-pointer rounded-lg border border-border bg-secondary disabled:opacity-50 sm:w-12"
-            />
-            <input
-              type="text"
-              value={color}
-              onChange={(event) => setColor(event.target.value)}
-              placeholder="#667eea"
-              disabled={loading}
-              className={`${fieldClass} min-w-0 font-mono disabled:opacity-50 sm:flex-1`}
-            />
+          <p className="text-sm font-medium text-text-secondary">{t('form.color')}</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {swatches.map((value) => {
+              const preset = COLOR_PRESETS.find((item) => item.value === value)
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setColor(value)}
+                  disabled={loading}
+                  aria-label={preset ? t(`form.colors.${preset.key}`) : value}
+                  aria-pressed={color === value}
+                  className={`h-8 w-8 rounded-lg transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface disabled:opacity-50 ${
+                    color === value ? 'ring-2 ring-text-primary ring-offset-2 ring-offset-surface' : ''
+                  }`}
+                  style={{ backgroundColor: value }}
+                />
+              )
+            })}
           </div>
         </div>
 
-        <label className="block text-sm text-text-secondary">
+        <label className="block text-sm font-medium text-text-secondary">
           {t('form.description')}
           <textarea
             value={description}
@@ -219,7 +184,7 @@ export default function WorkspaceFormDialog({ isOpen, onClose, workspace }: Work
             placeholder={t('form.descriptionPlaceholder')}
             rows={3}
             disabled={loading}
-            className={`${fieldClass} mt-1.5 resize-none disabled:opacity-50`}
+            className={`${fieldClass} mt-1.5 resize-none`}
           />
         </label>
       </form>

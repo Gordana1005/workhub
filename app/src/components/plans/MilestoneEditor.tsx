@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Link as LinkIcon, Plus, Trash } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Check, Plus, Search, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useTranslations } from 'next-intl';
+import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 
@@ -29,19 +30,22 @@ interface MilestoneEditorProps {
   milestone: Milestone | null;
   onClose: () => void;
   onSave: () => void;
+  onDelete?: () => void;
 }
 
 const fieldClass =
   'w-full rounded-lg border border-border bg-secondary px-3 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary';
 
-export default function MilestoneEditor({ planId, milestone, onClose, onSave }: MilestoneEditorProps) {
+export default function MilestoneEditor({ planId, milestone, onClose, onSave, onDelete }: MilestoneEditorProps) {
   const t = useTranslations('pages.plans');
+  const { currentWorkspace } = useWorkspaceStore();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [targetDate, setTargetDate] = useState('');
   const [linkedTasks, setLinkedTasks] = useState<Task[]>([]);
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const [showTaskSelector, setShowTaskSelector] = useState(false);
+  const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
 
   const loadLinkedTasks = useCallback(async () => {
@@ -63,19 +67,26 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
     }
   }, [milestone]);
 
+  const workspaceId = currentWorkspace?.id;
+
   const loadAvailableTasks = useCallback(async () => {
-    const { data } = await supabase
+    let query = supabase
       .from('tasks')
       .select('id, title, is_completed')
-      .limit(50);
+      .order('is_completed', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (workspaceId) query = query.eq('workspace_id', workspaceId);
+    const { data } = await query;
 
     if (data) {
       setAvailableTasks(data);
     }
-  }, []);
+  }, [workspaceId]);
 
   useEffect(() => {
     setShowTaskSelector(false);
+    setSearch('');
     if (milestone) {
       setName(milestone.name);
       setDescription(milestone.description || '');
@@ -91,7 +102,7 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
   }, [milestone, loadLinkedTasks, loadAvailableTasks]);
 
   const handleSave = async () => {
-    if (!name || !targetDate) return;
+    if (!name.trim() || !targetDate) return;
 
     setSaving(true);
 
@@ -99,7 +110,7 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
       const { error } = await supabase
         .from('plan_milestones')
         .update({
-          name,
+          name: name.trim(),
           description,
           target_date: targetDate,
         })
@@ -113,7 +124,7 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
         .from('plan_milestones')
         .insert({
           plan_id: planId,
-          name,
+          name: name.trim(),
           description,
           target_date: targetDate,
           order_index: 0,
@@ -138,7 +149,6 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
     });
 
     loadLinkedTasks();
-    setShowTaskSelector(false);
   };
 
   const unlinkTask = async (taskId: string) => {
@@ -153,9 +163,18 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
     loadLinkedTasks();
   };
 
-  const unlinkedTasks = availableTasks.filter(
-    (task) => !linkedTasks.some((linked) => linked.id === task.id)
-  );
+  const unlinkedTasks = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return availableTasks.filter(
+      (task) =>
+        !linkedTasks.some((linked) => linked.id === task.id) &&
+        (needle === '' || task.title.toLowerCase().includes(needle))
+    );
+  }, [availableTasks, linkedTasks, search]);
+
+  const doneCount = linkedTasks.filter((task) => task.is_completed).length;
+  const progress =
+    linkedTasks.length > 0 ? Math.round((doneCount / linkedTasks.length) * 100) : milestone?.completion_percentage ?? 0;
 
   return (
     <Dialog
@@ -164,39 +183,59 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
       onClose={onClose}
       size="lg"
       footer={
-        <div className="flex gap-3">
-          <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>
-            {t('cancel')}
-          </Button>
-          <Button
-            type="submit"
-            form="milestone-form"
-            className="flex-1"
-            disabled={!name || !targetDate || saving}
-          >
-            {saving ? t('saving') : milestone ? t('saveChanges') : t('createMilestone')}
-          </Button>
+        <div className="flex items-center gap-3">
+          {milestone && onDelete ? (
+            <Button type="button" variant="danger" className="shrink-0" onClick={onDelete}>
+              {t('deleteMilestone')}
+            </Button>
+          ) : null}
+          <div className="flex flex-1 gap-3 sm:justify-end">
+            <Button type="button" variant="secondary" className="flex-1 sm:flex-none" onClick={onClose}>
+              {t('cancel')}
+            </Button>
+            <Button
+              type="submit"
+              form="milestone-form"
+              className="flex-1 sm:flex-none"
+              disabled={!name.trim() || !targetDate || saving}
+            >
+              {saving ? t('saving') : milestone ? t('saveChanges') : t('createMilestone')}
+            </Button>
+          </div>
         </div>
       }
     >
       <form
         id="milestone-form"
-        className="space-y-6"
+        className="space-y-5"
         onSubmit={(event) => {
           event.preventDefault();
           handleSave();
         }}
       >
-        <label className="block text-sm text-text-secondary">
-          {t('milestoneName')}
-          <input
-            type="text"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            className={`${fieldClass} mt-1.5`}
-            placeholder={t('milestoneNamePlaceholder')}
-          />
-        </label>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+          <label className="block text-sm text-text-secondary">
+            {t('milestoneName')}
+            <input
+              type="text"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className={`${fieldClass} mt-1.5`}
+              placeholder={t('milestoneNamePlaceholder')}
+              autoFocus
+            />
+          </label>
+
+          <label className="block text-sm text-text-secondary">
+            {t('targetDate')}
+            <input
+              type="date"
+              value={targetDate}
+              onChange={(event) => setTargetDate(event.target.value)}
+              className={`${fieldClass} mt-1.5`}
+            />
+          </label>
+        </div>
 
         <label className="block text-sm text-text-secondary">
           {t('description')}
@@ -209,97 +248,112 @@ export default function MilestoneEditor({ planId, milestone, onClose, onSave }: 
           />
         </label>
 
-        <label className="block text-sm text-text-secondary">
-          {t('targetDate')}
-          <input
-            type="date"
-            value={targetDate}
-            onChange={(event) => setTargetDate(event.target.value)}
-            className={`${fieldClass} mt-1.5`}
-          />
-        </label>
-
         {milestone ? (
-          <div>
+          <div className="border-t border-border pt-5">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-text-secondary">
+              <p className="text-sm font-medium text-text-primary">
                 {t('linkedTasks', { count: linkedTasks.length })}
               </p>
               <Button
                 type="button"
                 variant="secondary"
                 size="sm"
+                aria-expanded={showTaskSelector}
                 onClick={() => setShowTaskSelector((open) => !open)}
-                className="gap-2"
+                className="gap-1.5"
               >
-                <Plus className="h-4 w-4" />
-                {t('linkTask')}
+                {showTaskSelector ? <X className="h-3.5 w-3.5" aria-hidden /> : <Plus className="h-3.5 w-3.5" aria-hidden />}
+                {showTaskSelector ? t('doneLinking') : t('linkTask')}
               </Button>
             </div>
 
             {showTaskSelector ? (
-              <div className="mb-4 max-h-64 overflow-y-auto rounded-xl border border-border p-4">
-                <p className="mb-3 text-sm text-text-secondary">{t('selectTasks')}</p>
-                {unlinkedTasks.length === 0 ? (
-                  <p className="text-sm text-text-secondary">{t('noAvailableTasks')}</p>
-                ) : (
-                  <div className="space-y-2">
-                    {unlinkedTasks.map((task) => (
-                      <button
-                        key={task.id}
-                        type="button"
-                        onClick={() => linkTask(task.id)}
-                        className="flex w-full items-center gap-3 rounded-lg border border-border bg-surface p-3 text-left hover:bg-surface-hover"
-                      >
-                        <LinkIcon className="h-4 w-4 shrink-0 text-text-secondary" />
-                        <span className="min-w-0 truncate text-sm text-text-primary">{task.title}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
+              <div className="mb-4 overflow-hidden rounded-xl border border-border">
+                <div className="relative border-b border-border">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" aria-hidden />
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder={t('searchTasks')}
+                    aria-label={t('searchTasks')}
+                    className="w-full bg-transparent py-2.5 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                  />
+                </div>
+                <div className="max-h-56 overflow-y-auto">
+                  {unlinkedTasks.length === 0 ? (
+                    <p className="px-3 py-6 text-center text-sm text-text-secondary">{t('noAvailableTasks')}</p>
+                  ) : (
+                    <ul>
+                      {unlinkedTasks.map((task) => (
+                        <li key={task.id}>
+                          <button
+                            type="button"
+                            onClick={() => linkTask(task.id)}
+                            className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none"
+                          >
+                            <Plus className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />
+                            <span
+                              className={`min-w-0 flex-1 truncate text-sm ${
+                                task.is_completed ? 'text-text-muted line-through' : 'text-text-primary'
+                              }`}
+                            >
+                              {task.title}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             ) : null}
 
-            <div className="space-y-2">
-              {linkedTasks.length === 0 ? (
-                <p className="py-4 text-center text-sm text-text-secondary">
-                  {t('noLinkedTasks')}
-                </p>
-              ) : (
-                linkedTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-center gap-3 rounded-lg border border-border p-3"
-                  >
-                    <div className={`h-2 w-2 shrink-0 rounded-full ${task.is_completed ? 'bg-primary' : 'bg-border'}`} />
-                    <span className="min-w-0 flex-1 truncate text-sm text-text-primary">{task.title}</span>
+            {linkedTasks.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border py-6 text-center text-sm text-text-secondary">
+                {t('noLinkedTasks')}
+              </p>
+            ) : (
+              <ul className="divide-y divide-border rounded-xl border border-border">
+                {linkedTasks.map((task) => (
+                  <li key={task.id} className="flex items-center gap-3 px-3 py-2">
+                    <span
+                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                        task.is_completed ? 'border-success bg-success text-white' : 'border-text-muted'
+                      }`}
+                      aria-hidden
+                    >
+                      {task.is_completed ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
+                    </span>
+                    <span
+                      className={`min-w-0 flex-1 truncate text-sm ${
+                        task.is_completed ? 'text-text-muted line-through' : 'text-text-primary'
+                      }`}
+                    >
+                      {task.title}
+                    </span>
                     <button
                       type="button"
                       onClick={() => unlinkTask(task.id)}
-                      className="rounded-lg p-1.5 text-text-secondary hover:bg-surface-hover"
+                      className="rounded-lg p-1.5 text-text-secondary transition-colors hover:bg-surface-hover hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       aria-label={t('unlinkTask')}
                     >
-                      <Trash className="h-4 w-4" />
+                      <X className="h-4 w-4" aria-hidden />
                     </button>
-                  </div>
-                ))
-              )}
-            </div>
+                  </li>
+                ))}
+              </ul>
+            )}
 
             {linkedTasks.length > 0 ? (
-              <div className="mt-4 rounded-xl border border-border p-4">
-                <p className="mb-2 text-sm text-text-secondary">{t('progressAuto')}</p>
+              <div className="mt-4">
                 <div className="flex items-center gap-3">
-                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-hover">
-                    <div
-                      className="h-full rounded-full bg-primary"
-                      style={{ width: `${milestone.completion_percentage}%` }}
-                    />
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-hover">
+                    <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${progress}%` }} />
                   </div>
-                  <span className="text-sm font-medium text-text-primary">
-                    {milestone.completion_percentage}%
-                  </span>
+                  <span className="text-sm font-medium tabular-nums text-text-primary">{progress}%</span>
                 </div>
+                <p className="mt-1.5 text-xs text-text-muted">{t('progressAuto')}</p>
               </div>
             ) : null}
           </div>

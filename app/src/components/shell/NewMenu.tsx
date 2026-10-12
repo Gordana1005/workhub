@@ -52,7 +52,7 @@ export default function NewMenu({ onCreate }: { onCreate: (kind: CreateKind) => 
       {open && (
         <div
           role="menu"
-          className="absolute right-0 z-50 mt-2 w-48 rounded-xl border border-border bg-surface p-1 shadow-lg"
+          className="absolute right-0 z-50 mt-2 w-52 rounded-xl border border-border bg-surface p-1 shadow-lg"
         >
           {items.map(({ kind, icon: Icon }) => (
             <button
@@ -66,7 +66,10 @@ export default function NewMenu({ onCreate }: { onCreate: (kind: CreateKind) => 
               }}
             >
               <Icon className="h-4 w-4" />
-              {create(kind)}
+              <span className="flex-1">{create(kind)}</span>
+              {kind === 'task' && (
+                <kbd className="rounded border border-border px-1.5 text-[11px] font-medium text-text-muted">N</kbd>
+              )}
             </button>
           ))}
         </div>

@@ -60,7 +60,7 @@ psql "postgresql://postgres:[PASSWORD]@db.miqwspnfqdqrwkdqviif.supabase.co:5432/
      ```sql
      SELECT net.http_post(
        url:='https://miqwspnfqdqrwkdqviif.supabase.co/functions/v1/generate-recurring-tasks',
-       headers:='{"Content-Type": "application/json", "Authorization": "Bearer sb_publishable_89F45YGw-j1jO-zogTR8PQ_-zb8VD5w"}'::jsonb,
+       headers:='{"Content-Type": "application/json", "Authorization": "Bearer <SUPABASE_ANON_KEY>"}'::jsonb,
        body:='{}'::jsonb
      ) as request_id;
      ```
@@ -73,7 +73,7 @@ psql "postgresql://postgres:[PASSWORD]@db.miqwspnfqdqrwkdqviif.supabase.co:5432/
 ```powershell
 # Test recurring tasks function
 curl -X POST https://miqwspnfqdqrwkdqviif.supabase.co/functions/v1/generate-recurring-tasks `
-  -H "Authorization: Bearer sb_publishable_89F45YGw-j1jO-zogTR8PQ_-zb8VD5w" `
+  -H "Authorization: Bearer <SUPABASE_ANON_KEY>" `
   -H "Content-Type: application/json"
 
 # Should return: {"success": true, "tasksGenerated": 0}

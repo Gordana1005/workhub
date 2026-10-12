@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { cookies, headers } from 'next/headers';
 import { ThemeProvider } from '@/components/ThemeProvider';
-import { LocaleProvider } from '@/i18n/LocaleProvider';
+import { LocaleProvider, type AppLocale } from '@/i18n/LocaleProvider';
 import { QueryProvider } from '@/components/QueryProvider';
 import KeyboardShortcutsHelp from '@/components/KeyboardShortcutsHelp';
 import "./globals.css";
@@ -31,12 +32,22 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Locale comes from the cookie so SSR and the first client render match (no English flash).
+  // First-time visitors fall back to their browser language.
+  const saved = cookies().get('trackwork-locale')?.value;
+  const initialLocale: AppLocale =
+    saved === 'mk' || saved === 'en'
+      ? saved
+      : (headers().get('accept-language') || '').toLowerCase().startsWith('mk')
+        ? 'mk'
+        : 'en';
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={initialLocale} className={inter.variable} suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('trackwork-theme')||'system';var d=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light';var l=localStorage.getItem('trackwork-locale');if(l==='mk'||l==='en')document.documentElement.lang=l;}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('trackwork-theme')||'system';var d=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();`,
           }}
         />
         <link rel="manifest" href="/manifest.json" />
@@ -49,9 +60,9 @@ export default function RootLayout({
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
       </head>
-      <body className={`${inter.variable} font-sans antialiased`}>
+      <body className="font-sans antialiased">
         <QueryProvider>
-          <LocaleProvider>
+          <LocaleProvider initialLocale={initialLocale}>
             <ThemeProvider>
               {children}
               <KeyboardShortcutsHelp />

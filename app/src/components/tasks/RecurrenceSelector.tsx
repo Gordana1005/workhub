@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
-import { Repeat, X } from 'lucide-react';
+import { Repeat } from 'lucide-react';
 
 export interface RecurrencePattern {
   type: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
@@ -83,7 +83,7 @@ export default function RecurrenceSelector({ value, onChange }: RecurrenceSelect
       </div>
 
       {isEnabled && (
-        <div className="space-y-4 p-4 bg-secondary rounded-lg border border-border">
+        <div className="space-y-4 p-4 bg-tertiary rounded-lg border border-border">
           {/* Recurrence Type */}
           <div>
             <label className="block text-sm font-medium text-text-primary mb-2">{t('repeat')}</label>

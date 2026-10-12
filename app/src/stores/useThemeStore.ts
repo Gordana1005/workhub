@@ -12,7 +12,8 @@ interface ThemeStore {
 
 function readTheme(): ThemeChoice {
   if (typeof window === 'undefined') return 'system'
-  const saved = window.localStorage.getItem(STORAGE_KEY)
+  let saved: string | null = null
+  try { saved = window.localStorage.getItem(STORAGE_KEY) } catch {}
   if (saved === 'light' || saved === 'dark' || saved === 'system') return saved
   return 'system'
 }
@@ -20,7 +21,9 @@ function readTheme(): ThemeChoice {
 export const useThemeStore = create<ThemeStore>((set, get) => ({
   theme: 'system',
   setTheme: (theme) => {
-    if (typeof window !== 'undefined') window.localStorage.setItem(STORAGE_KEY, theme)
+    if (typeof window !== 'undefined') {
+      try { window.localStorage.setItem(STORAGE_KEY, theme) } catch {}
+    }
     set({ theme })
   },
   toggleTheme: () => {

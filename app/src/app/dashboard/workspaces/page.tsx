@@ -1,204 +1,222 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
-import { useTranslations } from 'next-intl'
+import { Suspense, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
+import { useTranslations } from 'next-intl'
 import { Plus } from 'lucide-react'
+import { useWorkspaceStore } from '@/stores/useWorkspaceStore'
+import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { IconMenu } from '@/components/ui/IconMenu'
 import { PageHeader } from '@/components/ui/PageHeader'
+import CreateWorkspaceDialog from '@/components/create/CreateWorkspaceDialog'
 import WorkspaceFormDialog from '@/components/workspace/WorkspaceFormDialog'
-import WorkspaceIndicator from '@/components/workspace/WorkspaceIndicator'
+import { WorkspaceTile, useWorkspaceCategoryLabel } from '@/components/workspace/WorkspaceTile'
 
-interface WorkspaceWithStats {
-  id: string
-  name: string
-  owner_id: string
-  category?: string
-  color?: string
-  description?: string
-  userRole: 'admin' | 'member'
-  memberCount?: number
-  projectCount?: number
-  taskCount?: number
-  created_at: string
+interface WorkspaceStats {
+  memberCount: number
+  projectCount: number
+  taskCount: number
 }
+
+const outlineLink =
+  'inline-flex h-10 flex-1 items-center justify-center rounded-lg border border-border bg-surface px-4 text-sm font-medium text-text-primary transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary'
 
 function WorkspacesContent() {
   const t = useTranslations('pages.people')
+  const categoryLabel = useWorkspaceCategoryLabel()
   const { workspaces, currentWorkspace, setCurrentWorkspace, deleteWorkspace, loading } = useWorkspaceStore()
   const searchParams = useSearchParams()
-  const shouldCreate = searchParams.get('create') === 'true'
 
-  const [showFormDialog, setShowFormDialog] = useState(shouldCreate)
-  const [editingWorkspace, setEditingWorkspace] = useState<WorkspaceWithStats | null>(null)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [workspacesWithStats, setWorkspacesWithStats] = useState<WorkspaceWithStats[]>([])
-  const [loadingStats, setLoadingStats] = useState(true)
+  const [showCreate, setShowCreate] = useState(searchParams.get('create') === 'true')
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [stats, setStats] = useState<Record<string, WorkspaceStats>>({})
+  const requested = useRef(new Set<string>())
 
-  const loadWorkspaceStats = useCallback(async () => {
-    setLoadingStats(true)
-    try {
-      const statsPromises = workspaces.map(async (workspace) => {
-        try {
-          const response = await fetch(`/api/workspaces/${workspace.id}/stats`)
-          if (response.ok) {
-            const stats = await response.json()
-            return {
-              ...workspace,
-              memberCount: stats.memberCount ?? workspace.memberCount ?? 0,
-              projectCount: stats.projectCount || 0,
-              taskCount: stats.taskCount || 0,
-            }
-          }
-        } catch (error) {
-          console.error(`Error loading stats for workspace ${workspace.id}:`, error)
-        }
-        return {
-          ...workspace,
-          projectCount: 0,
-          taskCount: 0,
-        }
-      })
-
-      const results = await Promise.all(statsPromises)
-      setWorkspacesWithStats(results as WorkspaceWithStats[])
-    } catch (error) {
-      console.error('Error loading workspace stats:', error)
-      setWorkspacesWithStats(workspaces as WorkspaceWithStats[])
-    } finally {
-      setLoadingStats(false)
+  // Stats are fetched once per workspace; the cards render immediately without them.
+  useEffect(() => {
+    for (const workspace of workspaces) {
+      if (requested.current.has(workspace.id)) continue
+      requested.current.add(workspace.id)
+      fetch(`/api/workspaces/${workspace.id}/stats`)
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          if (!data) return
+          setStats((current) => ({
+            ...current,
+            [workspace.id]: {
+              memberCount: data.memberCount ?? workspace.memberCount ?? 0,
+              projectCount: data.projectCount || 0,
+              taskCount: data.taskCount || 0,
+            },
+          }))
+        })
+        .catch((error) => console.error(`Error loading stats for workspace ${workspace.id}:`, error))
     }
   }, [workspaces])
 
-  useEffect(() => {
-    loadWorkspaceStats()
-  }, [workspaces, loadWorkspaceStats])
+  const editing = workspaces.find((workspace) => workspace.id === editingId) || null
 
-  const handleEdit = (workspace: WorkspaceWithStats) => {
-    setEditingWorkspace(workspace)
-    setShowFormDialog(true)
-  }
-
-  const handleDelete = async (workspaceId: string) => {
-    if (deletingId) return
-    if (!confirm(t('workspaces.confirmDelete'))) return
-
-    setDeletingId(workspaceId)
+  const confirmDelete = async () => {
+    if (!deleting) return
+    setDeleteBusy(true)
     try {
-      const removed = await deleteWorkspace(workspaceId)
-      if (!removed) alert(t('workspaces.deleteFailed'))
+      const removed = await deleteWorkspace(deleting.id)
+      if (!removed) setNotice(t('workspaces.deleteFailed'))
     } catch (error: unknown) {
-      alert(error instanceof Error ? error.message : t('workspaces.deleteFailed'))
+      setNotice(error instanceof Error ? error.message : t('workspaces.deleteFailed'))
     } finally {
-      setDeletingId(null)
+      setDeleting(null)
+      setDeleteBusy(false)
     }
   }
 
-  const handleCloseDialog = () => {
-    setShowFormDialog(false)
-    setEditingWorkspace(null)
-  }
+  const createButton = (
+    <Button onClick={() => setShowCreate(true)} className="gap-2" aria-label={t('workspaces.create')}>
+      <Plus className="h-4 w-4" aria-hidden />
+      <span className="hidden sm:inline">{t('workspaces.create')}</span>
+    </Button>
+  )
 
-  const openCreate = () => {
-    setEditingWorkspace(null)
-    setShowFormDialog(true)
-  }
+  const initialLoad = loading && workspaces.length === 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <PageHeader
         title={t('workspaces.title')}
         description={t('workspaces.subtitle')}
-        action={
-          loading || loadingStats || workspacesWithStats.length > 0 ? (
-            <Button onClick={openCreate} className="gap-2" aria-label={t('workspaces.create')}>
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">{t('workspaces.create')}</span>
-            </Button>
-          ) : undefined
-        }
+        action={initialLoad || workspaces.length > 0 ? createButton : undefined}
       />
 
-      {loading || loadingStats ? (
-        <p className="py-12 text-center text-sm text-text-secondary">{t('workspaces.loading')}</p>
-      ) : workspacesWithStats.length === 0 ? (
+      {notice ? (
+        <p role="alert" className="rounded-xl bg-danger/10 px-4 py-3 text-sm text-danger">
+          {notice}
+        </p>
+      ) : null}
+
+      {initialLoad ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-4" aria-busy>
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div key={index} className="h-44 animate-pulse rounded-2xl border border-border bg-surface motion-reduce:animate-none" />
+          ))}
+        </div>
+      ) : workspaces.length === 0 ? (
         <EmptyState
           title={t('workspaces.emptyTitle')}
           body={t('workspaces.emptyBody')}
           action={
-            <Button onClick={openCreate} className="gap-2">
-              <Plus className="h-4 w-4" />
+            <Button onClick={() => setShowCreate(true)} className="gap-2">
+              <Plus className="h-4 w-4" aria-hidden />
               {t('workspaces.createFirst')}
             </Button>
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {workspacesWithStats.map((workspace) => {
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))] gap-4">
+          {workspaces.map((workspace) => {
             const isActive = currentWorkspace?.id === workspace.id
             const isAdmin = workspace.userRole === 'admin'
-            const menuItems = [
-              ...(isAdmin
-                ? [
-                    { label: t('workspaces.edit'), onClick: () => handleEdit(workspace) },
-                    {
-                      label: t('workspaces.delete'),
-                      onClick: () => void handleDelete(workspace.id),
-                      danger: true,
-                    },
-                  ]
-                : []),
-            ]
+            const numbers = stats[workspace.id]
+            const memberCount = numbers?.memberCount ?? workspace.memberCount
+            const dash = '–'
+            const menuItems = isAdmin
+              ? [
+                  { label: t('workspaces.edit'), onClick: () => setEditingId(workspace.id) },
+                  {
+                    label: t('workspaces.delete'),
+                    onClick: () => setDeleting({ id: workspace.id, name: workspace.name }),
+                    danger: true,
+                  },
+                ]
+              : []
 
             return (
               <article
                 key={workspace.id}
-                className={`rounded-2xl border bg-surface p-4 ${isActive ? 'border-primary' : 'border-border'}`}
+                className={`flex flex-col gap-4 rounded-2xl border bg-surface p-4 transition-colors duration-150 ${
+                  isActive ? 'border-primary' : 'border-border hover:border-primary/40'
+                }`}
               >
-                <div className="flex items-start gap-2">
+                <div className="flex items-start gap-3">
+                  <WorkspaceTile name={workspace.name} color={workspace.color} />
                   <div className="min-w-0 flex-1">
-                    <WorkspaceIndicator
-                      name={workspace.name}
-                      color={workspace.color}
-                      category={workspace.category}
-                      size="md"
-                      showCategory
-                      className="w-full min-w-0"
-                    />
-                    {isActive ? <p className="mt-1 text-xs font-medium text-primary">{t('workspaces.active')}</p> : null}
-                    {workspace.description ? (
-                      <p className="mt-2 line-clamp-2 break-words text-sm text-text-secondary">{workspace.description}</p>
-                    ) : null}
-                    <p className="mt-2 text-sm text-text-secondary">
-                      {workspace.memberCount || 0} {t('workspaces.members')} · {workspace.projectCount || 0}{' '}
-                      {t('workspaces.projects')} · {workspace.taskCount || 0} {t('workspaces.tasks')}
+                    <h2 className="truncate text-base font-semibold text-text-primary">{workspace.name}</h2>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
+                      {workspace.category ? <span>{categoryLabel(workspace.category)}</span> : null}
+                      <span>{isAdmin ? t('team.roleAdmin') : t('team.roleMember')}</span>
                     </p>
                   </div>
-                  {menuItems.length > 0 ? <IconMenu label={workspace.name} items={menuItems} /> : null}
+                  {isActive ? (
+                    <Badge size="sm" variant="blue">
+                      {t('workspaces.active')}
+                    </Badge>
+                  ) : null}
+                  {menuItems.length > 0 ? (
+                    <div className="-mr-2 -mt-1">
+                      <IconMenu label={`${t('workspaces.actions')}: ${workspace.name}`} items={menuItems} />
+                    </div>
+                  ) : null}
                 </div>
-                {!isActive ? (
-                  <Button variant="secondary" className="mt-3 w-full" onClick={() => setCurrentWorkspace(workspace)}>
-                    {t('workspaces.switch')}
-                  </Button>
+
+                {workspace.description ? (
+                  <p className="line-clamp-2 break-words text-sm leading-snug text-text-secondary">{workspace.description}</p>
                 ) : null}
+
+                <dl className="mt-auto grid grid-cols-3 gap-2 border-t border-border pt-3 text-center">
+                  {[
+                    [t('workspaces.members'), memberCount],
+                    [t('workspaces.projects'), numbers?.projectCount],
+                    [t('workspaces.tasks'), numbers?.taskCount],
+                  ].map(([label, value]) => (
+                    <div key={label as string}>
+                      <dd className="text-base font-semibold tabular-nums text-text-primary">{value ?? dash}</dd>
+                      <dt className="text-xs text-text-muted">{label}</dt>
+                    </div>
+                  ))}
+                </dl>
+
+                <div className="flex gap-2">
+                  {!isActive ? (
+                    <Button variant="secondary" className="flex-1" onClick={() => setCurrentWorkspace(workspace)}>
+                      {t('workspaces.switch')}
+                    </Button>
+                  ) : null}
+                  <Link href={`/dashboard/workspace/${workspace.id}`} className={outlineLink} onClick={() => !isActive && setCurrentWorkspace(workspace)}>
+                    {t('workspaces.overview')}
+                  </Link>
+                </div>
               </article>
             )
           })}
         </div>
       )}
 
-      <WorkspaceFormDialog isOpen={showFormDialog} onClose={handleCloseDialog} workspace={editingWorkspace} />
+      <CreateWorkspaceDialog open={showCreate} onClose={() => setShowCreate(false)} />
+      <WorkspaceFormDialog isOpen={Boolean(editing)} onClose={() => setEditingId(null)} workspace={editing} />
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        title={t('workspaces.delete')}
+        body={deleting ? t('workspaces.confirmDeleteNamed', { name: deleting.name }) : undefined}
+        confirmLabel={t('workspaces.delete')}
+        cancelLabel={t('form.cancel')}
+        busy={deleteBusy}
+        onConfirm={confirmDelete}
+        onClose={() => setDeleting(null)}
+      />
     </div>
   )
 }
 
 export default function WorkspacesPage() {
-  const t = useTranslations('pages.people')
   return (
-    <Suspense fallback={<p className="py-12 text-center text-sm text-text-secondary">{t('workspaces.loading')}</p>}>
+    <Suspense fallback={null}>
       <WorkspacesContent />
     </Suspense>
   )

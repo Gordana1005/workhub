@@ -1,0 +1,81 @@
+'use client'
+
+import { useEffect, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { motion } from 'framer-motion'
+import { useTranslations } from 'next-intl'
+
+/**
+ * Modal shell for the task detail panel.
+ * - phone: full-screen sheet
+ * - sm+ "drawer": right-hand side panel (used on laptop/tablet where the panel is not inline)
+ * - sm+ "center": centred dialog (used by the Home screen)
+ */
+export default function DetailSheet({
+  label,
+  onClose,
+  variant = 'drawer',
+  children,
+}: {
+  label: string
+  onClose: () => void
+  variant?: 'drawer' | 'center'
+  children: ReactNode
+}) {
+  const t = useTranslations('pages.tasks')
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const previousFocus = document.activeElement as HTMLElement | null
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    panelRef.current?.focus()
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKey)
+      previousFocus?.focus?.()
+    }
+  }, [onClose])
+
+  if (typeof document === 'undefined') return null
+
+  const drawer = variant === 'drawer'
+
+  return createPortal(
+    <div
+      className={`fixed inset-0 z-[80] flex ${
+        drawer ? 'justify-end' : 'items-end justify-center sm:items-center sm:p-6'
+      }`}
+    >
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={t('close')}
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+      />
+      <motion.div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        initial={drawer ? { opacity: 0, x: 24 } : { opacity: 0, y: 12 }}
+        animate={{ opacity: 1, x: 0, y: 0 }}
+        transition={{ duration: 0.15, ease: 'easeOut' }}
+        className={`relative flex h-[100dvh] w-full flex-col overflow-hidden bg-surface text-text-primary shadow-xl focus:outline-none ${
+          drawer
+            ? 'sm:w-[520px] sm:border-l sm:border-border'
+            : 'sm:h-auto sm:max-h-[85vh] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-border'
+        }`}
+      >
+        {children}
+      </motion.div>
+    </div>,
+    document.body
+  )
+}

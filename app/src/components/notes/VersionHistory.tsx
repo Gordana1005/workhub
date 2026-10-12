@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase';
 import { useLocale, useTranslations } from 'next-intl';
 import { Dialog } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
+import NoteContent from './NoteContent';
+import { stripHtml } from './noteUtils';
 
 interface NoteVersion {
   id: string;
@@ -23,10 +25,9 @@ interface VersionHistoryProps {
   currentTitle: string;
   onRestore: (content: string, title: string) => void;
   onClose: () => void;
+  /** Hide the restore action (e.g. for non-authors). Defaults to true. */
+  canRestore?: boolean;
 }
-
-const previewClass =
-  'max-w-none break-words text-text-primary [&_a]:text-primary [&_a]:underline [&_h1]:text-2xl [&_h1]:font-semibold [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_img]:h-auto [&_img]:max-w-full [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-surface-hover [&_pre]:p-3 [&_pre]:text-text-primary [&_ul]:list-disc [&_ul]:pl-5';
 
 export default function VersionHistory({
   noteId,
@@ -34,6 +35,7 @@ export default function VersionHistory({
   currentTitle,
   onRestore,
   onClose,
+  canRestore = true,
 }: VersionHistoryProps) {
   const t = useTranslations('pages.notes');
   const locale = useLocale();
@@ -88,10 +90,6 @@ export default function VersionHistory({
     });
   };
 
-  const stripHtml = (html: string) => {
-    return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-  };
-
   const previewTitle = selectedVersion?.title || currentTitle;
   const previewHtml = selectedVersion?.content ?? currentContent;
   const previewMeta = selectedVersion
@@ -109,7 +107,7 @@ export default function VersionHistory({
           <Button type="button" variant="secondary" onClick={onClose}>
             {t('close')}
           </Button>
-          {selectedVersion ? (
+          {selectedVersion && canRestore ? (
             <Button type="button" onClick={handleRestore} className="gap-2">
               <RotateCcw className="h-4 w-4" />
               {t('restoreVersion')}
@@ -123,17 +121,17 @@ export default function VersionHistory({
           <button
             type="button"
             onClick={() => setSelectedVersion(null)}
-            className={`mb-2 w-full min-w-0 rounded-xl p-3 text-left ${
+            className={`mb-2 w-full min-w-0 rounded-xl p-3 text-left transition-colors ${
               !selectedVersion
-                ? 'bg-primary text-white'
-                : 'border border-border bg-secondary text-text-primary hover:bg-surface-hover'
+                ? 'border border-primary bg-primary/10 text-text-primary'
+                : 'border border-border bg-surface text-text-primary hover:bg-surface-hover'
             }`}
           >
             <span className="mb-1 flex items-center gap-2 text-sm font-semibold">
               <Clock className="h-4 w-4 shrink-0" />
               {t('currentVersion')}
             </span>
-            <span className="line-clamp-2 block text-xs opacity-80">
+            <span className="line-clamp-2 block text-xs text-text-secondary">
               {stripHtml(currentContent).slice(0, 100)}
             </span>
           </button>
@@ -151,17 +149,17 @@ export default function VersionHistory({
                 key={version.id}
                 type="button"
                 onClick={() => setSelectedVersion(version)}
-                className={`mb-2 w-full min-w-0 rounded-xl p-3 text-left ${
+                className={`mb-2 w-full min-w-0 rounded-xl p-3 text-left transition-colors ${
                   selectedVersion?.id === version.id
-                    ? 'bg-primary text-white'
-                    : 'border border-border bg-secondary text-text-primary hover:bg-surface-hover'
+                    ? 'border border-primary bg-primary/10 text-text-primary'
+                    : 'border border-border bg-surface text-text-primary hover:bg-surface-hover'
                 }`}
               >
                 <span className="mb-1 flex items-center justify-between gap-2 text-sm">
                   <span className="font-semibold">{t('version', { number: version.version_number })}</span>
-                  <span className="shrink-0 text-xs opacity-70">{formatDate(version.created_at)}</span>
+                  <span className="shrink-0 text-xs text-text-muted">{formatDate(version.created_at)}</span>
                 </span>
-                <span className="line-clamp-2 block text-xs opacity-80">
+                <span className="line-clamp-2 block text-xs text-text-secondary">
                   {stripHtml(version.content).slice(0, 80)}
                 </span>
               </button>
@@ -172,7 +170,7 @@ export default function VersionHistory({
         <div className="min-w-0 flex-1 overflow-x-hidden border-t border-border pt-4 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
           <h3 className="break-words text-xl font-semibold text-text-primary">{previewTitle}</h3>
           <p className="mb-4 mt-1 text-sm text-text-secondary">{previewMeta}</p>
-          <div className={previewClass} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+          <NoteContent key={selectedVersion?.id ?? 'current'} html={previewHtml} />
         </div>
       </div>
     </Dialog>

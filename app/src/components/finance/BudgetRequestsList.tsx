@@ -7,6 +7,12 @@ import { format } from 'date-fns';
 import { enUS, mk } from 'date-fns/locale';
 import { useTranslations } from 'next-intl';
 import { useLocaleSwitch } from '@/i18n/LocaleProvider';
+import { Segmented } from '@/components/tools/Segmented';
+import { Button } from '@/components/ui/Button';
+import { Dialog } from '@/components/ui/Dialog';
+import { Textarea } from '@/components/ui/Input';
+import { useConfirm } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 
 const BUDGET_CATEGORY_KEYS: Record<string, string> = {
   'Software Subscription': 'finance.budgetCatSoftware',
@@ -49,15 +55,20 @@ interface BudgetRequestsListProps {
 
 export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: BudgetRequestsListProps) {
   const t = useTranslations('pages.tools');
+  const toast = useToast();
+  const { confirm, dialog } = useConfirm();
   const { locale } = useLocaleSwitch();
   const dateLocale = locale === 'mk' ? mk : enUS;
   const [requests, setRequests] = useState<BudgetRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+  const [rejectTarget, setRejectTarget] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
 
   const loadRequests = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('project_budget_requests')
       .select(`
         *,
@@ -95,13 +106,21 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
       onUpdate();
     } catch (error) {
       console.error('Failed to approve request:', error);
-      alert(t('finance.approveFailed'));
+      toast.error(t('finance.approveFailed'));
     }
   };
 
-  const handleReject = async (requestId: string) => {
-    const reason = prompt(t('finance.rejectPrompt'));
-    
+  const handleReject = (requestId: string) => {
+    setRejectReason('');
+    setRejectTarget(requestId);
+  };
+
+  const submitReject = async () => {
+    const requestId = rejectTarget;
+    if (!requestId) return;
+    const reason = rejectReason.trim();
+    setRejecting(true);
+
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -120,14 +139,17 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
 
       await loadRequests();
       onUpdate();
+      setRejectTarget(null);
     } catch (error) {
       console.error('Failed to reject request:', error);
-      alert(t('finance.rejectFailed'));
+      toast.error(t('finance.rejectFailed'));
+    } finally {
+      setRejecting(false);
     }
   };
 
   const handleMarkPaid = async (requestId: string) => {
-    if (!confirm(t('finance.markPaidConfirm'))) return;
+    if (!(await confirm({ title: t('finance.markPaidConfirm'), confirmLabel: t('finance.markAsPaid'), tone: 'primary' }))) return;
 
     try {
       const { error } = await supabase
@@ -144,7 +166,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
       onUpdate();
     } catch (error) {
       console.error('Failed to mark as paid:', error);
-      alert(t('finance.markPaidFailed'));
+      toast.error(t('finance.markPaidFailed'));
     }
   };
 
@@ -189,27 +211,19 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
         </div>
       </dl>
 
-      {/* Filter Tabs */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        {(['all', 'pending', 'approved', 'rejected'] as const).map((status) => (
-          <button
-            key={status}
-            onClick={() => setFilterStatus(status)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              filterStatus === status
-                ? 'bg-primary text-white'
-                : 'bg-secondary text-text-secondary hover:bg-surface-hover border border-border'
-            }`}
-          >
-            {status === 'all'
-              ? t('finance.filterAll')
-              : status === 'pending'
-              ? t('finance.pending')
-              : status === 'approved'
-              ? t('finance.approved')
-              : t('finance.rejected')}
-          </button>
-        ))}
+      {/* Filter */}
+      <div className="-mx-1 mb-4 overflow-x-auto px-1">
+        <Segmented
+          label={t('finance.filterAll')}
+          value={filterStatus}
+          onChange={setFilterStatus}
+          options={[
+            { value: 'all', label: t('finance.filterAll') },
+            { value: 'pending', label: t('finance.pending') },
+            { value: 'approved', label: t('finance.approved') },
+            { value: 'rejected', label: t('finance.rejected') },
+          ]}
+        />
       </div>
 
       {/* Requests Table */}
@@ -228,7 +242,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
           {filteredRequests.map((request) => (
             <div
               key={request.id}
-              className="bg-secondary border border-border rounded-xl p-4"
+              className="bg-surface border border-border rounded-xl p-4"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0 flex-1">
@@ -303,7 +317,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleApprove(request.id)}
-                        className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                        className="p-2 bg-success hover:bg-success/90 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         title={t('finance.approve')}
                         aria-label={t('finance.approve')}
                       >
@@ -311,7 +325,7 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
                       </button>
                       <button
                         onClick={() => handleReject(request.id)}
-                        className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                        className="p-2 bg-danger hover:bg-danger/90 text-white rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                         title={t('finance.reject')}
                         aria-label={t('finance.reject')}
                       >
@@ -334,6 +348,29 @@ export default function BudgetRequestsList({ projectId, isOwner, onUpdate }: Bud
           ))}
         </div>
       )}
+
+      <Dialog
+        open={rejectTarget !== null}
+        title={t('finance.reject')}
+        size="sm"
+        onClose={() => (rejecting ? undefined : setRejectTarget(null))}
+        footer={
+          <>
+            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={() => setRejectTarget(null)} disabled={rejecting}>
+              {t('finance.cancel')}
+            </Button>
+            <Button type="button" variant="destructive" className="w-full sm:w-auto" onClick={submitReject} loading={rejecting}>
+              {t('finance.reject')}
+            </Button>
+          </>
+        }
+      >
+        <label className="block text-sm text-text-secondary">
+          {t('finance.rejectPrompt')}
+          <Textarea className="mt-2" rows={3} value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} />
+        </label>
+      </Dialog>
+      {dialog}
     </div>
   );
 }

@@ -27,7 +27,8 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const webhookId = searchParams.get('webhook_id')
-  const limit = parseInt(searchParams.get('limit') || '50')
+  const parsedLimit = parseInt(searchParams.get('limit') || '50', 10)
+  const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 50
   const successOnly = searchParams.get('success_only') === 'true'
 
   if (!webhookId) {

@@ -30,11 +30,11 @@ export async function POST(request: Request) {
 
     const { user, workspaceId } = auth
     const body = await request.json()
-    const { email } = body
+    const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : ''
 
-    if (!email) {
+    if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json(
-        { error: 'Email is required' },
+        { error: 'A valid email is required' },
         { status: 400 }
       )
     }
@@ -46,7 +46,8 @@ export async function POST(request: Request) {
       .eq('workspace_id', workspaceId)
       .eq('email', email)
       .eq('status', 'pending')
-      .single()
+      .limit(1)
+      .maybeSingle()
 
     if (existing) {
       return NextResponse.json(
@@ -58,32 +59,36 @@ export async function POST(request: Request) {
     // Create invitation
     const token = generateToken()
 
-    const { data: invitation, error } = await supabaseAdmin
+    const role = body.role === 'admin' ? 'admin' : 'member'
+    const row = { workspace_id: workspaceId, email, token, role }
+
+    let { data: invitation, error } = await supabaseAdmin
       .from('invitations')
-      .insert({
-        workspace_id: workspaceId,
-        email,
-        token,
-        role: 'member'
-      })
+      .insert({ ...row, invited_by: user.id })
       .select()
       .single()
 
-    if (error) {
+    // invited_by comes from migration 017; fall back gracefully if it has not been applied
+    if (error && (error.code === '42703' || error.code === 'PGRST204')) {
+      ;({ data: invitation, error } = await supabaseAdmin
+        .from('invitations')
+        .insert(row)
+        .select()
+        .single())
+    }
+
+    if (error || !invitation) {
       console.error('Database Error:', error)
       return NextResponse.json(
-        { error: error.message || 'Database error' },
+        { error: error?.message || 'Database error' },
         { status: 500 }
       )
     }
 
     // Since we don't have an email provider configured yet (like Resend or SendGrid),
     // we will return the join link so the admin can copy-paste it manually.
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin
     const joinLink = `${baseUrl}/join?token=${invitation.token}`
-
-    // Log for debugging
-    console.log(`[INVITE] Created invite for ${email}: ${joinLink}`)
 
     return NextResponse.json({ 
       invitation,
@@ -145,6 +150,7 @@ export async function GET(request: Request) {
       .select('*')
       .eq('workspace_id', workspace_id)
       .order('created_at', { ascending: false })
+      .limit(500)
 
     if (error) throw error
 

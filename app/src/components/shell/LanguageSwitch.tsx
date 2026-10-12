@@ -16,7 +16,7 @@ export default function LanguageSwitch() {
     <div
       role="radiogroup"
       aria-label={t('language')}
-      className="inline-flex h-9 items-center rounded-xl border border-border p-0.5"
+      className="relative inline-flex h-10 items-center rounded-xl after:pointer-events-none after:absolute after:inset-0 after:rounded-xl after:ring-1 after:ring-inset after:ring-border"
     >
       {locales.map(({ id, label }) => {
         const selected = locale === id
@@ -26,8 +26,10 @@ export default function LanguageSwitch() {
             type="button"
             role="radio"
             aria-checked={selected}
-            className={`h-full rounded-xl px-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-              selected ? 'bg-primary/10 text-primary' : 'text-text-secondary hover:bg-surface-hover'
+            className={`h-10 min-w-10 rounded-xl px-2.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              selected
+                ? 'bg-primary/10 text-primary'
+                : 'text-text-secondary hover:bg-surface-hover'
             }`}
             onClick={() => setLocale(id)}
           >

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
+import { localDateString } from '@/lib/date'
 import { useWorkspaceStore } from './useWorkspaceStore'
 
 interface TimerStore {
@@ -38,14 +39,15 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     const { currentWorkspace } = useWorkspaceStore.getState()
 
     if (user && currentWorkspace && time > 0) {
-      await supabase.from('time_entries').insert({
+      const { error } = await supabase.from('time_entries').insert({
         workspace_id: currentWorkspace.id,
         project_id: currentProjectId,
         task_id: currentTaskId,
         user_id: user.id,
         duration: time,
-        date: new Date().toISOString().split('T')[0]
+        date: localDateString()
       })
+      if (error) console.error('Failed to save time entry:', error)
     }
   },
   reset: () => set({ time: 0, isRunning: false, currentTaskId: null, currentProjectId: null }),

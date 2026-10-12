@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
-import { Info } from 'lucide-react';
 import {
   DndContext,
   DragOverlay,
@@ -16,35 +15,28 @@ import {
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import KanbanColumn from './KanbanColumn';
-import KanbanCard from './KanbanCard';
+import { KanbanCardView } from './KanbanCard';
+import { STATUSES, STATUS_DOT, compareTasks, statusLabel } from './taskUtils';
 import { Task } from './types';
 
 interface KanbanBoardProps {
   tasks: Task[];
-  onTaskUpdate: (taskId: string, updates: Partial<Task>) => Promise<void>;
+  selectedId?: string | null;
+  onTaskUpdate: (taskId: string, updates: Partial<Task>) => Promise<void> | void;
   onTaskClick?: (task: Task) => void;
 }
 
-const DEFAULT_COLUMNS = [
-  { id: 'To Do', titleKey: 'statusToDo', color: 'from-gray-500 to-gray-600' },
-  { id: 'In Progress', titleKey: 'statusInProgress', color: 'from-blue-500 to-blue-600' },
-  { id: 'Review', titleKey: 'statusReview', color: 'from-yellow-500 to-yellow-600' },
-  { id: 'Done', titleKey: 'statusDone', color: 'from-green-500 to-green-600' },
-];
-
-export default function KanbanBoard({ tasks, onTaskUpdate, onTaskClick }: KanbanBoardProps) {
+/**
+ * Fills the height it is given: columns share the width equally from lg up (scroll
+ * horizontally below that) and each column scrolls on its own.
+ */
+export default function KanbanBoard({ tasks, selectedId, onTaskUpdate, onTaskClick }: KanbanBoardProps) {
   const t = useTranslations('pages.tasks');
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -53,32 +45,23 @@ export default function KanbanBoard({ tasks, onTaskUpdate, onTaskClick }: Kanban
 
   const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    setActiveId(null);
+    if (!over) return;
 
-    if (!over) {
-      setActiveId(null);
-      return;
-    }
-
-    const activeTask = tasks.find(t => t.id === active.id);
+    const activeTask = tasks.find((task) => task.id === active.id);
     const overId = over.id as string;
     // Dropping on a card resolves to that card's column
-    const overColumnId = DEFAULT_COLUMNS.some(column => column.id === overId)
+    const overColumnId = (STATUSES as readonly string[]).includes(overId)
       ? overId
-      : tasks.find(task => task.id === overId)?.status ?? overId;
+      : tasks.find((task) => task.id === overId)?.status ?? overId;
 
-    if (activeTask && activeTask.status !== overColumnId) {
-      // Update task status
+    if (activeTask && activeTask.status !== overColumnId && (STATUSES as readonly string[]).includes(overColumnId)) {
       await onTaskUpdate(activeTask.id, { status: overColumnId });
     }
-
-    setActiveId(null);
   };
 
-  const getTasksByColumn = (columnId: string) => {
-    return tasks.filter(task => task.status === columnId);
-  };
-
-  const activeTask = tasks.find(t => t.id === activeId);
+  const tasksFor = (status: string) => tasks.filter((task) => task.status === status).sort(compareTasks);
+  const activeTask = tasks.find((task) => task.id === activeId);
 
   return (
     <DndContext
@@ -86,36 +69,23 @@ export default function KanbanBoard({ tasks, onTaskUpdate, onTaskClick }: Kanban
       collisionDetection={closestCorners}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={() => setActiveId(null)}
     >
-      <div className="min-w-0 max-w-full">
-        <div className="mb-4 flex items-start gap-2 rounded-xl border border-border bg-surface px-4 py-3 text-sm text-text-secondary">
-          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-          <span>{t('dragHint')}</span>
-        </div>
-
-        <div className="max-w-full min-w-0 overflow-x-auto pb-4">
-          <div className="flex w-max gap-4">
-            {DEFAULT_COLUMNS.map((column) => (
-              <KanbanColumn
-                key={column.id}
-                id={column.id}
-                title={t(column.titleKey)}
-                color={column.color}
-                tasks={getTasksByColumn(column.id)}
-                onTaskClick={onTaskClick}
-              />
-            ))}
-          </div>
-        </div>
+      <div className="flex h-[32rem] snap-x gap-3 overflow-x-auto pb-1 lg:grid lg:h-full lg:min-h-0 lg:grid-cols-4 lg:grid-rows-1lg:overflow-x-visible lg:pb-0">
+        {STATUSES.map((status) => (
+          <KanbanColumn
+            key={status}
+            id={status}
+            title={statusLabel(t, status)}
+            dotClass={STATUS_DOT[status]}
+            tasks={tasksFor(status)}
+            selectedId={selectedId}
+            onTaskClick={onTaskClick}
+          />
+        ))}
       </div>
 
-      <DragOverlay>
-        {activeTask ? (
-          <div className="rotate-3 opacity-50">
-            <KanbanCard task={activeTask} isDragging />
-          </div>
-        ) : null}
-      </DragOverlay>
+      <DragOverlay>{activeTask ? <KanbanCardView task={activeTask} overlay /> : null}</DragOverlay>
     </DndContext>
   );
 }

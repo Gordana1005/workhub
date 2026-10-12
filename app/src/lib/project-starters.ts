@@ -1,39 +1,35 @@
 export type StarterId = 'blank' | 'client' | 'product' | 'internal' | 'personal'
 
-const STARTERS: Record<StarterId, { title: string }[]> = {
-  blank: [],
-  client: [
-    { title: 'Kickoff' },
-    { title: 'Collect materials' },
-    { title: 'First draft' },
-    { title: 'Review' },
-    { title: 'Deliver' },
-  ],
-  product: [
-    { title: 'Define the problem' },
-    { title: 'Sketch the flow' },
-    { title: 'Build the first slice' },
-    { title: 'Test it' },
-    { title: 'Ship' },
-  ],
-  internal: [
-    { title: 'Set the goal' },
-    { title: 'Plan the work' },
-    { title: 'Do the work' },
-    { title: 'Team review' },
-    { title: 'Close out' },
-  ],
-  personal: [
-    { title: 'Set the outcome' },
-    { title: 'List the steps' },
-    { title: 'First step' },
-    { title: 'Check progress' },
-    { title: 'Finish' },
-  ],
+// Task titles live in the message catalogs (pages.projects.starters.<id>.<n>), so a starter is just
+// a number of steps. Keep these counts in sync with the catalogs.
+const STARTER_STEPS: Record<StarterId, number> = {
+  blank: 0,
+  client: 5,
+  product: 5,
+  internal: 5,
+  personal: 5,
 }
 
-export function starterTasks(id: StarterId): { title: string }[] {
-  const tasks = STARTERS[id]
-  if (!tasks) return []
-  return tasks.map((task) => ({ title: task.title }))
+/** Message keys (relative to pages.projects.starters) for a starter's tasks, in natural order. */
+export function starterTaskKeys(id: StarterId): string[] {
+  const steps = STARTER_STEPS[id] ?? 0
+  return Array.from({ length: steps }, (_, index) => `${id}.${index + 1}`)
+}
+
+export const PROJECT_COLORS = [
+  '#667eea',
+  '#4facfe',
+  '#43e97b',
+  '#feca57',
+  '#fa709a',
+  '#ff6b6b',
+  '#4ecdc4',
+  '#f093fb',
+] as const
+
+/** A stable colour for a project name, so new projects do not all look identical. */
+export function colorForName(name: string): string {
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
+  return PROJECT_COLORS[hash % PROJECT_COLORS.length]
 }

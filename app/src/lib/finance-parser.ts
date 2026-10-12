@@ -167,28 +167,3 @@ function extractDescription(input: string, amount: number): string {
   
   return desc;
 }
-
-// Examples and test cases
-export const exampleInputs = [
-  "Spent $50 on groceries yesterday",
-  "Earned $500 from freelance work",
-  "$15 coffee at Starbucks",
-  "Paid $1,200 rent",
-  "Bought $89.99 shoes on Amazon",
-  "Received $3,000 salary",
-  "Gas $45",
-  "Uber ride $18",
-  "Lunch with client $65",
-  "Netflix subscription $15.99",
-];
-
-// Test the parser
-if (typeof window === 'undefined') {
-  // Only run tests in Node.js environment (not in browser)
-  console.log('Natural Language Transaction Parser - Test Results:');
-  exampleInputs.forEach(input => {
-    const result = parseNaturalLanguageTransaction(input);
-    console.log(`\nInput: "${input}"`);
-    console.log('Parsed:', result);
-  });
-}

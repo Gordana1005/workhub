@@ -1,73 +1,103 @@
 'use client'
 
-import { FileText } from 'lucide-react'
-import { useLocale, useTranslations } from 'next-intl'
+import { FolderOpen } from 'lucide-react'
+import { useTranslations } from 'next-intl'
 import { IconMenu } from '@/components/ui/IconMenu'
-
-interface Note {
-  id: string
-  title: string
-  content: string
-  created_at: string
-}
+import { stripHtml, tagTint, useNoteDates, type NoteRecord } from './noteUtils'
 
 interface NoteCardProps {
-  note: Note
+  note: NoteRecord
   active?: boolean
-  onOpen: (note: Note) => void
+  /** Show the last-updated date instead of the created date */
+  showUpdated?: boolean
+  /** Show the project name (hide it when the list is already scoped to one project). */
+  showProject?: boolean
+  /** Show the per-card "..." menu. Hidden in the notes workspace, where actions live in the reader. */
+  showMenu?: boolean
+  onOpen: (note: NoteRecord) => void
   onDelete: (id: string) => void
 }
 
-export default function NoteCard({ note, active, onOpen, onDelete }: NoteCardProps) {
+const MAX_TAGS = 2
+
+export default function NoteCard({
+  note,
+  active,
+  showUpdated = false,
+  showProject = true,
+  showMenu = true,
+  onOpen,
+  onDelete,
+}: NoteCardProps) {
   const t = useTranslations('pages.notes')
-  const locale = useLocale()
+  const { relative } = useNoteDates()
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-    if (diffDays === 0) return t('today')
-    if (diffDays === 1) return t('yesterday')
-    if (diffDays < 7) return t('daysAgo', { count: diffDays })
-    return date.toLocaleDateString(locale === 'mk' ? 'mk-MK' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-  }
-
-  const getPreview = (content: string) => {
-    if (!content) return t('noContent')
-    const strippedContent = content.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
-    if (!strippedContent) return t('noContent')
-    return strippedContent.slice(0, 150) + (strippedContent.length > 150 ? '...' : '')
-  }
+  const preview = stripHtml(note.content)
+  const projectName = showProject ? note.project?.name || '' : ''
+  const tags = note.tags ?? []
+  const hiddenTags = Math.max(0, tags.length - MAX_TAGS)
 
   return (
     <div
-      className={`flex min-w-0 items-start gap-1 border-b border-border bg-surface px-2 py-2 last:border-b-0 ${
-        active ? 'ring-1 ring-inset ring-primary' : ''
+      className={`relative flex min-w-0 items-start border-b border-border transition-colors last:border-b-0 ${
+        active ? 'bg-primary/10' : 'bg-surface hover:bg-surface-hover'
       }`}
     >
+      {active ? <span className="absolute inset-y-0 left-0 w-[3px] bg-primary" aria-hidden="true" /> : null}
+
       <button
         type="button"
         onClick={() => onOpen(note)}
-        className="flex min-w-0 flex-1 items-start gap-3 rounded-xl px-2 py-2 text-left hover:bg-surface-hover"
+        aria-current={active ? 'true' : undefined}
+        className="block min-w-0 flex-1 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
       >
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <FileText className="h-4 w-4" />
+        <span className="flex items-baseline gap-3">
+          <span className="min-w-0 flex-1 truncate text-sm font-semibold text-text-primary">
+            {note.title || t('untitled')}
+          </span>
+          <span className="shrink-0 text-xs text-text-muted">
+            {relative(showUpdated ? note.updated_at || note.created_at : note.created_at)}
+          </span>
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-text-primary">{note.title}</span>
-          <span className="mt-1 line-clamp-2 block text-xs text-text-secondary">{getPreview(note.content)}</span>
-          <span className="mt-1.5 block text-xs text-text-muted">{formatDate(note.created_at)}</span>
+
+        <span className="mt-1 line-clamp-2 block break-words text-[13px] leading-snug text-text-secondary">
+          {preview ? preview.slice(0, 180) : <span className="italic text-text-muted">{t('noContent')}</span>}
         </span>
+
+        {projectName || tags.length > 0 ? (
+          <span className="mt-2 flex min-w-0 items-center gap-2 overflow-hidden">
+            {projectName ? (
+              <span className="inline-flex min-w-0 shrink items-center gap-1 text-xs text-text-muted">
+                <FolderOpen className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{projectName}</span>
+              </span>
+            ) : null}
+            {tags.slice(0, MAX_TAGS).map((tag) => (
+              <span
+                key={tag.id}
+                className="inline-flex max-w-[7rem] shrink-0 items-center gap-1 rounded-full px-2 py-px text-[11px] font-medium text-text-secondary"
+                style={{ backgroundColor: tagTint(tag.color) }}
+              >
+                <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: tag.color }} />
+                <span className="truncate">{tag.name}</span>
+              </span>
+            ))}
+            {hiddenTags > 0 ? <span className="shrink-0 text-[11px] text-text-muted">+{hiddenTags}</span> : null}
+          </span>
+        ) : null}
       </button>
-      <IconMenu
-        label={t('editNote')}
-        items={[
-          { label: t('editNote'), onClick: () => onOpen(note) },
-          { label: t('deleteNote'), onClick: () => onDelete(note.id), danger: true },
-        ]}
-      />
+
+      {showMenu ? (
+        <div className="shrink-0 pr-1 pt-1.5">
+          <IconMenu
+            label={t('moreActions')}
+            items={[
+              { label: t('openNote'), onClick: () => onOpen(note) },
+              { label: t('deleteNote'), onClick: () => onDelete(note.id), danger: true },
+            ]}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

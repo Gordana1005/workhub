@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import BudgetRequestForm from './BudgetRequestForm';
 import BudgetRequestsList from './BudgetRequestsList';
 import { useTranslations } from 'next-intl';
+import { useToast } from '@/components/ui/Toast';
 import { IconMenu } from '@/components/ui/IconMenu';
 
 interface ProjectBudgetCardProps {
@@ -35,6 +36,7 @@ interface ProjectFinancials {
 
 export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps) {
   const t = useTranslations('pages.tools');
+  const toast = useToast();
   const [financials, setFinancials] = useState<ProjectFinancials | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showRequestForm, setShowRequestForm] = useState(false);
@@ -61,13 +63,12 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
 
   const loadFinancials = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('project_financials')
       .select('*')
       .eq('project_id', projectId)
       .single();
 
-    console.log('Loaded financials:', data);
 
     if (data) {
       setFinancials(data);
@@ -76,7 +77,6 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
         budget: data.budget?.toString() || '',
         hourly_rate: data.hourly_rate?.toString() || '',
       };
-      console.log('Setting budget form to:', newBudgetForm);
       setBudgetForm(newBudgetForm);
     }
     setLoading(false);
@@ -89,7 +89,6 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
 
   const handleSaveBudget = async () => {
     try {
-      console.log('Saving budget:', budgetForm, 'for project:', projectId);
       
       const updateData: any = {};
       if (budgetForm.budget) {
@@ -99,15 +98,13 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
         updateData.hourly_rate = parseFloat(budgetForm.hourly_rate);
       }
 
-      console.log('Update data:', updateData);
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('projects')
         .update(updateData)
         .eq('id', projectId)
         .select();
 
-      console.log('Update result:', { data, error });
 
       if (error) throw error;
 
@@ -120,10 +117,10 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
       // Close edit mode after data is loaded
       setIsEditing(false);
       
-      alert(t('finance.budgetSaved'));
+      toast.success(t('finance.budgetSaved'));
     } catch (error: any) {
       console.error('Failed to save budget:', error);
-      alert(t('finance.budgetSaveFailed', { message: error.message || t('finance.unknownError') }));
+      toast.error(t('finance.budgetSaveFailed', { message: error.message || t('finance.unknownError') }));
     }
   };
 
@@ -206,7 +203,7 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
                     hourly_rate: financials.hourly_rate?.toString() || '',
                   });
                 }}
-                className="rounded-lg border border-border bg-secondary p-2 text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+                className="rounded-lg border border-border bg-surface p-2 text-text-secondary hover:bg-surface-hover hover:text-text-primary"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -344,7 +341,7 @@ export default function ProjectBudgetCard({ projectId }: ProjectBudgetCardProps)
                   <button
                     type="button"
                     onClick={() => setShowRequestsList(!showRequestsList)}
-                    className="px-4 py-2 bg-secondary hover:bg-surface-hover text-text-primary rounded-lg text-sm transition-colors border border-border"
+                    className="px-4 py-2 bg-surface hover:bg-surface-hover text-text-primary rounded-lg text-sm transition-colors border border-border"
                   >
                     {showRequestsList ? t('finance.hideRequests') : t('finance.viewRequests')}
                   </button>

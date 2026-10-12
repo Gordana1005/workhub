@@ -2,10 +2,11 @@
 
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/Button'
+import { safeNextPath } from '@/lib/safeNext'
 
 export default function OnboardingForm() {
   const [username, setUsername] = useState('')
@@ -15,6 +16,7 @@ export default function OnboardingForm() {
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const router = useRouter()
+  const next = safeNextPath(useSearchParams().get('next'))
   const t = useTranslations('pages.auth')
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,7 +47,7 @@ export default function OnboardingForm() {
         setError(profileError.message)
       } else {
         setSuccess(t('onboarding.saved'))
-        router.push('/dashboard')
+        router.push(next)
       }
     } catch (err) {
       setError(t('unexpectedError'))
@@ -83,7 +85,7 @@ export default function OnboardingForm() {
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="block w-full min-w-0 rounded-xl border border-border bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="block w-full min-w-0 rounded-xl border border-border-control bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
             placeholder={t('onboarding.usernamePlaceholder')}
             required
           />
@@ -97,7 +99,7 @@ export default function OnboardingForm() {
             type="text"
             value={jobTitle}
             onChange={(e) => setJobTitle(e.target.value)}
-            className="block w-full min-w-0 rounded-xl border border-border bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="block w-full min-w-0 rounded-xl border border-border-control bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
             placeholder={t('onboarding.jobTitlePlaceholder')}
           />
         </div>
@@ -110,7 +112,7 @@ export default function OnboardingForm() {
             type="text"
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
-            className="block w-full min-w-0 rounded-xl border border-border bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
+            className="block w-full min-w-0 rounded-xl border border-border-control bg-secondary px-4 py-3 text-base text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/40"
             placeholder={t('onboarding.departmentPlaceholder')}
           />
         </div>
@@ -120,9 +122,9 @@ export default function OnboardingForm() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-text-secondary">
+      <p className="mt-4 text-center text-sm text-text-secondary">
         {t('alreadyHaveAccount')}{' '}
-        <Link href="/auth/login" className="font-medium text-primary hover:underline">
+        <Link href="/auth/login" className="inline-block py-2.5 font-medium text-primary hover:underline">
           {t('signIn')}
         </Link>
       </p>

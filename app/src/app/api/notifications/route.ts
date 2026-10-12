@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { getWorkspaceRole } from '@/lib/api-access'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -40,7 +41,8 @@ export async function GET(request: NextRequest) {
     const supabase = await createAuthClient()
     const searchParams = request.nextUrl.searchParams
     const unreadOnly = searchParams.get('unread_only') === 'true'
-    const limit = parseInt(searchParams.get('limit') || '50')
+    const parsedLimit = parseInt(searchParams.get('limit') || '50', 10)
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 50
 
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -124,7 +126,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Mark multiple as read
-    if (ids && Array.isArray(ids)) {
+    if (ids && Array.isArray(ids) && ids.length > 0) {
       const { error } = await supabaseAdmin
         .from('notifications')
         .update({ read: true })
@@ -276,6 +278,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Sender and recipient must both belong to the workspace (no cross-workspace spoofing)
+    const [senderRole, recipientRole] = await Promise.all([
+      getWorkspaceRole(supabaseAdmin, workspace_id, user.id),
+      getWorkspaceRole(supabaseAdmin, workspace_id, user_id),
+    ])
+    if (!senderRole || !recipientRole) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    // Only allow in-app relative links
+    const safeLink = typeof link === 'string' && link.startsWith('/') && !link.startsWith('//') ? link : null
+
     // Create notification
     const { data: notification, error } = await supabaseAdmin
       .from('notifications')
@@ -285,7 +299,7 @@ export async function POST(request: NextRequest) {
         type,
         title,
         message,
-        link,
+        link: safeLink,
         related_task_id,
         related_project_id,
         related_user_id: user.id

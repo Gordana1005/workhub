@@ -63,10 +63,11 @@ export default function DependencySelector({
   }, [workspaceId, projectId, taskId]);
 
   useEffect(() => {
-    if (isExpanded && workspaceId) {
+    // Load up front so already-selected dependencies are listed by title
+    if (workspaceId) {
       loadAvailableTasks();
     }
-  }, [isExpanded, workspaceId, loadAvailableTasks]);
+  }, [workspaceId, loadAvailableTasks]);
 
   const selectedTasks = availableTasks.filter(t =>
     selectedDependencies.includes(t.id)
@@ -109,7 +110,7 @@ export default function DependencySelector({
           {selectedTasks.map(task => (
             <div
               key={task.id}
-              className="flex items-center justify-between gap-2 p-3 bg-secondary rounded-lg border border-border"
+              className="flex items-center justify-between gap-2 p-3 bg-tertiary rounded-lg border border-border"
             >
               <div className="flex min-w-0 items-center gap-3">
                 <Link2 className="w-4 h-4 shrink-0 text-text-secondary" />
@@ -133,7 +134,7 @@ export default function DependencySelector({
 
       {/* Add Dependencies */}
       {isExpanded && (
-        <div className="space-y-3 p-4 bg-secondary rounded-lg border border-border">
+        <div className="space-y-3 p-4 bg-tertiary rounded-lg border border-border">
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />

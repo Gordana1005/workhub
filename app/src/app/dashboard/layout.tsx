@@ -17,11 +17,14 @@ export default function DashboardLayout({
 }) {
   const router = useRouter()
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces)
+  const hydrateWorkspace = useWorkspaceStore((state) => state.hydrateWorkspace)
   const [createKind, setCreateKind] = useState<CreateKind | null>(null)
 
   useEffect(() => {
+    // Restore the saved workspace selection first (client only, after hydration), then refresh from the server
+    hydrateWorkspace()
     fetchWorkspaces()
-  }, [fetchWorkspaces])
+  }, [fetchWorkspaces, hydrateWorkspace])
 
   const onCreate = (kind: CreateKind) => {
     if (kind === 'note') {

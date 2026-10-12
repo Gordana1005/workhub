@@ -1,14 +1,30 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslations } from 'next-intl'
-import { Bell, CheckCheck, Trash2, X, Clock, User, MessageSquare, CheckCircle, AlertCircle } from 'lucide-react'
+import {
+  AlertCircle,
+  Bell,
+  CheckCheck,
+  CheckCircle,
+  Clock,
+  MessageSquare,
+  Target,
+  Trash2,
+  User,
+  X,
+  type LucideIcon,
+} from 'lucide-react'
 import { supabase } from '@/lib/supabase'
-import { formatDistanceToNow } from 'date-fns'
+import { format, isToday, isYesterday } from 'date-fns'
 import { enUS, mk } from 'date-fns/locale'
 import { useLocaleSwitch } from '@/i18n/LocaleProvider'
 import { useRouter } from 'next/navigation'
+import { Button } from '@/components/ui/Button'
+import { useConfirm } from '@/components/ui/ConfirmDialog'
+import { IconMenu } from '@/components/ui/IconMenu'
+import { Segmented } from '@/components/tools/Segmented'
 
 interface Notification {
   id: string
@@ -18,13 +34,6 @@ interface Notification {
   link: string | null
   read: boolean
   created_at: string
-  related_user?: {
-    username: string
-    email: string
-  }
-  related_task?: {
-    title: string
-  }
 }
 
 interface NotificationCenterProps {
@@ -33,8 +42,31 @@ interface NotificationCenterProps {
   workspaceId: string
 }
 
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  task_assigned: User,
+  task_due: Clock,
+  task_overdue: AlertCircle,
+  task_completed: CheckCircle,
+  comment_mention: MessageSquare,
+  dependency_unblocked: CheckCircle,
+  goal_completed: Target,
+  project_update: Bell,
+}
+
+const TYPE_TONES: Record<string, string> = {
+  task_assigned: 'text-primary bg-primary/10',
+  task_due: 'text-warning bg-warning/10',
+  task_overdue: 'text-danger bg-danger/10',
+  task_completed: 'text-success bg-success/10',
+  comment_mention: 'text-primary bg-primary/10',
+  dependency_unblocked: 'text-success bg-success/10',
+  goal_completed: 'text-success bg-success/10',
+  project_update: 'text-primary bg-primary/10',
+}
+
 export default function NotificationCenter({ isOpen, onClose }: NotificationCenterProps) {
   const t = useTranslations('pages.tools')
+  const { confirm, dialog } = useConfirm()
   const { locale } = useLocaleSwitch()
   const dateLocale = locale === 'mk' ? mk : enUS
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -42,11 +74,13 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const [userId, setUserId] = useState<string | null>(null)
   const router = useRouter()
+  // The shell passes a fresh onClose every render; keep it out of the effect deps.
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   const loadNotifications = useCallback(async () => {
     try {
-      const unreadOnly = filter === 'unread'
-      const response = await fetch(`/api/notifications?unread_only=${unreadOnly}&limit=50`)
+      const response = await fetch('/api/notifications?limit=100')
       if (!response.ok) throw new Error('Failed to load notifications')
 
       const data = await response.json()
@@ -56,59 +90,73 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
     } finally {
       setLoading(false)
     }
-  }, [filter])
+  }, [])
 
-  const subscribeToNotifications = useCallback(() => {
-    if (!userId) return null
+  // Open: lock page scroll, close on Escape, fetch the list and find out who is signed in.
+  useEffect(() => {
+    if (!isOpen) return undefined
+
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onCloseRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+
+    setLoading(true)
+    loadNotifications()
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id || null))
+
+    return () => {
+      document.body.style.overflow = previous
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [isOpen, loadNotifications])
+
+  // Live updates while the panel is open.
+  useEffect(() => {
+    if (!isOpen || !userId) return undefined
 
     const channel = supabase
       .channel('notifications')
       .on(
         'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`
-        },
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
         (payload) => {
-          const newNotification = payload.new as Notification
-          setNotifications(prev => [newNotification, ...prev])
+          const incoming = payload.new as Notification
+          setNotifications((prev) => (prev.some((item) => item.id === incoming.id) ? prev : [incoming, ...prev]))
 
           if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification(newNotification.title, {
-              body: newNotification.message,
+            new Notification(incoming.title, {
+              body: incoming.message,
               icon: '/icon-192.png',
-              badge: '/icon-192.png'
+              badge: '/icon-192.png',
             })
           }
         }
       )
       .subscribe()
 
-    return channel
-  }, [userId])
-
-  useEffect(() => {
-    if (!isOpen) return undefined
-
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    const resolveUser = async () => {
-      const { data } = await supabase.auth.getUser()
-      setUserId(data.user?.id || null)
-    }
-
-    resolveUser()
-    loadNotifications()
-    const channel = subscribeToNotifications()
-
     return () => {
-      document.body.style.overflow = previous
-      channel?.unsubscribe()
+      channel.unsubscribe()
     }
-  }, [isOpen, filter, loadNotifications, subscribeToNotifications])
+  }, [isOpen, userId])
+
+  const markAsRead = async (id: string) => {
+    try {
+      const response = await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+
+      if (response.ok) {
+        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+      }
+    } catch (error) {
+      console.error('Error marking as read:', error)
+    }
+  }
 
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.read) {
@@ -121,50 +169,28 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
     }
   }
 
-  const markAsRead = async (id: string) => {
-    try {
-      const response = await fetch('/api/notifications', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id })
-      })
-
-      if (response.ok) {
-        setNotifications(prev =>
-          prev.map(n => n.id === id ? { ...n, read: true } : n)
-        )
-      }
-    } catch (error) {
-      console.error('Error marking as read:', error)
-    }
-  }
-
   const markAllAsRead = async () => {
     try {
       const response = await fetch('/api/notifications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mark_all_read: true })
+        body: JSON.stringify({ mark_all_read: true }),
       })
 
       if (response.ok) {
-        setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
       }
     } catch (error) {
       console.error('Error marking all as read:', error)
     }
   }
 
-  const deleteNotification = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-
+  const deleteNotification = async (id: string) => {
     try {
-      const response = await fetch(`/api/notifications?id=${id}`, {
-        method: 'DELETE'
-      })
+      const response = await fetch(`/api/notifications?id=${id}`, { method: 'DELETE' })
 
       if (response.ok) {
-        setNotifications(prev => prev.filter(n => n.id !== id))
+        setNotifications((prev) => prev.filter((n) => n.id !== id))
       }
     } catch (error) {
       console.error('Error deleting notification:', error)
@@ -172,197 +198,191 @@ export default function NotificationCenter({ isOpen, onClose }: NotificationCent
   }
 
   const clearAllRead = async () => {
-    if (!confirm(t('notifications.deleteReadConfirm'))) return
+    if (!(await confirm({ title: t('notifications.deleteReadConfirm'), confirmLabel: t('notifications.clearRead') }))) return
 
     try {
-      const response = await fetch('/api/notifications?delete_all=true', {
-        method: 'DELETE'
-      })
+      const response = await fetch('/api/notifications?delete_all=true', { method: 'DELETE' })
 
       if (response.ok) {
-        setNotifications(prev => prev.filter(n => !n.read))
+        setNotifications((prev) => prev.filter((n) => !n.read))
       }
     } catch (error) {
       console.error('Error clearing notifications:', error)
     }
   }
 
-  const getNotificationIcon = (type: string) => {
-    const icons: Record<string, any> = {
-      task_assigned: User,
-      task_due: Clock,
-      task_overdue: AlertCircle,
-      task_completed: CheckCircle,
-      comment_mention: MessageSquare,
-      dependency_unblocked: CheckCircle,
-      project_update: Bell
-    }
-    const Icon = icons[type] || Bell
-    return <Icon className="h-5 w-5" />
-  }
+  const unreadCount = notifications.filter((n) => !n.read).length
+  const visible = filter === 'unread' ? notifications.filter((n) => !n.read) : notifications
+  const hasRead = notifications.length > unreadCount
 
-  const getNotificationColor = (type: string) => {
-    const colors: Record<string, string> = {
-      task_assigned: 'text-primary bg-primary/10',
-      task_due: 'text-warning bg-warning/10',
-      task_overdue: 'text-danger bg-danger/10',
-      task_completed: 'text-success bg-success/10',
-      comment_mention: 'text-primary bg-primary/10',
-      dependency_unblocked: 'text-success bg-success/10',
-      project_update: 'text-primary bg-primary/10'
-    }
-    return colors[type] || 'text-text-primary bg-surface-hover'
-  }
-
-  const unreadCount = notifications.filter(n => !n.read).length
-  const filteredNotifications = filter === 'unread'
-    ? notifications.filter(n => !n.read)
-    : notifications
+  // Group by calendar day, newest first (the API already returns newest first).
+  const groups = useMemo(() => {
+    const result: { key: string; label: string; items: Notification[] }[] = []
+    visible.forEach((item) => {
+      const date = new Date(item.created_at)
+      const key = format(date, 'yyyy-MM-dd')
+      let group = result.find((entry) => entry.key === key)
+      if (!group) {
+        group = {
+          key,
+          label: isToday(date)
+            ? t('notifications.today')
+            : isYesterday(date)
+            ? t('notifications.yesterday')
+            : format(date, 'EEEE, d MMMM', { locale: dateLocale }),
+          items: [],
+        }
+        result.push(group)
+      }
+      group.items.push(item)
+    })
+    return result
+  }, [visible, dateLocale, t])
 
   if (!isOpen || typeof document === 'undefined') return null
 
   return createPortal(
     <div className="fixed inset-0 z-[80]">
-      <button
-        type="button"
-        aria-label={t('finance.close')}
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-      />
+      <button type="button" aria-label={t('finance.close')} className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={t('notifications.title')}
-        className="absolute inset-0 flex h-[100dvh] w-full flex-col bg-surface text-text-primary sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:max-w-md sm:border-l sm:border-border sm:shadow-xl"
+        className="absolute inset-0 flex h-[100dvh] w-full flex-col bg-surface text-text-primary sm:inset-y-0 sm:left-auto sm:right-0 sm:h-full sm:max-w-[26rem] sm:border-l sm:border-border sm:shadow-xl"
       >
-        <div className="border-b border-border p-4">
-          <div className="flex items-start justify-between gap-3">
+        <header className="border-b border-border px-4 pb-3 pt-4">
+          <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
               <h2 className="text-lg font-semibold text-text-primary">{t('notifications.title')}</h2>
-              {unreadCount > 0 && (
-                <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-white">
+              {unreadCount > 0 ? (
+                <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold tabular-nums text-white">
                   {unreadCount}
                 </span>
-              )}
+              ) : null}
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label={t('finance.close')}
-              className="shrink-0 rounded-lg p-2 text-text-primary hover:bg-surface-hover"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-surface-hover p-1">
-            <button
-              type="button"
-              onClick={() => setFilter('all')}
-              className={`rounded-lg px-3 py-2 text-sm font-medium ${
-                filter === 'all' ? 'bg-primary text-white' : 'text-text-primary hover:bg-surface'
-              }`}
-            >
-              {t('notifications.all')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter('unread')}
-              className={`rounded-lg px-3 py-2 text-sm font-medium ${
-                filter === 'unread' ? 'bg-primary text-white' : 'text-text-primary hover:bg-surface'
-              }`}
-            >
-              {t('notifications.unread', { count: unreadCount })}
-            </button>
-          </div>
-
-          {notifications.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {unreadCount > 0 && (
-                <button
-                  type="button"
-                  onClick={markAllAsRead}
-                  className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-text-primary hover:bg-surface-hover"
-                >
-                  <CheckCheck className="h-3 w-3" />
+            <div className="flex shrink-0 items-center gap-1">
+              {unreadCount > 0 ? (
+                <Button type="button" variant="ghost" size="sm" onClick={markAllAsRead} className="gap-1.5">
+                  <CheckCheck className="h-4 w-4" aria-hidden="true" />
                   {t('notifications.markAllRead')}
-                </button>
-              )}
+                </Button>
+              ) : null}
+              {hasRead ? (
+                <IconMenu
+                  label={t('finance.moreActions')}
+                  items={[{ label: t('notifications.clearRead'), onClick: clearAllRead, danger: true }]}
+                />
+              ) : null}
               <button
                 type="button"
-                onClick={clearAllRead}
-                className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-border px-3 py-1.5 text-xs text-text-primary hover:bg-surface-hover"
+                onClick={onClose}
+                aria-label={t('finance.close')}
+                className="rounded-lg p-2 text-text-secondary hover:bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               >
-                <Trash2 className="h-3 w-3" />
-                {t('notifications.clearRead')}
+                <X className="h-5 w-5" />
               </button>
             </div>
-          )}
-        </div>
+          </div>
+
+          <div className="mt-3">
+            <Segmented
+              fullWidth
+              label={t('notifications.title')}
+              value={filter}
+              onChange={setFilter}
+              options={[
+                { value: 'all', label: t('notifications.all') },
+                { value: 'unread', label: t('notifications.unread', { count: unreadCount }) },
+              ]}
+            />
+          </div>
+        </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           {loading ? (
             <div className="flex h-full items-center justify-center">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
-          ) : filteredNotifications.length === 0 ? (
+          ) : groups.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-              <Bell className="mb-4 h-12 w-12 text-text-muted" />
+              <Bell className="mb-4 h-10 w-10 text-text-muted" aria-hidden="true" />
               <h3 className="text-base font-semibold text-text-primary">
                 {filter === 'unread' ? t('notifications.noUnread') : t('notifications.noNotifications')}
               </h3>
               <p className="mt-1 text-sm text-text-secondary">
-                {filter === 'unread'
-                  ? t('notifications.caughtUp')
-                  : t('notifications.emptyHint')}
+                {filter === 'unread' ? t('notifications.caughtUp') : t('notifications.emptyHint')}
               </p>
             </div>
           ) : (
-            <ul className="divide-y divide-border">
-              {filteredNotifications.map((notification) => (
-                <li
-                  key={notification.id}
-                  className={`flex gap-3 p-4 ${!notification.read ? 'bg-primary/10' : ''}`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => handleNotificationClick(notification)}
-                    className="flex min-w-0 flex-1 gap-3 text-left"
-                  >
-                    <span className={`mt-0.5 h-fit shrink-0 rounded-lg p-2 ${getNotificationColor(notification.type)}`}>
-                      {getNotificationIcon(notification.type)}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="mb-1 flex items-start justify-between gap-2">
-                        <span className="break-words text-sm font-semibold text-text-primary">
-                          {notification.title}
-                        </span>
-                        {!notification.read && (
-                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                        )}
-                      </span>
-                      <span className="mb-2 line-clamp-2 block break-words text-sm text-text-primary">
-                        {notification.message}
-                      </span>
-                      <span className="text-xs text-text-secondary">
-                        {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true, locale: dateLocale })}
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => deleteNotification(notification.id, e)}
-                    className="h-fit shrink-0 rounded p-1 text-text-secondary hover:bg-surface-hover hover:text-danger"
-                    aria-label={t('finance.remove')}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+            groups.map((group) => (
+              <section key={group.key} aria-label={group.label}>
+                <h3 className="sticky top-0 z-10 bg-surface px-4 py-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  {group.label}
+                </h3>
+                <ul className="divide-y divide-border">
+                  {group.items.map((notification) => {
+                    const Icon = TYPE_ICONS[notification.type] || Bell
+                    return (
+                      <li
+                        key={notification.id}
+                        className={`group relative flex items-start transition-colors hover:bg-surface-hover ${
+                          notification.read ? '' : 'bg-primary/5'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleNotificationClick(notification)}
+                          className="flex min-w-0 flex-1 gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                        >
+                          <span
+                            className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                              TYPE_TONES[notification.type] || 'bg-surface-hover text-text-secondary'
+                            }`}
+                          >
+                            <Icon className="h-4 w-4" aria-hidden="true" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-start gap-2">
+                              <span
+                                className={`min-w-0 flex-1 break-words text-sm text-text-primary ${
+                                  notification.read ? 'font-medium' : 'font-semibold'
+                                }`}
+                              >
+                                {notification.title}
+                              </span>
+                              {!notification.read ? (
+                                <span
+                                  className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary"
+                                  aria-label={t('notifications.unreadDot')}
+                                />
+                              ) : null}
+                            </span>
+                            <span className="mt-0.5 line-clamp-2 block break-words text-sm text-text-secondary">
+                              {notification.message}
+                            </span>
+                            <span className="mt-1 block text-xs text-text-muted">
+                              {format(new Date(notification.created_at), 'HH:mm')}
+                            </span>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteNotification(notification.id)}
+                          aria-label={t('finance.remove')}
+                          className="mr-2 mt-2 shrink-0 rounded-lg p-2 text-text-muted transition-opacity hover:bg-surface hover:text-danger focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:opacity-0 sm:group-hover:opacity-100"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </section>
+            ))
           )}
         </div>
       </div>
+      {dialog}
     </div>,
     document.body
   )

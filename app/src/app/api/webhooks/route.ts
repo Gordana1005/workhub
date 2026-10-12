@@ -5,6 +5,24 @@ import { NextResponse } from 'next/server'
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
 
+// Webhook targets must be http(s) and must not point at localhost / private networks (SSRF)
+function isSafeWebhookUrl(raw: string): boolean {
+  const u = new URL(raw)
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return false
+  const host = u.hostname.toLowerCase()
+  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.internal') || host.endsWith('.local')) return false
+  if (host === '::1' || host === '[::1]' || host.startsWith('[fc') || host.startsWith('[fd') || host.startsWith('[fe80')) return false
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])]
+    if (a === 0 || a === 10 || a === 127) return false
+    if (a === 169 && b === 254) return false // link-local / cloud metadata
+    if (a === 172 && b >= 16 && b <= 31) return false
+    if (a === 192 && b === 168) return false
+  }
+  return true
+}
+
 export async function GET(request: Request) {
   const cookieStore = cookies()
   const supabase = createServerClient(
@@ -98,7 +116,7 @@ export async function POST(request: Request) {
 
     // Validate URL format
     try {
-      new URL(url)
+      if (!isSafeWebhookUrl(url)) throw new Error('unsafe url')
     } catch {
       return NextResponse.json(
         { error: 'Invalid URL format' },
@@ -192,7 +210,7 @@ export async function PATCH(request: Request) {
     // Validate URL if provided
     if (updates.url) {
       try {
-        new URL(updates.url)
+        if (!isSafeWebhookUrl(updates.url)) throw new Error('unsafe url')
       } catch {
         return NextResponse.json(
           { error: 'Invalid URL format' },
@@ -221,6 +239,8 @@ export async function PATCH(request: Request) {
     // Don't allow updating secret or created_by
     delete updates.secret
     delete updates.created_by
+    delete updates.workspace_id
+    delete updates.id
 
     // Update webhook
     const { data, error } = await supabase

@@ -104,9 +104,9 @@ export async function GET(request: Request) {
     const { data: timeEntries } = await supabaseAdmin
       .from('time_entries')
       .select('duration')
+      .eq('workspace_id', workspaceId)
       .eq('user_id', user.id);
 
-    // Filter time entries by workspace if they have workspace_id or project relation
     const totalTimeLogged = timeEntries?.reduce((sum, entry) => sum + (entry.duration || 0), 0) || 0;
 
     // Calculate completion rate

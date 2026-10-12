@@ -73,14 +73,20 @@ export async function GET() {
     }
 
     // Get member counts for each workspace
+    // (single batched query instead of one count query per workspace)
+    const { data: allMembers } = await supabaseAdmin
+      .from('workspace_members')
+      .select('workspace_id')
+      .in('workspace_id', workspaceIds)
+    const memberCounts = new Map<string, number>()
+    for (const m of allMembers || []) {
+      memberCounts.set(m.workspace_id, (memberCounts.get(m.workspace_id) || 0) + 1)
+    }
+
     const workspacesWithDetails = await Promise.all(
       (workspaces || []).map(async (workspace) => {
         const membership = membershipData.find(m => m.workspace_id === workspace.id)
-        
-        const { count: memberCount } = await supabaseAdmin
-          .from('workspace_members')
-          .select('*', { count: 'exact', head: true })
-          .eq('workspace_id', workspace.id)
+        const memberCount = memberCounts.get(workspace.id) || 0
 
         return {
           ...workspace,

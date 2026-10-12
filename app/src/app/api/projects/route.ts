@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { getWorkspaceRole, getRowWorkspaceId, omitKeys } from '@/lib/api-access'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -63,6 +64,12 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (error) throw error
+
+      // Only members of the project's workspace may read it
+      const role = await getWorkspaceRole(supabaseAdmin, (project as any)?.workspace_id, user.id)
+      if (!role) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+      }
       return NextResponse.json({ project })
     }
 
@@ -90,12 +97,42 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
 
+    // Small member preview per project (avatars on the project cards)
+    const projectIds = (projects || []).map((p: any) => p.id)
+    const { data: memberRows } = projectIds.length
+      ? await supabaseAdmin
+          .from('project_members')
+          .select('project_id, user_id, added_at')
+          .in('project_id', projectIds)
+          .order('added_at', { ascending: true })
+      : { data: [] as any[] }
+
+    const memberUserIds = Array.from(new Set((memberRows || []).map((r: any) => r.user_id)))
+    const { data: memberProfiles } = memberUserIds.length
+      ? await supabaseAdmin.from('profiles').select('id, username, avatar_url').in('id', memberUserIds)
+      : { data: [] as any[] }
+    const profileById = new Map((memberProfiles || []).map((p: any) => [p.id, p]))
+
+    const membersByProject = new Map<string, any[]>()
+    for (const row of memberRows || []) {
+      const profile: any = profileById.get(row.user_id)
+      if (!profile) continue
+      const list = membersByProject.get(row.project_id) || []
+      list.push({ id: profile.id, username: profile.username ?? '', avatar_url: profile.avatar_url ?? null })
+      membersByProject.set(row.project_id, list)
+    }
+
     // Calculate task counts
-    const projectsWithCounts = projects?.map(p => ({
-      ...p,
-      taskCount: p.tasks?.length || 0,
-      completedTaskCount: p.tasks?.filter((t: any) => t.is_completed).length || 0
-    }))
+    const projectsWithCounts = projects?.map(p => {
+      const members = membersByProject.get(p.id) || []
+      return {
+        ...p,
+        taskCount: p.tasks?.length || 0,
+        completedTaskCount: p.tasks?.filter((t: any) => t.is_completed).length || 0,
+        memberCount: members.length,
+        members: members.slice(0, 4)
+      }
+    })
 
     return NextResponse.json({ projects: projectsWithCounts })
   } catch (error: any) {
@@ -195,9 +232,20 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
 
+    const workspaceId = await getRowWorkspaceId(supabaseAdmin, 'projects', id)
+    if (!workspaceId) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+    if (!(await getWorkspaceRole(supabaseAdmin, workspaceId, user.id))) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
+    // A client may never move a project to another workspace or change who created it
+    const safeUpdates = omitKeys(updates, ['workspace_id', 'creator_id', 'created_at'])
+
     const { data: project, error } = await supabaseAdmin
       .from('projects')
-      .update(updates)
+      .update(safeUpdates)
       .eq('id', id)
       .select()
       .single()
@@ -226,6 +274,23 @@ export async function DELETE(request: NextRequest) {
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    }
+
+    const { data: existing } = await supabaseAdmin
+      .from('projects')
+      .select('workspace_id, creator_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (!existing) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+    const role = await getWorkspaceRole(supabaseAdmin, (existing as any).workspace_id, user.id)
+    if (!role) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+    // Deleting a project also deletes its tasks: only workspace admins or the project's creator
+    if (role !== 'admin' && (existing as any).creator_id !== user.id) {
+      return NextResponse.json({ error: 'Only the project creator or a workspace admin can delete a project' }, { status: 403 })
     }
 
     // First delete related tasks

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import { getRowWorkspaceId, getWorkspaceRole, omitKeys } from '@/lib/api-access'
 
 // Force dynamic rendering (uses cookies)
 export const dynamic = 'force-dynamic'
@@ -15,6 +16,29 @@ const supabaseAdmin = createClient(
 async function notifyUsers(entries: Array<{ user_id: string; workspace_id: string; type: string; title: string; message: string; link?: string }>) {
   if (!entries.length) return
   await supabaseAdmin.from('notifications').insert(entries.map(e => ({ ...e, read: false })))
+}
+
+const FINANCE_TABLES: Record<string, string> = {
+  account: 'finance_accounts',
+  transaction: 'finance_transactions',
+  goal: 'finance_goals',
+}
+
+// Verifies the record exists and the caller belongs to its workspace.
+// Returns an error response, or null when access is allowed.
+async function authorizeRecord(type: string | null | undefined, id: string, userId: string) {
+  const table = type ? FINANCE_TABLES[type] : undefined
+  if (!table) {
+    return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
+  }
+  const workspaceId = await getRowWorkspaceId(supabaseAdmin, table, id)
+  if (!workspaceId) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  }
+  if (!(await getWorkspaceRole(supabaseAdmin, workspaceId, userId))) {
+    return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+  }
+  return null
 }
 
 // Create auth client
@@ -82,6 +106,7 @@ export async function GET(request: NextRequest) {
           .select('*, category:finance_categories(*)')
           .eq('workspace_id', workspaceId)
           .order('date', { ascending: false })
+          .limit(2000)
 
         if (startDate) query = query.gte('date', startDate)
         if (endDate) query = query.lte('date', endDate)
@@ -178,6 +203,25 @@ export async function POST(request: NextRequest) {
       }
 
       case 'transaction': {
+        // The account (and category) must belong to the same workspace
+        if (data.account_id) {
+          const accountWs = await getRowWorkspaceId(supabaseAdmin, 'finance_accounts', data.account_id)
+          if (accountWs !== workspace_id) {
+            return NextResponse.json({ error: 'account_id does not belong to this workspace' }, { status: 400 })
+          }
+        }
+        if (data.category_id) {
+          // (categories may be global defaults with a null workspace_id)
+          const { data: category } = await supabaseAdmin
+            .from('finance_categories')
+            .select('workspace_id')
+            .eq('id', data.category_id)
+            .maybeSingle()
+          if (!category || (category.workspace_id !== null && category.workspace_id !== workspace_id)) {
+            return NextResponse.json({ error: 'category_id does not belong to this workspace' }, { status: 400 })
+          }
+        }
+
         const { data: transaction, error } = await supabaseAdmin
           .from('finance_transactions')
           .insert({ ...data, workspace_id, created_by: user.id })
@@ -188,7 +232,8 @@ export async function POST(request: NextRequest) {
 
         // Update account balance if account_id provided
         if (data.account_id && data.amount) {
-          const adjustment = data.type === 'income' ? data.amount : -data.amount
+          const amount = Number(data.amount)
+          const adjustment = Number.isFinite(amount) ? (data.type === 'income' ? amount : -amount) : 0
           // Get current balance and update
           const { data: account } = await supabaseAdmin
             .from('finance_accounts')
@@ -199,7 +244,7 @@ export async function POST(request: NextRequest) {
           if (account) {
             await supabaseAdmin
               .from('finance_accounts')
-              .update({ current_balance: (account.current_balance || 0) + adjustment })
+              .update({ current_balance: (Number(account.current_balance) || 0) + adjustment })
               .eq('id', data.account_id)
           }
         }
@@ -249,11 +294,17 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { type, id, ...updates } = body
+    const { type, id, ...rawUpdates } = body
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
+
+    const denied = await authorizeRecord(type, id, user.id)
+    if (denied) return denied
+
+    // Rows can never be moved to another workspace or re-attributed
+    const updates = omitKeys(rawUpdates, ['workspace_id', 'created_by', 'created_at'])
 
     switch (type) {
       case 'account': {
@@ -347,6 +398,9 @@ export async function DELETE(request: NextRequest) {
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
+
+    const denied = await authorizeRecord(type, id, user.id)
+    if (denied) return denied
 
     switch (type) {
       case 'account': {

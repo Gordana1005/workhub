@@ -12,6 +12,17 @@ const supabaseAdmin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+const VALID_ROLES = ['admin', 'member']
+
+async function isWorkspaceOwner(workspaceId: string, userId: string) {
+  const { data } = await supabaseAdmin
+    .from('workspaces')
+    .select('owner_id')
+    .eq('id', workspaceId)
+    .maybeSingle()
+  return data?.owner_id === userId
+}
+
 async function notifyUser(entry: { user_id: string; workspace_id: string; type: string; title: string; message: string; link?: string }) {
   await supabaseAdmin.from('notifications').insert({ ...entry, read: false })
 }
@@ -71,7 +82,58 @@ export async function GET(request: Request) {
 
     if (error) throw error
 
-    return NextResponse.json({ members: members || [] })
+    // Per-member workload (additive): projects they belong to / created and their open + overdue tasks
+    const [{ data: projectRows }, { data: openTasks }, { data: workspace }] = await Promise.all([
+      supabaseAdmin.from('projects').select('id, creator_id').eq('workspace_id', workspace_id),
+      supabaseAdmin
+        .from('tasks')
+        .select('assignee_id, due_date')
+        .eq('workspace_id', workspace_id)
+        .eq('is_completed', false)
+        .not('assignee_id', 'is', null)
+        .limit(5000),
+      supabaseAdmin.from('workspaces').select('owner_id').eq('id', workspace_id).maybeSingle(),
+    ])
+
+    const projectIds = (projectRows || []).map((p: any) => p.id)
+    const { data: projectMemberRows } = projectIds.length
+      ? await supabaseAdmin.from('project_members').select('project_id, user_id').in('project_id', projectIds)
+      : { data: [] as any[] }
+
+    const projectsByUser = new Map<string, Set<string>>()
+    const addProject = (userId: string, projectId: string) => {
+      const set = projectsByUser.get(userId) || new Set<string>()
+      set.add(projectId)
+      projectsByUser.set(userId, set)
+    }
+    for (const row of projectMemberRows || []) addProject(row.user_id, row.project_id)
+    for (const row of projectRows || []) if (row.creator_id) addProject(row.creator_id, row.id)
+
+    const startOfToday = new Date()
+    startOfToday.setHours(0, 0, 0, 0)
+    const openByUser = new Map<string, { open: number; overdue: number }>()
+    for (const task of openTasks || []) {
+      const entry = openByUser.get(task.assignee_id) || { open: 0, overdue: 0 }
+      entry.open += 1
+      if (task.due_date && new Date(task.due_date).getTime() < startOfToday.getTime()) entry.overdue += 1
+      openByUser.set(task.assignee_id, entry)
+    }
+
+    const membersWithStats = (members || []).map((member: any) => ({
+      ...member,
+      stats: {
+        projects: projectsByUser.get(member.user_id)?.size || 0,
+        open_tasks: openByUser.get(member.user_id)?.open || 0,
+        overdue_tasks: openByUser.get(member.user_id)?.overdue || 0,
+      },
+    }))
+
+    return NextResponse.json({
+      members: membersWithStats,
+      viewer_id: user.id,
+      viewer_role: membership.role,
+      owner_id: workspace?.owner_id ?? null,
+    })
   } catch (error) {
     console.error('Error fetching team members:', error)
     return NextResponse.json(
@@ -128,6 +190,14 @@ export async function DELETE(request: Request) {
       )
     }
 
+    // The workspace owner can never be removed
+    if (await isWorkspaceOwner(workspace_id, user_id)) {
+      return NextResponse.json(
+        { error: 'The workspace owner cannot be removed' },
+        { status: 400 }
+      )
+    }
+
     const { error } = await supabaseAdmin
       .from('workspace_members')
       .delete()
@@ -165,7 +235,7 @@ export async function PATCH(request: Request) {
   const workspace_id = searchParams.get('workspace_id')
   const user_id = searchParams.get('user_id')
   
-  const body = await request.json()
+  const body = await request.json().catch(() => ({}))
   const { role } = body
 
   if (!workspace_id || !user_id || !role) {
@@ -173,6 +243,10 @@ export async function PATCH(request: Request) {
       { error: 'workspace_id, user_id, and role are required' },
       { status: 400 }
     )
+  }
+
+  if (!VALID_ROLES.includes(role)) {
+    return NextResponse.json({ error: 'role must be admin or member' }, { status: 400 })
   }
 
   try {
@@ -193,6 +267,14 @@ export async function PATCH(request: Request) {
       return NextResponse.json(
         { error: 'Only admins can change roles' },
         { status: 403 }
+      )
+    }
+
+    // The workspace owner always stays an admin
+    if (role !== 'admin' && await isWorkspaceOwner(workspace_id, user_id)) {
+      return NextResponse.json(
+        { error: 'The workspace owner must remain an admin' },
+        { status: 400 }
       )
     }
 
@@ -239,6 +321,10 @@ export async function POST(request: Request) {
 
   if (!workspace_id || !username) {
     return NextResponse.json({ error: 'workspace_id and username are required' }, { status: 400 })
+  }
+
+  if (!VALID_ROLES.includes(role)) {
+    return NextResponse.json({ error: 'role must be admin or member' }, { status: 400 })
   }
 
   try {

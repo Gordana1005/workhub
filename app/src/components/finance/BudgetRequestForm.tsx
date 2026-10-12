@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useTranslations } from 'next-intl';
+import { useToast } from '@/components/ui/Toast';
+import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 
 interface BudgetRequestFormProps {
@@ -11,10 +13,11 @@ interface BudgetRequestFormProps {
   onSuccess: () => void;
 }
 
-const fieldClass = 'block w-full min-w-0 rounded-xl border border-border bg-secondary px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none';
+const fieldClass = 'block w-full min-w-0 rounded-lg border border-border bg-secondary px-3 py-2.5 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
 
 export default function BudgetRequestForm({ projectId, onClose, onSuccess }: BudgetRequestFormProps) {
   const t = useTranslations('pages.tools');
+  const toast = useToast();
   const [formData, setFormData] = useState({
     amount: '',
     description: '',
@@ -54,7 +57,7 @@ export default function BudgetRequestForm({ projectId, onClose, onSuccess }: Bud
       onClose();
     } catch (error) {
       console.error('Failed to create budget request:', error);
-      alert(t('finance.createRequestFailed'));
+      toast.error(t('finance.createRequestFailed'));
     } finally {
       setIsSubmitting(false);
     }
@@ -67,29 +70,24 @@ export default function BudgetRequestForm({ projectId, onClose, onSuccess }: Bud
       onClose={onClose}
       size="lg"
       footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded-lg border border-border bg-secondary px-4 py-2.5 text-sm font-medium text-text-primary hover:bg-surface-hover"
-          >
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" onClick={onClose}>
             {t('finance.cancel')}
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
             form="budget-request-form"
             disabled={isSubmitting || !formData.amount || !formData.description}
-            className="flex-1 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isSubmitting ? t('finance.submitting') : t('finance.submitRequest')}
-          </button>
+          </Button>
         </div>
       }
     >
       <form id="budget-request-form" onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="budget-amount">
-            {t('finance.amount')} <span className="text-red-600">*</span>
+            {t('finance.amount')} <span className="text-danger">*</span>
           </label>
           <input
             id="budget-amount"
@@ -105,7 +103,7 @@ export default function BudgetRequestForm({ projectId, onClose, onSuccess }: Bud
 
         <div>
           <label className="mb-1.5 block text-sm font-medium text-text-secondary" htmlFor="budget-description">
-            {t('finance.description')} <span className="text-red-600">*</span>
+            {t('finance.description')} <span className="text-danger">*</span>
           </label>
           <input
             id="budget-description"

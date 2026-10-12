@@ -19,14 +19,14 @@ export default async function Home() {
     }
   )
 
-  const { data: { session } } = await supabase.auth.getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  if (session) {
+  if (user) {
     // Check if user has completed onboarding
     const { data: profile } = await supabase
       .from('profiles')
       .select('username')
-      .eq('id', session.user.id)
+      .eq('id', user.id)
       .single()
 
     if (profile?.username) {

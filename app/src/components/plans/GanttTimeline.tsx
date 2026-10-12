@@ -1,10 +1,20 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
-import { format, eachMonthOfInterval, eachWeekOfInterval, differenceInDays } from 'date-fns';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  differenceInCalendarDays,
+  eachMonthOfInterval,
+  eachWeekOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
+  startOfMonth,
+  startOfWeek,
+} from 'date-fns';
 import { enUS, mk } from 'date-fns/locale';
 import { useLocale, useTranslations } from 'next-intl';
-import { Button } from '@/components/ui/Button';
+import { Check } from 'lucide-react';
+import { isMilestoneOverdue, parseDay } from './planUtils';
 
 export interface Plan {
   start_date: string;
@@ -28,185 +38,301 @@ export interface Milestone {
 interface GanttTimelineProps {
   plan: Plan;
   milestones: Milestone[];
+  selectedId?: string | null;
   onMilestoneClick?: (milestone: Milestone) => void;
 }
 
-export default function GanttTimeline({ plan, milestones, onMilestoneClick }: GanttTimelineProps) {
+const LABEL_W = 220;
+const ROW_H = 52;
+const HEADER_H = 40;
+
+const focusRing =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary';
+
+/**
+ * Roadmap timeline. The card never grows wider than its container: the label column is sticky and
+ * only the date area scrolls horizontally. Short plans are stretched to fill the available width,
+ * long plans scroll.
+ */
+export default function GanttTimeline({ plan, milestones, selectedId, onMilestoneClick }: GanttTimelineProps) {
   const t = useTranslations('pages.plans');
   const locale = useLocale();
   const dateLocale = locale === 'mk' ? mk : enUS;
   const [viewMode, setViewMode] = useState<'weeks' | 'months'>('weeks');
+  const [viewport, setViewport] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const didScroll = useRef(false);
 
-  const startDate = useMemo(() => new Date(plan.start_date), [plan.start_date]);
-  const endDate = useMemo(() => new Date(plan.end_date), [plan.end_date]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setViewport(el.clientWidth);
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
-  const timePeriods = useMemo(() => {
-    const end = endDate < startDate ? startDate : endDate;
-    if (viewMode === 'months') {
-      return eachMonthOfInterval({ start: startDate, end });
+  const layout = useMemo(() => {
+    const planStart = parseDay(plan.start_date);
+    const planEnd = parseDay(plan.end_date);
+    const dates = milestones.map((milestone) => parseDay(milestone.target_date));
+    const all = [planStart, planEnd, ...dates].filter((date) => !Number.isNaN(date.getTime()));
+    const min = new Date(Math.min(...all.map((date) => date.getTime())));
+    const max = new Date(Math.max(...all.map((date) => date.getTime())));
+
+    const rangeStart = viewMode === 'weeks' ? startOfWeek(min, { weekStartsOn: 1 }) : startOfMonth(min);
+    const rangeEnd = viewMode === 'weeks' ? endOfWeek(max, { weekStartsOn: 1 }) : endOfMonth(max);
+    const totalDays = differenceInCalendarDays(rangeEnd, rangeStart) + 1;
+
+    const basePx = viewMode === 'weeks' ? 16 : 4.5;
+    const available = Math.max(viewport - LABEL_W, 0);
+    const pxPerDay = Math.max(basePx, available / totalDays);
+    const width = Math.floor(totalDays * pxPerDay);
+
+    const starts =
+      viewMode === 'weeks'
+        ? eachWeekOfInterval({ start: rangeStart, end: rangeEnd }, { weekStartsOn: 1 })
+        : eachMonthOfInterval({ start: rangeStart, end: rangeEnd });
+    const periods = starts.map((start, index) => {
+      const left = differenceInCalendarDays(start, rangeStart) * pxPerDay;
+      const next = starts[index + 1];
+      const right = next ? differenceInCalendarDays(next, rangeStart) * pxPerDay : width;
+      return { start, left, width: right - left };
+    });
+
+    return { planStart, planEnd, rangeStart, rangeEnd, pxPerDay, width, periods };
+  }, [plan.start_date, plan.end_date, milestones, viewMode, viewport]);
+
+  const { planStart, planEnd, rangeStart, rangeEnd, pxPerDay, width, periods } = layout;
+  const dayX = (date: Date) => differenceInCalendarDays(date, rangeStart) * pxPerDay;
+
+  const now = new Date();
+  const todayVisible = now >= rangeStart && now <= rangeEnd;
+  const todayX = dayX(now) + pxPerDay / 2;
+
+  // On first measurement, bring "today" into view when the timeline overflows.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || didScroll.current || viewport === 0) return;
+    didScroll.current = true;
+    if (todayVisible && width > viewport - LABEL_W) {
+      el.scrollLeft = Math.max(0, todayX - (viewport - LABEL_W) / 3);
     }
-    return eachWeekOfInterval({ start: startDate, end });
-  }, [startDate, endDate, viewMode]);
+  }, [viewport, todayVisible, todayX, width]);
 
-  const dayWidth = 40;
-  const monthWidth = 120;
-  const periodWidth = viewMode === 'weeks' ? dayWidth * 7 : monthWidth;
-  const timelineWidth = timePeriods.length * periodWidth;
-
-  const getPositionForDate = (date: Date) => {
-    const daysFromStart = differenceInDays(date, startDate);
-    if (viewMode === 'weeks') {
-      return (daysFromStart / 7) * periodWidth;
-    }
-    return (daysFromStart / 30) * monthWidth;
+  const scrollToToday = () => {
+    const el = scrollRef.current;
+    if (!el || !todayVisible) return;
+    el.scrollTo({ left: Math.max(0, todayX - (viewport - LABEL_W) / 2), behavior: 'smooth' });
   };
 
-  const todayPosition = getPositionForDate(new Date());
+  const segment = (mode: 'weeks' | 'months', label: string) => (
+    <button
+      type="button"
+      aria-pressed={viewMode === mode}
+      onClick={() => setViewMode(mode)}
+      className={`h-8 rounded-md px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+        viewMode === mode
+          ? 'bg-surface text-text-primary shadow-sm'
+          : 'text-text-secondary hover:text-text-primary'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
+  const toneFor = (milestone: Milestone) => {
+    if (milestone.is_completed) return 'var(--brand-green)';
+    if (isMilestoneOverdue(milestone.target_date, milestone.is_completed)) return 'var(--brand-red)';
+    return plan.color || 'var(--brand-blue)';
+  };
+
+  const planBandLeft = dayX(planStart);
+  const planBandWidth = (differenceInCalendarDays(planEnd, planStart) + 1) * pxPerDay;
 
   return (
-    <div className="w-full min-w-0 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={viewMode === 'weeks' ? 'primary' : 'secondary'}
-            onClick={() => setViewMode('weeks')}
-          >
-            {t('weeks')}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={viewMode === 'months' ? 'primary' : 'secondary'}
-            onClick={() => setViewMode('months')}
-          >
-            {t('months')}
-          </Button>
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold text-text-primary">{t('timeline')}</h2>
+          <div className="inline-flex gap-0.5 rounded-lg bg-surface-hover p-0.5" role="group" aria-label={t('timeline')}>
+            {segment('weeks', t('weeks'))}
+            {segment('months', t('months'))}
+          </div>
+          {todayVisible ? (
+            <button
+              type="button"
+              onClick={scrollToToday}
+              className="h-8 rounded-lg px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              {t('today')}
+            </button>
+          ) : null}
         </div>
 
-        <p className="text-sm text-text-secondary">
-          {format(startDate, 'MMM d, yyyy', { locale: dateLocale })} – {format(endDate, 'MMM d, yyyy', { locale: dateLocale })}
-        </p>
+        <ul className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">
+          <li className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rotate-45 rounded-[2px]" style={{ backgroundColor: plan.color || 'var(--brand-blue)' }} aria-hidden />
+            {t('inProgress')}
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-success" aria-hidden />
+            {t('legendCompleted')}
+          </li>
+          <li className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rotate-45 rounded-[2px] bg-danger" aria-hidden />
+            {t('overdue')}
+          </li>
+        </ul>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="w-full min-w-0 overflow-x-auto overscroll-x-contain"
-      >
-        <div className="relative" style={{ width: `${timelineWidth}px`, minWidth: `${timelineWidth}px` }}>
-          <div className="mb-4 flex border-b border-border pb-2">
-            {timePeriods.map((period, index) => (
-              <div
-                key={period.toISOString()}
-                className="text-center text-sm font-medium text-text-secondary"
-                style={{ width: `${periodWidth}px`, minWidth: `${periodWidth}px` }}
-              >
-                {viewMode === 'weeks'
-                  ? t('week', { number: index + 1 })
-                  : format(period, 'MMM yyyy', { locale: dateLocale })}
-              </div>
-            ))}
+      <div ref={scrollRef} className="overflow-x-auto overscroll-x-contain">
+        <div className="relative" style={{ width: LABEL_W + width, minWidth: '100%' }}>
+          {/* Header */}
+          <div className="flex border-b border-border" style={{ height: HEADER_H }}>
+            <div
+              className="sticky left-0 z-20 shrink-0 border-r border-border bg-surface px-4 text-xs font-medium uppercase tracking-wide text-text-muted"
+              style={{ width: LABEL_W, lineHeight: `${HEADER_H}px` }}
+            >
+              {t('milestones')}
+            </div>
+            <div className="relative shrink-0" style={{ width }}>
+              {periods.map((period) => (
+                <div
+                  key={period.start.toISOString()}
+                  className="absolute inset-y-0 border-l border-border pl-2 text-xs font-medium text-text-secondary"
+                  style={{ left: period.left, width: period.width, lineHeight: `${HEADER_H}px` }}
+                >
+                  <span className="block truncate">
+                    {viewMode === 'weeks'
+                      ? format(period.start, 'MMM d', { locale: dateLocale })
+                      : format(period.start, 'MMM yyyy', { locale: dateLocale })}
+                  </span>
+                </div>
+              ))}
+              {todayVisible ? (
+                <span
+                  className="absolute top-1 z-10 -translate-x-1/2 rounded-full bg-primary px-2 text-[10px] font-semibold leading-4 text-white"
+                  style={{ left: todayX }}
+                >
+                  {t('today')}
+                </span>
+              ) : null}
+            </div>
           </div>
 
-          {todayPosition >= 0 && todayPosition <= timelineWidth ? (
-            <div
-              className="absolute bottom-0 top-8 z-10 w-0.5 bg-primary"
-              style={{ left: `${todayPosition}px` }}
-            >
-              <div className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs font-medium text-primary">
-                {t('today')}
-              </div>
+          {/* Body */}
+          <div className="relative">
+            {/* Grid, plan span and today line live in the date area only */}
+            <div className="pointer-events-none absolute inset-y-0 right-0" style={{ left: LABEL_W }} aria-hidden>
+              <div
+                className="absolute inset-y-0"
+                style={{
+                  left: planBandLeft,
+                  width: planBandWidth,
+                  backgroundColor: `color-mix(in srgb, ${plan.color || 'var(--brand-blue)'} 6%, transparent)`,
+                }}
+              />
+              {periods.map((period) => (
+                <div
+                  key={`${period.start.toISOString()}-line`}
+                  className="absolute inset-y-0 w-px bg-border"
+                  style={{ left: period.left }}
+                />
+              ))}
+              {todayVisible ? (
+                <div className="absolute inset-y-0 z-10 w-0.5 -translate-x-1/2 bg-primary" style={{ left: todayX }} />
+              ) : null}
             </div>
-          ) : null}
 
-          <div className="space-y-3">
             {milestones.map((milestone) => {
-              const milestoneDate = new Date(milestone.target_date);
-              const position = getPositionForDate(milestoneDate);
-              const isOverdue = milestoneDate < new Date() && !milestone.is_completed;
+              const target = parseDay(milestone.target_date);
+              const tone = toneFor(milestone);
+              const selected = selectedId === milestone.id;
+              const pct = milestone.is_completed ? 100 : Math.max(0, Math.min(100, milestone.completion_percentage));
+              const overdue = isMilestoneOverdue(milestone.target_date, milestone.is_completed);
+              const barLeft = Math.min(dayX(planStart), dayX(target));
+              const barRight = dayX(target) + pxPerDay;
+              const barWidth = Math.max(barRight - barLeft, pxPerDay);
+              const markerX = dayX(target) + pxPerDay / 2;
+              const summary = `${milestone.name} · ${format(target, 'MMM d, yyyy', { locale: dateLocale })} · ${pct}%`;
 
               return (
-                <div key={milestone.id} className="relative h-12">
-                  <div className="absolute inset-0 rounded-lg bg-surface-hover" />
-
-                  <div
-                    className="absolute inset-y-0 left-0 rounded-lg"
-                    style={{
-                      width: `${milestone.completion_percentage}%`,
-                      backgroundColor: milestone.is_completed
-                        ? '#10b981'
-                        : isOverdue
-                        ? '#ef4444'
-                        : plan.color,
-                      opacity: 0.3,
-                    }}
-                  />
-
-                  <div
-                    className="group absolute top-1/2 -translate-y-1/2 cursor-pointer"
-                    style={{ left: `${position}px` }}
+                <div
+                  key={milestone.id}
+                  className={`group relative flex border-b border-border last:border-b-0 ${
+                    selected ? 'bg-primary/5' : 'hover:bg-surface-hover/60'
+                  }`}
+                  style={{ height: ROW_H }}
+                >
+                  <button
+                    type="button"
                     onClick={() => onMilestoneClick?.(milestone)}
+                    aria-pressed={selected}
+                    className={`sticky left-0 z-10 flex shrink-0 items-center gap-3 border-r border-border px-4 text-left transition-colors ${focusRing} ${
+                      selected
+                        ? 'bg-[color-mix(in_srgb,var(--brand-blue)_8%,var(--surface))]'
+                        : 'bg-surface group-hover:bg-surface-hover'
+                    }`}
+                    style={{ width: LABEL_W }}
                   >
-                    <div
-                      className={`h-4 w-4 rotate-45 ring-2 ring-surface ${
-                        milestone.is_completed
-                          ? 'bg-green-500'
-                          : isOverdue
-                          ? 'bg-red-500'
-                          : 'bg-primary'
-                      }`}
+                    <span
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-white"
+                      style={{
+                        borderColor: tone,
+                        backgroundColor: milestone.is_completed ? tone : 'transparent',
+                      }}
+                      aria-hidden
+                    >
+                      {milestone.is_completed ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-text-primary">{milestone.name}</span>
+                      <span className={`block truncate text-xs ${overdue ? 'text-danger' : 'text-text-secondary'}`}>
+                        {format(target, 'MMM d', { locale: dateLocale })} · {pct}%
+                      </span>
+                    </span>
+                  </button>
+
+                  <div className="relative shrink-0" style={{ width }}>
+                    <button
+                      type="button"
+                      title={summary}
+                      aria-label={summary}
+                      onClick={() => onMilestoneClick?.(milestone)}
+                      className={`absolute top-1/2 h-6 -translate-y-1/2 rounded-md ${focusRing}`}
+                      style={{ left: barLeft, width: barWidth }}
+                    >
+                      <span
+                        className="absolute inset-0 rounded-md"
+                        style={{ backgroundColor: `color-mix(in srgb, ${tone} 20%, transparent)` }}
+                      />
+                      <span
+                        className="absolute inset-y-0 left-0 rounded-md transition-[width] duration-300"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: `color-mix(in srgb, ${tone} 55%, transparent)`,
+                        }}
+                      />
+                    </button>
+                    <span
+                      className="pointer-events-none absolute top-1/2 z-[5] h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[3px] ring-2 ring-surface"
+                      style={{ left: markerX, backgroundColor: tone }}
+                      aria-hidden
                     />
-
-                    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border border-border bg-surface px-3 py-2 opacity-0 transition-opacity group-hover:opacity-100">
-                      <div className="mb-1 text-sm font-medium text-text-primary">
-                        {milestone.name}
-                      </div>
-                      <div className="text-xs text-text-secondary">
-                        {format(milestoneDate, 'MMM d, yyyy', { locale: dateLocale })} · {milestone.completion_percentage}%
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pointer-events-none absolute left-3 top-1/2 z-10 max-w-[40%] -translate-y-1/2 truncate text-sm font-medium text-text-primary">
-                    {milestone.name}
                   </div>
                 </div>
               );
             })}
           </div>
-
-          <div className="pointer-events-none absolute inset-0">
-            {timePeriods.map((period, index) => (
-              <div
-                key={`${period.toISOString()}-line`}
-                className="absolute bottom-0 top-0 w-px bg-border"
-                style={{ left: `${index * periodWidth}px` }}
-              />
-            ))}
-          </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-text-secondary">
-        <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded-sm bg-primary" />
-          {t('inProgress')}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded-sm bg-green-500" />
-          {t('legendCompleted')}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="h-3 w-3 rounded-sm bg-red-500" />
-          {t('overdue')}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="h-4 w-0.5 bg-primary" />
-          {t('today')}
-        </div>
-      </div>
+      <p className="sr-only">
+        {format(planStart, 'MMM d, yyyy', { locale: dateLocale })} – {format(planEnd, 'MMM d, yyyy', { locale: dateLocale })}
+      </p>
     </div>
   );
 }

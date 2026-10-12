@@ -41,12 +41,31 @@ export async function GET(request: Request) {
     const projectId = searchParams.get('projectId') || searchParams.get('project_id');
     const workspaceId = searchParams.get('workspace_id') || searchParams.get('workspaceId');
 
+    // Resolve the workspace that must be checked: an explicit workspace_id,
+    // or the workspace that owns the requested project.
+    let accessWorkspaceId = workspaceId;
+    if (projectId) {
+      const { data: project } = await supabaseAdmin
+        .from('projects')
+        .select('workspace_id')
+        .eq('id', projectId)
+        .single();
+
+      if (!project) {
+        return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+      }
+      if (workspaceId && workspaceId !== project.workspace_id) {
+        return NextResponse.json({ error: 'Access denied' }, { status: 403 });
+      }
+      accessWorkspaceId = project.workspace_id;
+    }
+
     // Verify workspace access
-    if (workspaceId) {
+    if (accessWorkspaceId) {
       const { data: membership } = await supabaseAdmin
         .from('workspace_members')
         .select('role')
-        .eq('workspace_id', workspaceId)
+        .eq('workspace_id', accessWorkspaceId)
         .eq('user_id', user.id)
         .single();
 
@@ -76,7 +95,36 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    // Attach real tags (non-fatal if the tag tables are unavailable)
+    let notes: any[] = data || [];
+    try {
+      const ids = notes.map((n) => n.id);
+      if (ids.length > 0) {
+        const { data: links } = await supabaseAdmin
+          .from('note_tags')
+          .select('note_id, tag_id')
+          .in('note_id', ids);
+        const tagIds = Array.from(new Set((links || []).map((l: any) => l.tag_id)));
+        const { data: tagRows } = tagIds.length > 0
+          ? await supabaseAdmin
+              .from('tags')
+              .select('id, name, color, workspace_id')
+              .in('id', tagIds)
+          : { data: [] as any[] };
+        const byId = new Map((tagRows || []).map((tg: any) => [tg.id, tg]));
+        notes = notes.map((n) => ({
+          ...n,
+          tags: (links || [])
+            .filter((l: any) => l.note_id === n.id)
+            .map((l: any) => byId.get(l.tag_id))
+            .filter(Boolean),
+        }));
+      }
+    } catch (tagError) {
+      console.error('Error loading note tags:', tagError);
+    }
+
+    return NextResponse.json(notes);
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Unknown error' },
@@ -265,7 +313,7 @@ export async function PUT(request: Request) {
     // Update the note
     const { data, error } = await supabaseAdmin
       .from('notes')
-      .update({ title, content })
+      .update({ title, content, updated_at: new Date().toISOString() })
       .eq('id', id)
       .eq('author_id', user.id)
       .select()

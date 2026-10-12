@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useWorkspaceStore } from '@/stores/useWorkspaceStore';
 import { useTranslations } from 'next-intl';
+import { useToast } from '@/components/ui/Toast';
+import { Button } from '@/components/ui/Button';
 import { Dialog } from '@/components/ui/Dialog';
 
 const CURRENCIES = [
@@ -53,10 +55,11 @@ interface AccountManagerProps {
   onSave: () => void;
 }
 
-const fieldClass = 'block w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/40';
+const fieldClass = 'block w-full min-w-0 rounded-lg border border-border bg-surface px-3 py-2 text-text-primary placeholder:text-text-muted focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30';
 
 export default function AccountManager({ account, onClose, onSave }: AccountManagerProps) {
   const t = useTranslations('pages.tools');
+  const toast = useToast();
   const [formData, setFormData] = useState<Account>({
     name: '',
     type: 'bank',
@@ -111,7 +114,7 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
       onClose();
     } catch (error) {
       console.error('Failed to save account:', error);
-      alert(t('finance.saveAccountFailed'));
+      toast.error(t('finance.saveAccountFailed'));
     } finally {
       setIsSaving(false);
     }
@@ -123,22 +126,13 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
       title={account ? t('finance.editAccount') : t('finance.createAccount')}
       onClose={onClose}
       footer={
-        <div className="flex flex-col-reverse gap-2 sm:flex-row">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex-1 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary hover:bg-surface-hover"
-          >
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="secondary" onClick={onClose}>
             {t('finance.cancel')}
-          </button>
-          <button
-            type="submit"
-            form="account-form"
-            disabled={isSaving}
-            className="flex-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          </Button>
+          <Button type="submit" form="account-form" disabled={isSaving || !formData.name.trim()}>
             {isSaving ? t('finance.saving') : account ? t('finance.update') : t('finance.create')}
-          </button>
+          </Button>
         </div>
       }
     >
@@ -154,6 +148,7 @@ export default function AccountManager({ account, onClose, onSave }: AccountMana
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
             placeholder={t('finance.accountNamePlaceholder')}
             className={fieldClass}
+            autoFocus
             required
           />
         </div>

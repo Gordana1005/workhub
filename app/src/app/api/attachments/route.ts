@@ -96,7 +96,8 @@ export async function POST(request: Request) {
     }
 
     const safeName = sanitizeFileName(file.name || 'upload')
-    const targetSegment = taskId || projectId || noteId || 'general'
+    // Sanitised so ids from the client cannot inject path separators / traversal into the storage key
+    const targetSegment = sanitizeFileName(taskId || projectId || noteId || 'general')
     const objectPath = `${workspaceId}/${targetSegment}/${Date.now()}-${safeName}`
 
     const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
@@ -171,6 +172,11 @@ export async function DELETE(request: Request) {
 
     if (attachment.workspace_id !== auth.workspaceId) {
       return NextResponse.json({ error: 'Workspace mismatch' }, { status: 403 })
+    }
+
+    // Only the uploader or a workspace admin may delete an attachment
+    if (attachment.uploaded_by !== auth.user.id && auth.userRole !== 'admin') {
+      return NextResponse.json({ error: 'Only the uploader or an admin can delete this attachment' }, { status: 403 })
     }
 
     const { error: updateError } = await supabaseAdmin

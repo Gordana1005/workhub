@@ -10,7 +10,7 @@ import { twMerge } from 'tailwind-merge'
 import { clsx } from 'clsx'
 import { Badge } from '@/components/ui/Badge'
 
-export default function WorkspaceSwitcher() {
+export default function WorkspaceSwitcher({ compact = false }: { compact?: boolean }) {
   const t = useTranslations('pages.people')
   const locale = useLocale()
   const {
@@ -28,20 +28,25 @@ export default function WorkspaceSwitcher() {
     setMounted(true)
   }, [])
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside or pressing Escape
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false)
       }
     }
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsOpen(false)
+    }
 
     if (isOpen) {
       document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('keydown', handleKey)
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKey)
     }
   }, [isOpen])
 
@@ -88,16 +93,25 @@ export default function WorkspaceSwitcher() {
 
   if (!mounted) {
     return (
-      <div className="h-10 w-full max-w-full rounded-lg bg-surface-hover sm:w-60" />
+      <div className={compact ? 'h-10 w-10 rounded-lg bg-surface-hover' : 'h-10 w-full max-w-full rounded-lg bg-surface-hover sm:w-60 lg:w-full'} />
     )
   }
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
         disabled={loading}
-        className="flex w-full min-w-0 max-w-full items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 transition-all duration-200 hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-[280px]"
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        aria-label={compact ? currentWorkspace?.name || t('switcher.select') : undefined}
+        title={compact ? currentWorkspace?.name || t('switcher.select') : undefined}
+        className={
+          compact
+            ? 'flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-surface transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50'
+            : 'flex w-full min-w-0 max-w-full items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 transition-all duration-200 hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-50 sm:max-w-[280px] lg:max-w-none'
+        }
       >
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {loading ? (
@@ -115,21 +129,25 @@ export default function WorkspaceSwitcher() {
             </>
           )}
           
-          <div className="flex-1 min-w-0 text-left">
-            <div className="font-medium text-text-primary text-sm truncate">
-              {currentWorkspace?.name || t('switcher.select')}
-            </div>
-            {currentWorkspace?.category && (
-              <div className="text-xs text-text-secondary truncate">
-                {categoryLabel(currentWorkspace.category)}
+          {!compact && (
+            <div className="flex-1 min-w-0 text-left">
+              <div className="font-medium text-text-primary text-sm truncate">
+                {currentWorkspace?.name || t('switcher.select')}
               </div>
-            )}
-          </div>
+              {currentWorkspace?.category && (
+                <div className="text-xs text-text-secondary truncate">
+                  {categoryLabel(currentWorkspace.category)}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        <ChevronDown 
-          className={clsx('w-4 h-4 text-text-muted transition-transform duration-200 flex-shrink-0', isOpen && 'rotate-180')}
-        />
+        {!compact && (
+          <ChevronDown
+            className={clsx('w-4 h-4 text-text-muted transition-transform duration-200 flex-shrink-0', isOpen && 'rotate-180')}
+          />
+        )}
       </button>
 
       <AnimatePresence>
@@ -139,7 +157,10 @@ export default function WorkspaceSwitcher() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -5 }}
             transition={{ duration: 0.1 }}
-            className="absolute top-full left-0 right-0 mt-2 bg-surface border border-border rounded-xl shadow-xl z-50 overflow-hidden"
+            className={clsx(
+              'absolute top-full left-0 mt-2 bg-surface border border-border rounded-xl shadow-xl z-50 overflow-hidden',
+              compact ? 'w-64' : 'right-0'
+            )}
           >
             {/* Header */}
             <div className="px-4 py-2 border-b border-border">

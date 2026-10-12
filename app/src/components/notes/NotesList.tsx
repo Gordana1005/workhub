@@ -1,30 +1,27 @@
 'use client'
 
 import NoteCard from './NoteCard'
-
-interface Tag {
-  id: string
-  name: string
-  color: string
-}
-
-interface Note {
-  id: string
-  title: string
-  content: string
-  created_at: string
-  project_id?: string
-  tags?: Tag[]
-}
+import type { NoteRecord } from './noteUtils'
 
 interface NotesListProps {
-  notes: Note[]
+  notes: NoteRecord[]
   selectedId?: string
-  onOpen: (note: Note) => void
+  showUpdated?: boolean
+  showProject?: boolean
+  showMenu?: boolean
+  onOpen: (note: NoteRecord) => void
   onDelete: (id: string) => void
 }
 
-export default function NotesList({ notes, selectedId, onOpen, onDelete }: NotesListProps) {
+export default function NotesList({
+  notes,
+  selectedId,
+  showUpdated,
+  showProject,
+  showMenu,
+  onOpen,
+  onDelete,
+}: NotesListProps) {
   return (
     <div className="min-w-0">
       {notes.map((note) => (
@@ -32,6 +29,9 @@ export default function NotesList({ notes, selectedId, onOpen, onDelete }: Notes
           key={note.id}
           note={note}
           active={note.id === selectedId}
+          showUpdated={showUpdated}
+          showProject={showProject}
+          showMenu={showMenu}
           onOpen={onOpen}
           onDelete={onDelete}
         />
